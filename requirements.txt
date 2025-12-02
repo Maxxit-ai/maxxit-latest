@@ -1,0 +1,20 @@
+# Root requirements.txt for Render deployment
+# This ensures critical dependencies are installed even if services/ path isn't working
+
+# Database connectivity (CRITICAL for Ostium service)
+psycopg2-binary>=2.9.9
+
+# Flask services
+Flask>=3.0.0
+flask-cors>=4.0.0
+
+# Ostium SDK
+ostium-python-sdk==3.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Encryption (for agent private key decryption)
+cryptography>=41.0.0
+
