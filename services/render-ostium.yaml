@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: maxxit-ostium-service
+    runtime: python3
+    region: oregon
+    plan: free
+    rootDir: services
+    buildCommand: pip install -r requirements-ostium.txt
+    startCommand: python ostium-service.py
+    envVars:
+      - key: OSTIUM_TESTNET
+        value: "true"
+      - key: OSTIUM_RPC_URL
+        value: "https://sepolia-rollup.arbitrum.io/rpc"
+      - key: OSTIUM_PLATFORM_WALLET
+        sync: false
+      - key: OSTIUM_PROFIT_SHARE
+        value: "10"
+      - key: PORT
+        value: "5002"
+    healthCheckPath: /health
+
