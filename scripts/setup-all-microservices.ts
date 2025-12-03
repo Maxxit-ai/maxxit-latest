@@ -203,7 +203,7 @@ app.listen(PORT, () => {
 async function runWorker() {
   console.log(\`🚀 ${service.name} starting...\`);
   
-  const INTERVAL = parseInt(process.env.WORKER_INTERVAL || '60000'); // 1 minute default
+  const INTERVAL = parseInt(process.env.WORKER_INTERVAL || '30000'); // 30 seconds default
   
   setInterval(async () => {
     try {

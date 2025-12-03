@@ -39,12 +39,15 @@ except Exception as e:
 app = Flask(__name__)
 CORS(app)
 
+# Create logs directory if it doesn't exist
+# os.makedirs('logs', exist_ok=True)
+
 # Logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler('logs/ostium-service.log'),
+        # logging.FileHandler('logs/ostium-service.log'),
         logging.StreamHandler()
     ]
 )
@@ -1666,9 +1669,6 @@ def get_price(token):
 
 
 if __name__ == '__main__':
-    # Create logs directory
-    os.makedirs('logs', exist_ok=True)
-    
     logger.info(f"🚀 Starting Ostium Service on port {PORT}")
     logger.info(f"   Network: {'TESTNET (Arbitrum Sepolia)' if OSTIUM_TESTNET else 'MAINNET'}")
     

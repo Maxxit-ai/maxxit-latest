@@ -1,3 +1,4 @@
+import { prisma } from '@maxxit/database';
 /**
  * Trade Executor - Calls external venue services via HTTP
  * Routes signals to appropriate venue services (Hyperliquid, Ostium)
@@ -61,7 +62,6 @@ async function executeHyperliquidTrade(
       : signal.risk_model;
 
     // Get user's Hyperliquid agent address from user_agent_addresses
-    const { prisma } = await import('./prisma-client');
     const userAddress = await prisma.user_agent_addresses.findUnique({
       where: { user_wallet: deployment.user_wallet.toLowerCase() },
       select: { hyperliquid_agent_address: true },
@@ -188,7 +188,6 @@ async function executeOstiumTrade(
       : signal.risk_model;
 
     // Get user's Ostium agent address from user_agent_addresses
-    const { prisma } = await import('./prisma-client');
     const userAddress = await prisma.user_agent_addresses.findUnique({
       where: { user_wallet: deployment.user_wallet.toLowerCase() },
       select: { ostium_agent_address: true },

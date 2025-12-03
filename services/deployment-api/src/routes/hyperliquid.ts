@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '../lib/prisma-client';
+import { prisma } from "@maxxit/database";
 
 const router = Router();
 
