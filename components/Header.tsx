@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Home, BarChart3, FileText, Wallet, User, Copy, Check, LogOut, X } from 'lucide-react';
+import { Home, Wallet, User, Plus } from 'lucide-react';
+import { Bot, BarChart3, FileText, Copy, Check, LogOut, X } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 
 export function Header() {
@@ -31,24 +32,24 @@ export function Header() {
   }, [isWalletModalOpen]);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
+    <header className="sticky top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-sm">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="flex h-14 items-center justify-between">
           {/* Logo/Brand */}
-          <Link href="/" className="flex items-center gap-3 hover-elevate rounded-md px-3 py-2 -ml-3">
-            <div className="flex items-center gap-2">
-              <Bot className="h-6 w-6 text-primary" />
-              <span className="text-xl font-bold text-primary" data-testid="text-header-brand">
-                MAXXIT
-              </span>
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center">
+              <span className="text-accent font-bold">M</span>
             </div>
+            <span className="font-display text-xl tracking-wide" data-testid="text-header-brand">
+              MAXXIT
+            </span>
           </Link>
 
           {/* Navigation */}
           <nav className="flex items-center gap-1">
             <Link href="/">
               <button
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium hover-elevate active-elevate-2 transition-all"
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="nav-home"
               >
                 <Home className="h-4 w-4" />
@@ -57,57 +58,57 @@ export function Header() {
             </Link>
             <Link href="/my-deployments">
               <button
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium hover-elevate active-elevate-2 transition-all"
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="nav-deployments"
               >
                 <Wallet className="h-4 w-4" />
-                <span className="hidden sm:inline">My Deployments</span>
+                <span className="hidden sm:inline">Deployments</span>
               </button>
             </Link>
             <Link href="/creator">
               <button
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium hover-elevate active-elevate-2 transition-all"
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="nav-my-agents"
               >
                 <User className="h-4 w-4" />
                 <span className="hidden sm:inline">My Agents</span>
               </button>
             </Link>
-            <Link href="/create-agent">
-              <button
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover-elevate active-elevate-2 transition-all"
-                data-testid="nav-create"
-              >
-                <Bot className="h-4 w-4" />
-                <span className="hidden sm:inline">Create Agent</span>
-              </button>
-            </Link>
             <Link href="/docs">
               <button
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium hover-elevate active-elevate-2 transition-all"
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 data-testid="nav-docs"
               >
                 <FileText className="h-4 w-4" />
                 <span className="hidden sm:inline">Docs</span>
               </button>
             </Link>
+            <Link href="/create-agent">
+              <button
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] text-sm font-bold hover:bg-[var(--accent-dim)] transition-colors ml-2"
+                data-testid="nav-create"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Create</span>
+              </button>
+            </Link>
 
             {/* Wallet Connection */}
             {ready && (
-              <div className="relative">
+              <div className="relative ml-2">
                 {authenticated ? (
                   <>
                     <button
                       ref={buttonRef}
                       onClick={() => setIsWalletModalOpen(!isWalletModalOpen)}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary text-primary rounded-md text-sm font-medium hover-elevate active-elevate-2 transition-all"
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-[var(--accent)] text-[var(--accent)] text-sm font-bold hover:bg-[var(--accent)]/10 transition-colors"
                       data-testid="button-disconnect-wallet"
                     >
                       <Wallet className="h-4 w-4" />
-                      <span className="hidden sm:inline">
+                      <span className="hidden sm:inline font-mono">
                         {user?.wallet?.address ?
                           `${user.wallet.address.slice(0, 6)}...${user.wallet.address.slice(-4)}` :
-                          'Disconnect'}
+                          'WALLET'}
                       </span>
                     </button>
 
@@ -115,31 +116,28 @@ export function Header() {
                     {isWalletModalOpen && (
                       <div
                         ref={popupRef}
-                        className="absolute right-0 top-full mt-2 w-80 z-50 rounded-md border bg-[#08080a] text-popover-foreground shadow-lg animate-in fade-in-0 zoom-in-95 slide-in-from-top-2"
-                        style={{
-                          animationDuration: '150ms'
-                        }}
+                        className="absolute right-0 top-full mt-2 w-80 z-50 border border-[var(--border)] bg-[var(--bg-surface)] shadow-lg"
                       >
                         <div className="p-4 space-y-4">
                           {/* Header */}
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <Wallet className="h-4 w-4 text-primary" />
-                              <h3 className="text-sm font-semibold">Wallet Account</h3>
+                              <Wallet className="h-4 w-4 text-[var(--accent)]" />
+                              <h3 className="text-sm font-bold">WALLET</h3>
                             </div>
                             <button
                               onClick={() => setIsWalletModalOpen(false)}
-                              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-sm hover:bg-accent"
+                              className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors p-1"
                             >
                               <X className="h-4 w-4" />
                             </button>
                           </div>
 
                           {/* Address Display */}
-                          <div className="p-3 bg-muted/50 rounded-md border border-border/50">
-                            <p className="text-xs text-muted-foreground mb-2 font-medium">Connected Account</p>
+                          <div className="p-3 bg-[var(--bg-elevated)] border border-[var(--border)]">
+                            <p className="data-label mb-2">CONNECTED ACCOUNT</p>
                             <div className="flex items-start justify-between gap-3">
-                              <p className="font-mono text-xs break-all text-foreground leading-relaxed">
+                              <p className="font-mono text-xs break-all text-[var(--text-primary)] leading-relaxed">
                                 {user?.wallet?.address || 'No address'}
                               </p>
                               <button
@@ -150,13 +148,13 @@ export function Header() {
                                     setTimeout(() => setCopied(false), 2000);
                                   }
                                 }}
-                                className="flex-shrink-0 p-1.5 hover:bg-background rounded-md transition-colors hover-elevate"
+                                className="flex-shrink-0 p-1.5 hover:bg-[var(--bg-deep)] transition-colors"
                                 title="Copy address"
                               >
                                 {copied ? (
-                                  <Check className="h-4 w-4 text-primary" />
+                                  <Check className="h-4 w-4 text-[var(--accent)]" />
                                 ) : (
-                                  <Copy className="h-4 w-4 text-muted-foreground" />
+                                  <Copy className="h-4 w-4 text-[var(--text-muted)]" />
                                 )}
                               </button>
                             </div>
@@ -168,10 +166,10 @@ export function Header() {
                               logout();
                               setIsWalletModalOpen(false);
                             }}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 rounded-md text-sm font-medium transition-all hover-elevate active-elevate-2"
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-[var(--danger)] text-[var(--danger)] text-sm font-bold hover:bg-[var(--danger)]/10 transition-colors"
                           >
                             <LogOut className="h-4 w-4" />
-                            Log Out
+                            LOG OUT
                           </button>
                         </div>
                       </div>
@@ -180,11 +178,11 @@ export function Header() {
                 ) : (
                   <button
                     onClick={login}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary text-primary rounded-md text-sm font-medium hover-elevate active-elevate-2 transition-all"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-[var(--accent)] text-[var(--accent)] text-sm font-bold hover:bg-[var(--accent)]/10 transition-colors"
                     data-testid="button-connect-wallet"
                   >
                     <Wallet className="h-4 w-4" />
-                    <span className="hidden sm:inline">Connect Wallet</span>
+                    <span className="hidden sm:inline">CONNECT</span>
                   </button>
                 )}
               </div>

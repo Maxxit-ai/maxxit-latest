@@ -6,18 +6,18 @@
 
 import dotenv from "dotenv";
 import express from "express";
-import { prisma } from "./lib/prisma-client";
+import { prisma } from "@maxxit/database";
 import {
   setupGracefulShutdown,
   registerCleanup,
-} from "./lib/graceful-shutdown";
-import { checkDatabaseHealth } from "./lib/prisma-client";
+} from "@maxxit/common";
+import { checkDatabaseHealth } from "@maxxit/database";
 import { createLLMClassifier } from "./lib/llm-classifier";
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5003;
-const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "300000"); // 5 minutes default
+const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds default
 
 let workerInterval: NodeJS.Timeout | null = null;
 

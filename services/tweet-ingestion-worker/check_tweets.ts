@@ -1,4 +1,4 @@
-import { prisma } from './src/lib/prisma-client';
+import { prisma } from '@maxxit/database';
 
 async function checkTweets() {
   try {

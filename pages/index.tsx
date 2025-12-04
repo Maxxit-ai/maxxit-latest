@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { db } from '../client/src/lib/db';
-import { AgentCard } from '@components/AgentCard';
 import { AgentDrawer } from '@components/AgentDrawer';
 import { HyperliquidConnect } from '@components/HyperliquidConnect';
 import { MultiVenueSelector } from '@components/MultiVenueSelector';
-import { Bot, TrendingUp, Shield, Zap } from 'lucide-react';
-import { Header } from '@components/Header';
 
 interface Agent {
   id: string;
@@ -28,12 +25,27 @@ export default function Home() {
   const [hyperliquidAgentName, setHyperliquidAgentName] = useState<string>('');
   const [multiVenueSelectorOpen, setMultiVenueSelectorOpen] = useState(false);
   const [multiVenueAgent, setMultiVenueAgent] = useState<{ id: string; name: string } | null>(null);
+  const [currentTime, setCurrentTime] = useState('');
+
+  useEffect(() => {
+    const updateTime = () => {
+      setCurrentTime(new Date().toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     async function fetchAgents() {
       try {
         const data = await db.get('agents', {
-          'status': 'eq.PUBLIC', // Changed from ACTIVE to PUBLIC
+          'status': 'eq.PUBLIC',
           'order': 'apr30d.desc',
           'limit': '20',
           'select': 'id,name,venue,apr30d,apr90d,aprSi,sharpe30d',
@@ -49,213 +61,603 @@ export default function Home() {
     fetchAgents();
   }, []);
 
-  const scrollToAgents = () => {
-    document.getElementById('agents-list')?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   const handleAgentClick = (agent: Agent) => {
     if (agent.venue === 'MULTI') {
-      // For MULTI agents, open venue selector directly
       setMultiVenueAgent({ id: agent.id, name: agent.name });
       setMultiVenueSelectorOpen(true);
     } else {
-      // For other agents, open the drawer
       setSelectedAgent(agent);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        {/* Background with gradient and pattern */}
-        <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-black via-gray-900 to-background" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(34,197,94,0.15),transparent_50%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(34,197,94,0.1),transparent_50%)]" />
-          <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2322c55e' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
-          }} />
+    <div className="min-h-screen bg-[var(--bg-deep)] text-[var(--text-primary)] overflow-x-hidden">
+      
+      {/* Navigation */}
+      <header className="fixed top-0 left-0 right-0 z-50 border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-6 py-3">
+          <div className="flex items-center gap-8">
+            <Link href="/" className="flex items-center gap-2">
+              <div className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center">
+                <span className="text-accent text-lg">M</span>
         </div>
-        
-        <div className="relative container mx-auto px-4 py-24 md:py-32 text-center">
-          {/* Maxxit Logo/Brand */}
-          <div className="mb-8 animate-in fade-in slide-in-from-top duration-300">
-            <h2 className="text-4xl md:text-5xl font-bold text-primary mb-2" data-testid="text-brand">
-              MAXXIT
-            </h2>
-            <div className="h-1 w-20 bg-primary/50 mx-auto" />
+              <span className="font-display text-xl tracking-wide">MAXXIT</span>
+            </Link>
+            <nav className="hidden md:flex items-center gap-6 text-sm text-[var(--text-secondary)]">
+              <Link href="#architecture" className="hover:text-accent transition-colors">Architecture</Link>
+              <Link href="#agents" className="hover:text-accent transition-colors">Agents</Link>
+              <Link href="/docs" className="hover:text-accent transition-colors">Docs</Link>
+            </nav>
           </div>
-          
-          <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-2 mb-6 animate-in fade-in slide-in-from-top duration-500">
-            <Bot className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">Agentic DeFi Trading</span>
-          </div>
-          
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 animate-in fade-in slide-in-from-top duration-700" data-testid="text-hero-title">
-            DeFi Agent Marketplace
-          </h1>
-          
-          <p className="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto mb-10 leading-relaxed animate-in fade-in slide-in-from-top duration-1000">
-            Deploy AI-powered trading agents differentiated by real-time crypto Twitter signals 
-            and technical indicators — with transparent performance tracking and gasless execution.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center animate-in fade-in slide-in-from-bottom duration-1000">
-            <button
-              onClick={scrollToAgents}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-md text-base font-medium hover-elevate active-elevate-2 transition-all"
-              data-testid="button-explore"
-            >
-              <TrendingUp className="h-4 w-4" />
-              Explore Agents
-            </button>
-            <Link href="/create-agent">
-              <button
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 border border-white/20 bg-white/10 backdrop-blur-sm text-white rounded-md text-base font-medium hover-elevate active-elevate-2 transition-all"
-                data-testid="link-create"
-              >
-                <Bot className="h-4 w-4" />
-                Create Agent
+          <div className="flex items-center gap-6">
+            <span className="hidden sm:flex items-center gap-2 text-sm text-[var(--text-muted)]">
+              <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+              {currentTime}
+            </span>
+            <Link href="/my-deployments">
+              <button className="px-4 py-2 bg-accent text-[var(--bg-deep)] text-sm font-bold hover:bg-[var(--accent-dim)] transition-colors">
+                LAUNCH APP
               </button>
             </Link>
           </div>
         </div>
+      </header>
+
+      {/* Hero - Clean, no layer boxes */}
+      <section className="min-h-screen pt-16 relative flex items-center">
+        <div className="absolute inset-0 bg-dots opacity-10" />
+        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-accent opacity-[0.03] blur-[120px] rounded-full" />
+        
+        <div className="max-w-5xl mx-auto px-6 py-20 text-center">
+          <p className="text-sm text-accent mb-6 tracking-widest font-mono">
+            THE DECENTRALIZED TRADING ECONOMY
+          </p>
+          
+          <h1 className="font-display text-5xl md:text-7xl lg:text-8xl leading-[0.9] mb-8">
+            TRADE LIKE AN<br />
+            <span className="text-accent">INSTITUTION</span>
+            <span className="cursor-blink text-[var(--text-primary)]"></span>
+          </h1>
+          
+          {/* Brief explanation */}
+          <p className="max-w-3xl mx-auto mb-10 text-base md:text-lg text-[var(--text-secondary)] leading-relaxed">
+            Three AI agents work together: one finds the best alpha from research institutes and crypto Twitter, 
+            one becomes your 24/7 trading clone that sets position size and leverage, and one routes trades 
+            to the optimal venue for gasless, non-custodial execution.
+          </p>
+          
+          <div className="flex flex-wrap justify-center gap-4 mb-16">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                const element = document.getElementById('agents');
+                if (element) {
+                  const headerOffset = 100;
+                  const elementTop = element.offsetTop;
+                  window.scrollTo({
+                    top: elementTop - headerOffset,
+                    behavior: 'smooth'
+                  });
+                } else {
+                  console.error('Agents section not found');
+                }
+              }}
+              className="group px-8 py-4 bg-accent text-[var(--bg-deep)] font-bold text-lg hover:bg-[var(--accent-dim)] transition-all"
+            >
+              DEPLOY AN AGENT
+              <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">→</span>
+            </button>
+              <button
+              onClick={(e) => {
+                e.preventDefault();
+                const element = document.getElementById('architecture');
+                if (element) {
+                  const headerOffset = 100;
+                  const elementTop = element.offsetTop;
+                  window.scrollTo({
+                    top: elementTop - headerOffset,
+                    behavior: 'smooth'
+                  });
+                } else {
+                  console.error('Architecture section not found');
+                }
+              }}
+              className="px-8 py-4 border border-[var(--border)] font-bold text-lg hover:border-accent hover:text-accent transition-all"
+            >
+              LEARN MORE
+              </button>
+          </div>
+          
+          {/* Quick stats */}
+          <div className="flex flex-wrap justify-center gap-8 md:gap-16">
+            <div>
+              <p className="font-display text-3xl text-accent">261</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">TRADING PAIRS</p>
+            </div>
+            <div>
+              <p className="font-display text-3xl text-accent">24/7</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">AUTOMATED</p>
+            </div>
+            <div>
+              <p className="font-display text-3xl text-accent">100%</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">NON-CUSTODIAL</p>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Features Strip */}
-      <section className="border-y border-border bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-12">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="flex flex-col items-center text-center group">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                <TrendingUp className="h-6 w-6 text-primary" />
+      {/* Architecture Deep Dive */}
+      <section id="architecture" className="py-24 border-t border-[var(--border)]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid lg:grid-cols-2 gap-16">
+            {/* Left - Detailed explanation */}
+            <div>
+              <p className="data-label mb-4">ARCHITECTURE</p>
+              <h2 className="font-display text-4xl md:text-5xl mb-8">
+                THREE AGENTS.<br />
+                <span className="text-accent">ONE SYSTEM.</span>
+              </h2>
+              
+              <div className="space-y-8">
+                <div className="border-l-2 border-accent pl-6">
+                  <h3 className="font-display text-xl mb-2">AGENT WHAT — The Alpha Layer</h3>
+                  <p className="text-[var(--text-secondary)] text-sm leading-relaxed">
+                    Consumes signals from curated research institutes, crypto Twitter accounts, 
+                    and private Telegram channels. Uses deterministic AI to filter noise and 
+                    convert high-conviction calls into executable signals. Alpha creators are 
+                    ranked and paid based on realized P&L of their signals.
+                  </p>
+                </div>
+                
+                <div className="border-l-2 border-accent pl-6">
+                  <h3 className="font-display text-xl mb-2">AGENT HOW — Your Trading Clone</h3>
+                  <p className="text-[var(--text-secondary)] text-sm leading-relaxed">
+                    A personalized AI that becomes your 24/7 trading presence. For each signal, 
+                    it analyzes current market conditions, determines optimal position size, 
+                    sets appropriate leverage, and manages risk parameters — all tuned to your 
+                    preferences and risk tolerance.
+                  </p>
+                </div>
+                
+                <div className="border-l-2 border-accent pl-6">
+                  <h3 className="font-display text-xl mb-2">AGENT WHERE — Best Execution</h3>
+                  <p className="text-[var(--text-secondary)] text-sm leading-relaxed">
+                    Routes each trade to the optimal venue based on liquidity, fees, and 
+                    available pairs. Currently supports Hyperliquid (200+ pairs) and Ostium 
+                    (61 RWA pairs including forex and commodities). Executes non-custodially 
+                    through Gnosis Safe modules.
+                  </p>
+                </div>
               </div>
-              <h3 className="font-semibold text-foreground mb-2">Transparent PnL</h3>
-              <p className="text-sm text-muted-foreground">
-                Every trade tracked with full position history and real-time performance metrics
+            </div>
+            
+            {/* Right - Visual flow */}
+            <div className="flex items-center">
+              <div className="w-full border border-[var(--border)] p-8">
+                <p className="data-label mb-6">SIGNAL FLOW</p>
+                
+                <div className="space-y-6">
+                  {/* Sources */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex gap-2">
+                      <div className="w-10 h-10 border border-[var(--text-muted)] flex items-center justify-center text-xs">CT</div>
+                      <div className="w-10 h-10 border border-[var(--text-muted)] flex items-center justify-center text-xs">TG</div>
+                      <div className="w-10 h-10 border border-[var(--text-muted)] flex items-center justify-center text-xs">RI</div>
+                    </div>
+                    <div className="flex-1 h-px bg-[var(--border)]" />
+                    <span className="text-xs text-[var(--text-muted)]">SOURCES</span>
+                  </div>
+                  
+                  <div className="text-center text-[var(--text-muted)]">↓</div>
+                  
+                  {/* WHAT */}
+                  <div className="border border-accent p-4 text-center">
+                    <p className="text-xs text-accent mb-1">AGENT WHAT</p>
+                    <p className="font-display text-lg">SIGNAL: LONG BTC</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">Confidence: 87%</p>
+                  </div>
+                  
+                  <div className="text-center text-[var(--text-muted)]">↓</div>
+                  
+                  {/* HOW */}
+                  <div className="border border-accent p-4">
+                    <p className="text-xs text-accent mb-2 text-center">AGENT HOW</p>
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      <div>
+                        <p className="text-[var(--text-muted)]">SIZE</p>
+                        <p className="font-display text-lg">5%</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-muted)]">LEVERAGE</p>
+                        <p className="font-display text-lg">3x</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-muted)]">STOP</p>
+                        <p className="font-display text-lg">-5%</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="text-center text-[var(--text-muted)]">↓</div>
+                  
+                  {/* WHERE */}
+                  <div className="border border-accent p-4 text-center">
+                    <p className="text-xs text-accent mb-1">AGENT WHERE</p>
+                    <p className="font-display text-lg">→ OSTIUM</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">Best execution for BTC-PERP</p>
+                  </div>
+                  
+                  <div className="text-center text-[var(--text-muted)]">↓</div>
+                  
+                  {/* Result */}
+                  <div className="bg-accent/10 border border-accent p-4 text-center">
+                    <p className="text-xs text-accent mb-1">EXECUTED</p>
+                    <p className="font-display text-lg text-accent">POSITION OPEN</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">Non-custodial execution</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Create Your Own Agent */}
+      <section className="py-24 border-t border-[var(--border)] bg-[var(--bg-surface)]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            {/* Left - Content */}
+            <div>
+              <p className="data-label mb-4">CREATE YOUR AGENT</p>
+              <h2 className="font-display text-4xl md:text-5xl mb-6">
+                COPY TRADING,<br />
+                <span className="text-accent">EVOLVED.</span>
+              </h2>
+              <p className="text-[var(--text-secondary)] text-lg leading-relaxed mb-6">
+                Traditional copy trading copies exact trades. Maxxit copies signals and intelligence 
+                from traders you trust — Vitalik, research institutes, or private Telegram channels.
+              </p>
+              <p className="text-[var(--text-secondary)] text-lg leading-relaxed mb-8">
+                Their tweets and posts become real-time signals. But you control execution: Agent HOW 
+                sets position size and leverage based on your risk profile. Agent WHERE routes to the 
+                optimal venue. You copy the intelligence, not the exact trade.
+              </p>
+              <Link href="/create-agent">
+                <button className="px-8 py-4 bg-accent text-[var(--bg-deep)] font-bold text-lg hover:bg-[var(--accent-dim)] transition-all">
+                  CREATE YOUR AGENT →
+                </button>
+              </Link>
+            </div>
+            
+            {/* Right - Visual Example */}
+            <div className="border border-[var(--border)] p-8">
+              <p className="data-label mb-6">SELECT YOUR ALPHA SOURCES</p>
+              
+              {/* Source Selection - Prominent */}
+              <div className="mb-6">
+                <p className="text-sm text-[var(--text-secondary)] mb-4">
+                  Choose X accounts, Telegram channels, or research institutes whose signals you want to follow:
+                </p>
+                
+                <div className="space-y-3">
+                  {/* Example 1: X Account */}
+                  <div className="border border-accent p-4 hover:bg-accent/5 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 border-2 border-accent flex items-center justify-center font-bold text-accent">
+                        X
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="font-display text-base text-[var(--text-primary)]">@VitalikButerin</p>
+                          <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent border border-accent/30">ACTIVE</span>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] mb-2">Ethereum co-founder • 5.2M followers</p>
+                        <p className="text-xs text-[var(--text-secondary)] italic">
+                          "His tweets about ETH upgrades become trading signals"
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Example 2: Telegram Channel */}
+                  <div className="border border-accent p-4 hover:bg-accent/5 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 border-2 border-accent flex items-center justify-center font-bold text-accent">
+                        TG
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="font-display text-base text-[var(--text-primary)]">Crypto Alpha Channel</p>
+                          <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent border border-accent/30">ACTIVE</span>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] mb-2">Private Telegram • Premium signals</p>
+                        <p className="text-xs text-[var(--text-secondary)] italic">
+                          "Early calls on altcoins before they pump"
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Example 3: Research Institute */}
+                  <div className="border border-accent p-4 hover:bg-accent/5 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 border-2 border-accent flex items-center justify-center font-bold text-accent">
+                        RI
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="font-display text-base text-[var(--text-primary)]">DeFi Research Lab</p>
+                          <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent border border-accent/30">ACTIVE</span>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] mb-2">Research Institute • Institutional-grade analysis</p>
+                        <p className="text-xs text-[var(--text-secondary)] italic">
+                          "Deep research reports converted to actionable signals"
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Add More */}
+                  <div className="border border-[var(--border)] border-dashed p-4 opacity-50 hover:opacity-75 transition-opacity cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 border border-[var(--text-muted)] flex items-center justify-center">
+                        <span className="text-[var(--text-muted)] text-xl">+</span>
+                      </div>
+                      <p className="text-sm text-[var(--text-muted)]">Add more sources...</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Flow Arrow */}
+              <div className="py-4 border-y border-[var(--border)]">
+                <div className="flex items-center justify-center gap-3 text-sm text-accent">
+                  <span className="text-lg">↓</span>
+                  <span className="font-display">Their content becomes signals</span>
+                  <span className="text-lg">↓</span>
+                </div>
+              </div>
+              
+              {/* Result */}
+              <div className="mt-6 bg-accent/10 border border-accent p-6">
+                <p className="text-xs text-accent mb-2 font-bold">YOUR PERSONALIZED COPY TRADING SYSTEM</p>
+                <p className="text-sm text-[var(--text-primary)] mb-3">
+                  Trades 24/7 based on signals from sources you selected
+                </p>
+                <div className="flex items-center gap-4 text-xs text-[var(--text-secondary)]">
+                  <span>• You control sizing</span>
+                  <span>• You control leverage</span>
+                  <span>• Best execution</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* The Economy */}
+      <section className="py-24 border-t border-[var(--border)] bg-[var(--bg-deep)]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <p className="text-sm text-accent mb-4 tracking-widest font-mono">THE DECENTRALIZED ECONOMY</p>
+            <h2 className="font-display text-4xl md:text-5xl mb-6">
+              EVERYONE GETS <span className="text-accent">PAID</span><br />
+              FOR PERFORMANCE
+            </h2>
+            <p className="font-serif text-lg text-[var(--text-secondary)] max-w-2xl mx-auto italic">
+              Alpha creators earn proportional to their signal performance. 
+              You get institutional-grade execution. The system rewards merit.
+            </p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-px bg-[var(--border)]">
+            <div className="bg-[var(--bg-surface)] p-8">
+              <p className="data-label mb-2">ALPHA CREATORS</p>
+              <p className="font-display text-3xl text-accent mb-4">EARN %</p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Research institutes, CT influencers, and Telegram channels 
+                receive profit share based on signal performance.
               </p>
             </div>
-            <div className="flex flex-col items-center text-center group">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                <Bot className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="font-semibold text-foreground mb-2">AI-Powered Reasoning</h3>
-              <p className="text-sm text-muted-foreground">
-                Agents powered by crypto Twitter signals and technical indicators
+            <div className="bg-[var(--bg-surface)] p-8">
+              <p className="data-label mb-2">RETAIL TRADERS</p>
+              <p className="font-display text-3xl text-accent mb-4">24/7</p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Deploy once, trade forever. Your agent consumes best-in-class 
+                alpha and executes while you sleep.
               </p>
-            </div>
-            <div className="flex flex-col items-center text-center group">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                <Zap className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="font-semibold text-foreground mb-2">Gasless Execution</h3>
-              <p className="text-sm text-muted-foreground">
-                Only $0.20 per trade with no gas fees — transparent pricing
+            <div className="bg-[var(--bg-surface)] p-8">
+              <p className="data-label mb-2">EXECUTION</p>
+              <p className="font-display text-3xl text-accent mb-4">GASLESS</p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Non-custodial, gasless execution. 
+                No hidden costs, complete transparency.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Agents List */}
-      <section id="agents-list" className="container mx-auto px-4 py-16">
-        <div className="flex items-center justify-between mb-8">
+      {/* Stats */}
+      <section className="border-t border-[var(--border)] bg-[var(--bg-deep)]">
+        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4">
+          {[
+            { label: 'TRADING VOLUME', value: '$2.4M+', sub: 'ALL TIME' },
+            { label: 'ALPHA SOURCES', value: '47', sub: 'CURATED' },
+            { label: 'TRADING PAIRS', value: '261', sub: 'ACROSS VENUES' },
+            { label: 'UPTIME', value: '99.9%', sub: 'RELIABILITY' },
+          ].map((stat, i) => (
+            <div 
+              key={stat.label} 
+              className={`py-10 px-6 ${i < 3 ? 'border-r border-[var(--border)]' : ''}`}
+            >
+              <p className="data-label mb-2">{stat.label}</p>
+              <p className="data-value text-accent">{stat.value}</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">{stat.sub}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Agents Section */}
+      <section id="agents" className="py-24 border-t border-[var(--border)]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 pb-8 border-b border-[var(--border)]">
           <div>
-            <h2 className="text-3xl font-bold text-foreground mb-2">
-              Active Trading Agents
+              <p className="data-label mb-4">DEPLOY NOW</p>
+              <h2 className="font-display text-4xl md:text-5xl">
+                LIVE <span className="text-accent">AGENTS</span>
             </h2>
-            <p className="text-muted-foreground">
-              {!loading && agents.length > 0 && `${agents.length} agents available`}
+              <p className="text-[var(--text-secondary)] mt-2">
+                Each agent has unique alpha sources and trading strategies
             </p>
           </div>
-          <Link href="/docs">
-            <button className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium hover-elevate transition-all" data-testid="link-docs">
-              <Shield className="h-4 w-4" />
-              Learn More
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-[var(--text-muted)] font-mono">
+                {!loading && `${agents.length} AVAILABLE`}
+              </span>
+              <Link href="/create-agent">
+                <button className="px-4 py-2 border border-[var(--border)] text-sm hover:border-accent hover:text-accent transition-all">
+                  + CREATE AGENT
             </button>
           </Link>
+            </div>
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="border rounded-lg p-6 space-y-4 bg-card animate-pulse">
-                <div className="h-6 w-3/4 bg-muted rounded" />
-                <div className="h-4 w-1/2 bg-muted rounded" />
-                <div className="space-y-2">
-                  <div className="h-4 w-full bg-muted rounded" />
-                  <div className="h-4 w-full bg-muted rounded" />
-                  <div className="h-4 w-2/3 bg-muted rounded" />
-                </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="border border-[var(--border)] p-8 animate-pulse">
+                  <div className="h-6 w-3/4 bg-[var(--border)] mb-4" />
+                  <div className="h-4 w-1/2 bg-[var(--border)] mb-8" />
+                  <div className="h-16 w-1/3 bg-[var(--border)]" />
               </div>
             ))}
           </div>
         ) : error ? (
-          <div className="text-center py-20 border rounded-lg bg-destructive/5">
-            <p className="text-destructive mb-4 text-lg font-semibold">{error}</p>
-            <p className="text-sm text-muted-foreground mb-6">
-              Make sure NEON_REST_URL and NEON_REST_TOKEN are configured in your environment
-            </p>
-            <Link href="/docs#getting-started">
-              <button className="inline-flex items-center justify-center px-4 py-2 border border-border bg-background rounded-md text-sm font-medium hover-elevate active-elevate-2 transition-all" data-testid="button-setup-help">
-                Setup Guide
-              </button>
-            </Link>
+            <div className="border border-[var(--border)] p-12 text-center">
+              <p className="text-[var(--danger)] mb-4 font-mono">ERROR: {error}</p>
           </div>
         ) : agents.length === 0 ? (
-          <div className="text-center py-20 border rounded-lg bg-muted/30">
-            <Bot className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-            <p className="text-lg font-semibold text-foreground mb-2">No active agents yet</p>
-            <p className="text-muted-foreground mb-6">
-              Be the first to create a trading agent and start earning
-            </p>
+            <div className="border border-[var(--border)] p-16 text-center">
+              <p className="font-display text-3xl mb-4">NO AGENTS YET</p>
+              <p className="text-[var(--text-secondary)] mb-8">Be the first to deploy</p>
             <Link href="/create-agent">
-              <button className="inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-md font-medium hover-elevate active-elevate-2 transition-all" data-testid="button-create-first">
-                Create Your First Agent
+                <button className="px-8 py-4 bg-accent text-[var(--bg-deep)] font-bold">
+                  CREATE AGENT →
               </button>
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {agents.map((agent, index) => (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {agents.map((agent, i) => (
               <div
                 key={agent.id}
-                className="animate-in fade-in slide-in-from-bottom duration-500"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                <div className="relative">
-                  <AgentCard
-                    agent={agent}
-                    onClick={() => handleAgentClick(agent)}
-                  />
-                  {/* Hyperliquid Button Overlay - Only show for non-MULTI agents */}
-                  {agent.venue !== 'MULTI' && (
-                    <div className="absolute bottom-4 right-4 z-10">
+                  onClick={() => handleAgentClick(agent)}
+                  className="border border-[var(--border)] p-6 cursor-pointer hover:border-accent transition-colors group"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="font-display text-xl group-hover:text-accent transition-colors">
+                        {agent.name}
+                      </h3>
+                      <div className="flex items-center gap-2 mt-2">
+                        {agent.venue === 'MULTI' ? (
+                          <span className="text-xs px-2 py-0.5 border border-accent text-accent">MULTI-VENUE</span>
+                        ) : (
+                          <span className="text-xs text-[var(--text-muted)]">{agent.venue}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-[var(--text-muted)] text-xs font-mono">#{String(i + 1).padStart(2, '0')}</span>
+                  </div>
+                  
+                  <div className="mb-6">
+                    <p className="data-label">30D RETURN</p>
+                    <p className={`data-value text-3xl ${agent.apr30d && agent.apr30d > 0 ? 'text-accent' : 'text-[var(--text-muted)]'}`}>
+                      {agent.apr30d != null ? `${agent.apr30d > 0 ? '+' : ''}${agent.apr30d.toFixed(1)}%` : '—'}
+                    </p>
+                  </div>
+                  
+                  {agent.sharpe30d != null && (
+                    <div className="flex justify-between text-sm mb-4">
+                      <span className="text-[var(--text-muted)]">Sharpe</span>
+                      <span className="font-mono">{agent.sharpe30d.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  <div className="pt-4 border-t border-[var(--border)]">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                        if (agent.venue === 'MULTI') {
+                          setMultiVenueAgent({ id: agent.id, name: agent.name });
+                          setMultiVenueSelectorOpen(true);
+                        } else {
                           setHyperliquidAgentId(agent.id);
                           setHyperliquidAgentName(agent.name);
                           setHyperliquidModalOpen(true);
+                        }
                         }}
-                        className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all"
-                        title="Setup Hyperliquid Trading"
+                      className="w-full py-3 border border-[var(--border)] text-sm font-bold hover:bg-accent hover:text-[var(--bg-deep)] hover:border-accent transition-all"
                       >
-                        <Zap className="h-4 w-4" />
-                        <span className="hidden sm:inline">Hyperliquid</span>
+                      DEPLOY →
                       </button>
-                    </div>
-                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
+        </div>
       </section>
 
-      {/* Agent Drawer */}
+      {/* CTA */}
+      <section className="py-24 border-t border-[var(--border)] bg-[var(--bg-surface)]">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <p className="data-label mb-6">JOIN THE ECONOMY</p>
+          <h2 className="font-display text-4xl md:text-6xl mb-6">
+            TRADE LIKE AN<br />
+            <span className="text-accent">INSTITUTION</span>
+          </h2>
+          <p className="font-serif text-lg text-[var(--text-secondary)] italic mb-10 max-w-xl mx-auto">
+            Best-in-class alpha. 24/7 automated execution. 
+            Non-custodial. Transparent. Decentralized.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link href="#agents">
+              <button className="px-8 py-4 bg-accent text-[var(--bg-deep)] font-bold text-lg hover:bg-[var(--accent-dim)] transition-all">
+                GET STARTED →
+              </button>
+            </Link>
+            <Link href="/docs">
+              <button className="px-8 py-4 border border-[var(--border)] font-bold text-lg hover:border-accent hover:text-accent transition-all">
+                READ DOCS
+              </button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-12 border-t border-[var(--border)]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 border border-[var(--accent)] flex items-center justify-center">
+                <span className="text-accent text-sm">M</span>
+              </div>
+              <span className="font-display">MAXXIT</span>
+            </div>
+            <p className="text-xs text-[var(--text-muted)] text-center">
+              DeFi trading involves risk. Past performance ≠ future results. Non-custodial & gasless.
+            </p>
+            <p className="text-xs text-[var(--text-muted)]">© 2025</p>
+          </div>
+        </div>
+      </footer>
+
+      {/* Modals */}
       {selectedAgent && (
         <AgentDrawer
           agentId={selectedAgent.id}
@@ -265,19 +667,16 @@ export default function Home() {
         />
       )}
 
-      {/* Hyperliquid Setup Modal */}
       {hyperliquidModalOpen && (
         <HyperliquidConnect
           agentId={hyperliquidAgentId}
           agentName={hyperliquidAgentName}
+          agentVenue={"OSTIUM"}
           onClose={() => setHyperliquidModalOpen(false)}
-          onSuccess={() => {
-            console.log('Hyperliquid setup complete!');
-          }}
+          onSuccess={() => console.log('Setup complete')}
         />
       )}
 
-      {/* Multi-Venue Selector Modal */}
       {multiVenueSelectorOpen && multiVenueAgent && (
         <MultiVenueSelector
           agentId={multiVenueAgent.id}

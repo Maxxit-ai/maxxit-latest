@@ -44,7 +44,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler('logs/ostium-service.log'),
+        # logging.FileHandler('logs/ostium-service.log'),
         logging.StreamHandler()
     ]
 )
@@ -825,6 +825,7 @@ def open_position():
             "status": "pending",
             "message": "Order created, waiting for keeper to fill position",
             "actualTradeIndex": actual_trade_index,
+            "entryPrice": current_price,  # Approximate entry price (actual may differ once keeper fills)
             "slSet": sl_set_success,
             "slError": sl_error,
             "result": {
@@ -833,6 +834,7 @@ def open_position():
                 "collateral": position_size,
                 "leverage": leverage,
                 "actualTradeIndex": actual_trade_index,
+                "entryPrice": current_price,
                 "slConfigured": sl_set_success,
                 "tpConfigured": False,
             }

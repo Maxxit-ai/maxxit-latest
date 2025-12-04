@@ -6,9 +6,9 @@
 
 import dotenv from 'dotenv';
 import express from 'express';
-import { prisma } from './lib/prisma-client';
-import { setupGracefulShutdown, registerCleanup } from './lib/graceful-shutdown';
-import { checkDatabaseHealth } from './lib/prisma-client';
+import { prisma } from "@maxxit/database";
+import { setupGracefulShutdown, registerCleanup } from "@maxxit/common";
+import { checkDatabaseHealth } from "@maxxit/database";
 
 dotenv.config();
 
@@ -186,7 +186,7 @@ async function executeSignal(signalId: string, deploymentId: string) {
     const result = await executeTrade(signal, deployment);
 
     if (result.success) {
-      // Create position record
+      // Create position record with actual values from execution
       const sizeModel = typeof signal.size_model === 'string' 
         ? JSON.parse(signal.size_model) 
         : signal.size_model;
@@ -195,24 +195,60 @@ async function executeSignal(signalId: string, deploymentId: string) {
         ? JSON.parse(signal.risk_model)
         : signal.risk_model;
 
-      await prisma.positions.create({
-        data: {
-          deployment_id: deploymentId,
-          signal_id: signalId,
-          venue: signal.venue,
-          token_symbol: signal.token_symbol,
-          side: signal.side,
-          qty: 0, // Will be updated from actual execution
-          entry_price: 0, // Will be updated from actual execution
-          stop_loss: riskModel.stop_loss_percent ? 0 : undefined,
-          take_profit: riskModel.take_profit_percent ? 0 : undefined,
-          entry_tx_hash: result.txHash,
-          status: 'OPEN',
-        },
-      });
+      // Use actual values from execution result
+      const entryPrice = result.entryPrice || 0;
+      const collateral = result.collateral || 0;
+      const ostiumTradeIndex = result.ostiumTradeIndex;
 
-      console.log(`[TradeExecutor]       ✅ Trade executed successfully`);
-      console.log(`[TradeExecutor]       TX Hash: ${result.txHash || 'N/A'}`);
+      try {
+        // Use upsert to handle race conditions (unique constraint on deployment_id + signal_id)
+        await prisma.positions.upsert({
+          where: {
+            deployment_id_signal_id: {
+              deployment_id: deploymentId,
+              signal_id: signalId,
+            },
+          },
+          create: {
+            deployment_id: deploymentId,
+            signal_id: signalId,
+            venue: signal.venue,
+            token_symbol: signal.token_symbol,
+            side: signal.side,
+            qty: collateral, // Collateral in USDC
+            entry_price: entryPrice, // Actual entry price from execution
+            stop_loss: riskModel.stop_loss_percent ? 0 : undefined,
+            take_profit: riskModel.take_profit_percent ? 0 : undefined,
+            entry_tx_hash: result.txHash,
+            status: 'OPEN',
+            ostium_trade_index: ostiumTradeIndex, // Store Ostium trade index for closing
+          },
+          update: {
+            // If position already exists, update with new data (shouldn't happen normally)
+            entry_tx_hash: result.txHash,
+            entry_price: entryPrice,
+            qty: collateral,
+            ostium_trade_index: ostiumTradeIndex,
+          },
+        });
+
+        console.log(`[TradeExecutor]       ✅ Trade executed successfully`);
+        console.log(`[TradeExecutor]       TX Hash: ${result.txHash || 'N/A'}`);
+        console.log(`[TradeExecutor]       Entry Price: $${entryPrice || 'pending'}`);
+        console.log(`[TradeExecutor]       Collateral: $${collateral || 'N/A'}`);
+        if (ostiumTradeIndex !== undefined) {
+          console.log(`[TradeExecutor]       Ostium Trade Index: ${ostiumTradeIndex}`);
+        }
+      } catch (dbError: any) {
+        // Handle any database errors gracefully
+        if (dbError.code === 'P2002') {
+          // Unique constraint violation - position already exists
+          console.log(`[TradeExecutor]       ⚠️  Position already exists for this deployment-signal pair`);
+          console.log(`[TradeExecutor]       Trade was executed but position record already created`);
+        } else {
+          throw dbError; // Re-throw other errors
+        }
+      }
     } else {
       // Check if error is retryable (backend/service errors)
       const errorMessage = result.error || result.reason || 'Execution failed';

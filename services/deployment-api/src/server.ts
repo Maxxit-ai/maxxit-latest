@@ -4,9 +4,9 @@ import dotenv from 'dotenv';
 import hyperliquidRoutes from './routes/hyperliquid';
 import ostiumRoutes from './routes/ostium';
 import deploymentsRoutes from './routes/deployments';
-import { setupGracefulShutdown } from './lib/graceful-shutdown';
-import { errorHandler } from './lib/error-handler';
-import { checkDatabaseHealth } from './lib/prisma-client';
+import { setupGracefulShutdown } from "@maxxit/common";
+import { errorHandler } from "@maxxit/common";
+import { checkDatabaseHealth } from "@maxxit/database";
 
 dotenv.config();
 

@@ -2,9 +2,9 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import signalsRoutes from './routes/signals';
-import { setupGracefulShutdown } from './lib/graceful-shutdown';
-import { errorHandler } from './lib/error-handler';
-import { checkDatabaseHealth } from './lib/prisma-client';
+import { setupGracefulShutdown } from "@maxxit/common";
+import { errorHandler } from "@maxxit/common";
+import { checkDatabaseHealth } from "@maxxit/database";
 
 dotenv.config();
 
