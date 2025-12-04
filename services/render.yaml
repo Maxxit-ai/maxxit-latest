@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: maxxit-python-services
+    runtime: python3
+    region: oregon
+    plan: free
+    rootDir: services
+    buildCommand: pip install -r requirements-twitter.txt && pip install -r requirements-ostium.txt && cd hyperliquid-service && pip install -r requirements.txt
+    startCommand: bash start-all-services.sh
+    envVars:
+      - key: GAME_API_KEY
+        sync: false
+      - key: HYPERLIQUID_TESTNET
+        value: "true"
+      - key: OSTIUM_TESTNET
+        value: "true"
+      - key: OSTIUM_RPC_URL
+        value: "https://sepolia-rollup.arbitrum.io/rpc"
+      - key: OSTIUM_PLATFORM_WALLET
+        sync: false
+      - key: OSTIUM_PROFIT_SHARE
+        value: "10"
+      - key: PORT
+        value: "5001"
+      - key: OSTIUM_PORT
+        value: "5002"
+      - key: TWITTER_PROXY_PORT
+        value: "5003"
+    healthCheckPath: /health

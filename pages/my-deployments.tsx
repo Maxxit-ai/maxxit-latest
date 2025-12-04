@@ -1,0 +1,459 @@
+import { useEffect, useState } from 'react';
+import { Header } from '@components/Header';
+import GMXSetupButton from '@components/GMXSetupButton';
+import { SPOTSetupButton } from '@components/SPOTSetupButton';
+import { HyperliquidSetupButton } from '@components/HyperliquidSetupButton';
+import { OstiumSetupButton } from '@components/OstiumSetupButton';
+import { HyperliquidAgentModal } from '@components/HyperliquidAgentModal';
+import { usePrivy } from '@privy-io/react-auth';
+import { 
+  Wallet, 
+  Activity, 
+  MessageCircle, 
+  CheckCircle,
+  TrendingUp,
+  Settings,
+  X,
+  Copy,
+  Zap,
+  ExternalLink
+} from 'lucide-react';
+
+interface Deployment {
+  id: string;
+  agentId: string;
+  agent: {
+    name: string;
+    venue: string;
+  };
+  userWallet: string;
+  safeWallet: string;
+  moduleEnabled: boolean;
+  status: string;
+  telegramLinked?: boolean;
+  enabledVenues?: string[];
+}
+
+export default function MyDeployments() {
+  const { authenticated, user, login } = usePrivy();
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [telegramModalOpen, setTelegramModalOpen] = useState(false);
+  const [hyperliquidModalOpen, setHyperliquidModalOpen] = useState(false);
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string>('');
+  const [selectedAgentName, setSelectedAgentName] = useState<string>('');
+  const [linkCode, setLinkCode] = useState<string>('');
+  const [botUsername, setBotUsername] = useState<string>('');
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (authenticated && user?.wallet?.address) {
+      fetchDeployments();
+    } else {
+      setLoading(false);
+    }
+  }, [authenticated, user?.wallet?.address]);
+
+  const fetchDeployments = async () => {
+    if (!user?.wallet?.address) return;
+
+    try {
+      const response = await fetch(`/api/deployments?userWallet=${user.wallet.address}`);
+      
+      if (!response.ok) throw new Error('Failed to fetch deployments');
+
+      const data = await response.json();
+      setDeployments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to fetch deployments:', error);
+      setDeployments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnectTelegram = (deploymentId: string) => {
+    setSelectedDeploymentId(deploymentId);
+    setTelegramModalOpen(true);
+    setLinkCode('');
+    setBotUsername('');
+    setGenerating(false);
+  };
+
+  const generateLinkCode = async () => {
+    setGenerating(true);
+    try {
+      const response = await fetch('/api/telegram/generate-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          deploymentId: selectedDeploymentId,
+          userWallet: user?.wallet?.address || ''
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate link code');
+      }
+
+      const data = await response.json();
+      setLinkCode(data.linkCode);
+      setBotUsername(data.botUsername);
+    } catch (error: any) {
+      alert('Error: ' + error.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(linkCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyCommand = () => {
+    navigator.clipboard.writeText(`/link ${linkCode}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSetupHyperliquid = (agentId: string, agentName: string) => {
+    setSelectedDeploymentId(agentId);
+    setSelectedAgentName(agentName);
+    setHyperliquidModalOpen(true);
+  };
+
+  const copyBotLink = () => {
+    navigator.clipboard.writeText(`https://t.me/${botUsername}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-deep)]">
+        <Header />
+        <div className="flex items-center justify-center h-96">
+          <Activity className="w-8 h-8 animate-pulse text-[var(--accent)]" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[var(--bg-deep)]">
+      <Header />
+      
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        {/* Header */}
+        <div className="mb-12">
+          <p className="data-label mb-2">DASHBOARD</p>
+          <h1 className="font-display text-4xl md:text-5xl mb-4">MY DEPLOYMENTS</h1>
+          <p className="text-[var(--text-secondary)] max-w-xl">
+            Manage your agent subscriptions and connect Telegram for manual trading
+          </p>
+        </div>
+
+        {!authenticated ? (
+          <div className="border border-[var(--border)] bg-[var(--bg-surface)]">
+            <div className="flex flex-col items-center justify-center py-16 px-4">
+              <div className="w-16 h-16 border border-[var(--accent)] flex items-center justify-center mb-6">
+                <Wallet className="w-8 h-8 text-[var(--accent)]" />
+              </div>
+              <h3 className="font-display text-xl mb-2">CONNECT WALLET</h3>
+              <p className="text-[var(--text-muted)] mb-6 text-center">
+                Connect your wallet to view your deployments
+              </p>
+              <button 
+                onClick={login}
+                className="px-8 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
+              >
+                CONNECT WALLET
+              </button>
+            </div>
+          </div>
+        ) : deployments.length === 0 ? (
+          <div className="border border-[var(--border)] bg-[var(--bg-surface)]">
+            <div className="flex flex-col items-center justify-center py-16 px-4">
+              <Activity className="w-12 h-12 text-[var(--text-muted)] mb-6" />
+              <h3 className="font-display text-xl mb-2">NO DEPLOYMENTS</h3>
+              <p className="text-[var(--text-muted)] mb-6 text-center">
+                Deploy an agent to start automated trading
+              </p>
+              <a 
+                href="/"
+                className="px-8 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
+              >
+                BROWSE AGENTS
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {deployments.map((deployment, index) => (
+              <div key={deployment.id} className="border border-[var(--border)] bg-[var(--bg-surface)]">
+                {/* Card Header */}
+                <div className="border-b border-[var(--border)] p-6">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <span className="text-[var(--accent)] font-mono text-sm">#{String(index + 1).padStart(2, '0')}</span>
+                      <h3 className="font-display text-xl mt-1">{deployment.agent.name}</h3>
+                    </div>
+                    <span className={`text-xs px-2 py-1 font-bold ${
+                      deployment.status === 'ACTIVE' 
+                        ? 'bg-[var(--accent)] text-[var(--bg-deep)]' 
+                        : 'border border-[var(--border)] text-[var(--text-muted)]'
+                    }`}>
+                      {deployment.status}
+                    </span>
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)] border border-[var(--border)] px-2 py-0.5">
+                    {deployment.agent.venue}
+                  </span>
+                </div>
+                
+                {/* Card Content */}
+                <div className="p-6 space-y-4">
+                  {/* Safe Wallet */}
+                  <div className="flex justify-between items-center py-3 border-b border-[var(--border)]">
+                    <span className="text-[var(--text-muted)] text-sm flex items-center gap-2">
+                      <Wallet className="w-4 h-4" />
+                      Safe Wallet
+                    </span>
+                    <span className="font-mono text-sm">
+                      {deployment.safeWallet.slice(0, 6)}...{deployment.safeWallet.slice(-4)}
+                    </span>
+                  </div>
+
+                  {/* Module Status */}
+                  <div className="flex justify-between items-center py-3 border-b border-[var(--border)]">
+                    <span className="text-[var(--text-muted)] text-sm flex items-center gap-2">
+                      <Activity className="w-4 h-4" />
+                      Module
+                    </span>
+                    {deployment.moduleEnabled ? (
+                      <span className="text-[var(--accent)] text-sm font-bold flex items-center gap-1">
+                        <CheckCircle className="w-4 h-4" />
+                        ENABLED
+                      </span>
+                    ) : (
+                      <span className="text-[var(--text-muted)] text-sm">NOT ENABLED</span>
+                    )}
+                  </div>
+
+                  {/* Trading Setup */}
+                  {!deployment.moduleEnabled && (
+                    <div className="pt-4">
+                      <p className="data-label mb-3">SETUP REQUIRED</p>
+                      <div className="border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-4 mb-4">
+                        <p className="text-xs text-[var(--accent)]">
+                          ⚡ Setup required before trading
+                        </p>
+                      </div>
+                      {deployment.agent.venue === 'MULTI' ? (
+                        <div className="space-y-2">
+                          {deployment.enabledVenues?.includes('SPOT') && (
+                            <SPOTSetupButton 
+                              safeAddress={deployment.safeWallet}
+                              onSetupComplete={() => fetchDeployments()}
+                            />
+                          )}
+                          {deployment.enabledVenues?.includes('HYPERLIQUID') && (
+                            <HyperliquidSetupButton 
+                              safeAddress={deployment.safeWallet}
+                              onSetupComplete={() => fetchDeployments()}
+                            />
+                          )}
+                          {deployment.enabledVenues?.includes('OSTIUM') && (
+                            <OstiumSetupButton 
+                              agentId={deployment.agentId}
+                              agentName={deployment.agent.name}
+                              onSetupComplete={() => fetchDeployments()}
+                            />
+                          )}
+                        </div>
+                      ) : deployment.agent.venue === 'GMX' ? (
+                        <GMXSetupButton 
+                          safeAddress={deployment.safeWallet}
+                          onSetupComplete={() => fetchDeployments()}
+                        />
+                      ) : deployment.agent.venue === 'HYPERLIQUID' ? (
+                        <HyperliquidSetupButton 
+                          safeAddress={deployment.safeWallet}
+                          onSetupComplete={() => fetchDeployments()}
+                        />
+                      ) : deployment.agent.venue === 'OSTIUM' ? (
+                        <OstiumSetupButton 
+                          agentId={deployment.agentId}
+                          agentName={deployment.agent.name}
+                          onSetupComplete={() => fetchDeployments()}
+                        />
+                      ) : (
+                        <SPOTSetupButton 
+                          safeAddress={deployment.safeWallet}
+                          onSetupComplete={() => fetchDeployments()}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Telegram Connection */}
+                  <div className="pt-4">
+                    <p className="data-label mb-3">MANUAL TRADING</p>
+                    {deployment.telegramLinked ? (
+                      <div className="flex items-center gap-2 text-[var(--accent)]">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-bold">TELEGRAM CONNECTED</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleConnectTelegram(deployment.id)}
+                        className="w-full py-3 border border-[var(--border)] text-[var(--text-primary)] font-bold hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors flex items-center justify-center gap-2"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        CONNECT TELEGRAM
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-4">
+                    <a
+                      href={`/agent/${deployment.agentId}`}
+                      className="flex-1 py-3 border border-[var(--border)] font-bold text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors flex items-center justify-center gap-2"
+                    >
+                      <TrendingUp className="w-4 h-4" />
+                      VIEW
+                    </a>
+                    <button
+                      onClick={() => handleSetupHyperliquid(deployment.agentId, deployment.agent.name)}
+                      className="py-3 px-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold text-sm hover:bg-[var(--accent-dim)] transition-colors flex items-center gap-2"
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span className="hidden sm:inline">HYPERLIQUID</span>
+                    </button>
+                    <button className="py-3 px-4 border border-[var(--border)] hover:border-[var(--accent)] transition-colors">
+                      <Settings className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Telegram Modal */}
+      {telegramModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-md w-full">
+            {/* Modal Header */}
+            <div className="border-b border-[var(--border)] p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <MessageCircle className="w-5 h-5 text-[var(--accent)]" />
+                  <div>
+                    <h2 className="font-display text-lg">CONNECT TELEGRAM</h2>
+                    <p className="text-xs text-[var(--text-muted)]">Link for manual trading</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setTelegramModalOpen(false)}
+                  className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-4">
+              {!linkCode ? (
+                <button
+                  onClick={generateLinkCode}
+                  disabled={generating}
+                  className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {generating ? (
+                    <>
+                      <Activity className="w-5 h-5 animate-pulse" />
+                      GENERATING...
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-5 h-5" />
+                      GENERATE LINK CODE
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="space-y-4">
+                  {/* Step 1 */}
+                  <div className="border border-[var(--border)] p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-bold text-sm">STEP 1: OPEN BOT</span>
+                      <span className="text-xs text-[var(--accent)]">1/2</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => window.open(`https://t.me/${botUsername}`, '_blank')}
+                        className="flex-1 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
+                      >
+                        OPEN @{botUsername}
+                        <ExternalLink className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={copyBotLink}
+                        className="p-3 border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+                      >
+                        {copied ? <CheckCircle className="w-4 h-4 text-[var(--accent)]" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="border border-[var(--border)] p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-bold text-sm">STEP 2: SEND COMMAND</span>
+                      <span className="text-xs text-[var(--accent)]">2/2</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-[var(--bg-elevated)] px-4 py-3 font-mono text-center border border-[var(--border)]">
+                        /link {linkCode}
+                      </code>
+                      <button
+                        onClick={copyCommand}
+                        className="p-3 border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+                      >
+                        {copied ? <CheckCircle className="w-4 h-4 text-[var(--accent)]" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tip */}
+                  <div className="border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3">
+                    <p className="text-xs text-[var(--accent)]">
+                      💡 After linking, trade with: "Buy 10 USDC of WETH"
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hyperliquid Modal */}
+      {hyperliquidModalOpen && (
+        <HyperliquidAgentModal
+          agentId={selectedDeploymentId}
+          agentName={selectedAgentName}
+          onClose={() => setHyperliquidModalOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
