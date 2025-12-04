@@ -1,46 +1,76 @@
 /**
- * Research Signal Worker
+ * Research Signal Worker - Non-Crypto Trading Signal Generator
  *
- * Generates trading signals using Yahoo Finance market data
- * - Fetches market data for tokens available on venues
- * - Analyzes price movements, volume, and trends
- * - Creates signals for agents subscribed to research institutes
+ * Generates trading signals using hybrid data sources:
+ * - Finnhub: Stock quotes (free tier)
+ * - MarketAux: News with sentiment analysis (free tier)
+ *
+ * Features:
+ * - Fetches market data and news for assets available on OSTIUM venue
+ * - Analyzes price movements and news sentiment using LLM
+ * - Creates signals in research_signals table
+ *
  * Interval: 5 minutes (configurable via WORKER_INTERVAL)
  */
 
 import dotenv from "dotenv";
 import express from "express";
-import { prisma } from "@maxxit/database";
+import {
+  prisma,
+  checkDatabaseHealth,
+  disconnectPrisma,
+} from "@maxxit/database";
 import {
   setupGracefulShutdown,
   registerCleanup,
+  createHealthCheckHandler,
 } from "@maxxit/common";
-import { checkDatabaseHealth } from "@maxxit/database";
 import {
-  analyzeTokenSignal,
-  canUseYahooFinance,
-} from "./lib/yahoo-finance-wrapper";
+  createHybridProvider,
+  isAnyProviderAvailable,
+  getAvailableProviders,
+  getAssetType,
+  isSymbolSupported,
+  NormalizedAssetData,
+  AssetType,
+} from "./lib/data-providers";
+import {
+  createNewsSignalClassifier,
+  SignalClassification,
+} from "./lib/news-signal-classifier";
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5007;
 const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "300000"); // 5 minutes default
 
+// Finnhub Research Institute ID (from research_institutes table)
+const FINNHUB_INSTITUTE_ID = "39949239-a292-4c81-998e-d622405196a3";
+const FINNHUB_INSTITUTE_NAME = "Finnhub Insights";
+
 let workerInterval: NodeJS.Timeout | null = null;
 
 // Health check server
 const app = express();
-app.get("/health", async (req, res) => {
-  const dbHealthy = await checkDatabaseHealth();
-  res.status(dbHealthy ? 200 : 503).json({
-    status: dbHealthy ? "ok" : "degraded",
-    service: "research-signal-worker",
-    interval: INTERVAL,
-    database: dbHealthy ? "connected" : "disconnected",
-    isRunning: workerInterval !== null,
-    timestamp: new Date().toISOString(),
-  });
-});
+app.get(
+  "/health",
+  createHealthCheckHandler("research-signal-worker", async () => {
+    const dbHealthy = await checkDatabaseHealth();
+    const providerAvailable = isAnyProviderAvailable();
+    const providers = getAvailableProviders();
+
+    return {
+      database: dbHealthy ? "connected" : "disconnected",
+      mode: "hybrid-non-crypto",
+      interval: INTERVAL,
+      providers: {
+        finnhub: providers.finnhub ? "available" : "not configured",
+        marketaux: providers.marketaux ? "available" : "not configured",
+      },
+      isRunning: workerInterval !== null,
+    };
+  })
+);
 
 const server = app.listen(PORT, () => {
   console.log(
@@ -49,243 +79,404 @@ const server = app.listen(PORT, () => {
 });
 
 /**
- * Get or create Yahoo Finance research institute
+ * Get or verify Finnhub research institute exists
  */
-async function getOrCreateYahooFinanceInstitute() {
-  const instituteName = "Yahoo Finance";
-
+async function getOrCreateFinnhubInstitute() {
+  // First try to find by ID
   let institute = await prisma.research_institutes.findUnique({
-    where: { name: instituteName },
+    where: { id: FINNHUB_INSTITUTE_ID },
   });
 
-  if (!institute) {
-    institute = await prisma.research_institutes.create({
-      data: {
-        name: instituteName,
-        description:
-          "Automated signals generated from Yahoo Finance market data analysis",
-        website_url: "https://finance.yahoo.com",
-        is_active: true,
-      },
-    });
-    console.log(`✅ Created research institute: ${instituteName}`);
+  if (institute) {
+    return institute;
   }
 
+  // If not found by ID, try to find by name
+  institute = await prisma.research_institutes.findUnique({
+    where: { name: FINNHUB_INSTITUTE_NAME },
+  });
+
+  if (institute) {
+    console.log(
+      `✅ Found existing institute: ${FINNHUB_INSTITUTE_NAME} (ID: ${institute.id})`
+    );
+    return institute;
+  }
+
+  // Create new institute
+  institute = await prisma.research_institutes.create({
+    data: {
+      id: FINNHUB_INSTITUTE_ID,
+      name: FINNHUB_INSTITUTE_NAME,
+      description:
+        "Analytics and market intelligence. Provides data-driven insights for non-crypto assets using Finnhub + MarketAux.",
+      website_url: "https://finnhub.io/",
+      x_handle: "Finnhub_io",
+      is_active: true,
+    },
+  });
+
+  console.log(`✅ Created research institute: ${FINNHUB_INSTITUTE_NAME}`);
   return institute;
 }
 
 /**
- * Generate signals from Yahoo Finance data
+ * Fetch non-crypto assets from venue_markets table (OSTIUM venue only)
+ */
+async function fetchNonCryptoAssets(): Promise<
+  Array<{
+    symbol: string;
+    marketName: string;
+    group: string;
+    assetType: AssetType;
+  }>
+> {
+  // Fetch all OSTIUM venue markets that are non-crypto
+  const markets = await prisma.venue_markets.findMany({
+    where: {
+      venue: "OSTIUM",
+      group: {
+        in: ["indices", "forex", "commodities", "stocks"],
+      },
+    },
+    select: {
+      token_symbol: true,
+      market_name: true,
+      group: true,
+      is_active: true,
+    },
+  });
+
+  // Filter to only supported symbols and map to asset type
+  const assets = markets
+    .filter((m: any) => {
+      const symbol = m.token_symbol as string;
+      const supported = isSymbolSupported(symbol);
+      if (!supported) {
+        console.log(
+          `[${symbol}] ⚠️  Not supported by data providers - skipping`
+        );
+      }
+      return supported;
+    })
+    .map((m: any) => ({
+      symbol: m.token_symbol as string,
+      marketName: m.market_name as string,
+      group: m.group as string,
+      assetType:
+        getAssetType(m.token_symbol as string) || ("stocks" as AssetType),
+    }));
+
+  return assets;
+}
+
+/**
+ * Check if we recently processed this asset (within last 6 hours)
+ */
+async function wasRecentlyProcessed(
+  symbol: string,
+  instituteId: string
+): Promise<boolean> {
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+
+  const recentSignal = await prisma.research_signals.findFirst({
+    where: {
+      institute_id: instituteId,
+      extracted_token: symbol,
+      created_at: {
+        gte: sixHoursAgo,
+      },
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+  });
+
+  return recentSignal !== null;
+}
+
+/**
+ * Store research signal in database
+ */
+async function storeResearchSignal(
+  instituteId: string,
+  symbol: string,
+  classification: SignalClassification,
+  assetData: NormalizedAssetData
+): Promise<void> {
+  // Build signal text from classification and news
+  const signalText = buildSignalText(symbol, classification, assetData);
+
+  // Get the first news URL as source
+  const sourceUrl = classification.sourceUrls[0] || null;
+
+  await prisma.research_signals.create({
+    data: {
+      institute_id: instituteId,
+      signal_text: signalText,
+      source_url: sourceUrl,
+      extracted_token: symbol,
+      extracted_side: classification.side,
+      is_valid_signal: classification.isSignalCandidate,
+      processed_for_trades: false, // Will be processed by signal-generator-worker
+    },
+  });
+}
+
+/**
+ * Build signal text from classification data
+ */
+function buildSignalText(
+  symbol: string,
+  classification: SignalClassification,
+  assetData: NormalizedAssetData
+): string {
+  const parts: string[] = [];
+
+  // Header
+  parts.push(`[${symbol}] ${classification.sentiment.toUpperCase()} Signal`);
+
+  // Data source info
+  parts.push(`Data Source: ${assetData.provider}`);
+
+  // Price info if available
+  if (assetData.quote) {
+    const changeStr =
+      assetData.quote.changePercent >= 0
+        ? `+${assetData.quote.changePercent.toFixed(2)}%`
+        : `${assetData.quote.changePercent.toFixed(2)}%`;
+    parts.push(`Price: ${assetData.quote.currentPrice} (${changeStr})`);
+  }
+
+  // Sentiment info
+  if (assetData.news) {
+    parts.push(
+      `News Sentiment: ${assetData.news.averageSentiment.toFixed(2)} (${
+        assetData.news.articleCount
+      } articles)`
+    );
+  }
+
+  // Reasoning
+  parts.push(`Analysis: ${classification.reasoning}`);
+
+  // Key factors
+  if (classification.keyFactors.length > 0) {
+    parts.push(`Key Factors: ${classification.keyFactors.join(", ")}`);
+  }
+
+  // Top news headlines
+  if (classification.newsHeadlines.length > 0) {
+    parts.push(`Recent News:`);
+    classification.newsHeadlines.slice(0, 3).forEach((headline, i) => {
+      parts.push(`  ${i + 1}. ${headline}`);
+    });
+  }
+
+  return parts.join("\n");
+}
+
+/**
+ * Main signal generation function
  */
 async function generateResearchSignals() {
   try {
     console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("  📊 RESEARCH SIGNAL WORKER");
+    console.log("  📊 NON-CRYPTO RESEARCH SIGNAL WORKER (HYBRID)");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log(`Started at: ${new Date().toISOString()}\n`);
 
-    // Check Yahoo Finance availability
-    if (!canUseYahooFinance()) {
-      console.log("⚠️  Yahoo Finance not available\n");
+    // Check data provider availability
+    const providers = getAvailableProviders();
+    console.log(`📡 Data Providers:`);
+    console.log(
+      `   • Finnhub (quotes): ${
+        providers.finnhub ? "✅ Available" : "❌ Not configured"
+      }`
+    );
+    console.log(
+      `   • MarketAux (news): ${
+        providers.marketaux ? "✅ Available" : "❌ Not configured"
+      }`
+    );
+
+    if (!providers.finnhub && !providers.marketaux) {
+      console.log("\n⚠️  No data providers available!");
+      console.log("   Set FINNHUB_API_KEY and/or MARKETAUX_API_KEY");
       return;
     }
 
-    // Get or create Yahoo Finance institute
-    const institute = await getOrCreateYahooFinanceInstitute();
-    if (!institute.is_active) {
-      console.log("⚠️  Yahoo Finance institute is not active\n");
+    // Create hybrid provider
+    const provider = createHybridProvider();
+    if (!provider.isAvailable()) {
+      console.log("⚠️  Hybrid provider not available");
       return;
     }
+    console.log(`\n✅ Using: ${provider.name}`);
 
-    // Get active tokens from venue_markets (get unique token symbols)
-    const allMarkets = await prisma.venue_markets.findMany({
-      where: { is_active: true },
-      select: {
-        token_symbol: true,
-        venue: true,
-      },
-    });
-
-    // Get unique token symbols
-    const tokenSymbols = allMarkets.map((m: any) => m.token_symbol as string);
-    const uniqueTokens = Array.from(new Set(tokenSymbols)) as string[];
-    const venueMarkets = uniqueTokens.map((token: string) => ({
-      token_symbol: token,
-      venue:
-        allMarkets.find((m: any) => m.token_symbol === token)?.venue ||
-        "HYPERLIQUID",
-    }));
-
-    if (venueMarkets.length === 0) {
-      console.log("⚠️  No active tokens found in venue_markets\n");
-      return;
-    }
-
-    console.log(`📋 Found ${venueMarkets.length} active token(s) to analyze\n`);
-
-    // Get agents subscribed to this institute
-    const subscribedAgents = await prisma.agent_research_institutes.findMany({
-      where: {
-        institute_id: institute.id,
-        agents: {
-          status: "PUBLIC",
-        },
-      },
-      include: {
-        agents: true,
-      },
-    });
-
-    const activeAgents = subscribedAgents
-      .map((ari: any) => ari.agents)
-      .filter((agent: any) => agent !== null && agent.status === "PUBLIC");
-
-    if (activeAgents.length === 0) {
+    // Check LLM classifier availability
+    const classifier = createNewsSignalClassifier();
+    if (!classifier) {
+      console.log("⚠️  LLM Classifier not available");
       console.log(
-        "⚠️  No active agents subscribed to Yahoo Finance institute\n"
+        "   Set PERPLEXITY_API_KEY, EIGENAI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY"
       );
-      console.log("   Tip: Link agents to research institutes via API\n");
+      return;
+    }
+
+    // Get or create Finnhub institute
+    const institute = await getOrCreateFinnhubInstitute();
+    if (!institute.is_active) {
+      console.log("⚠️  Research institute is not active\n");
+      return;
+    }
+
+    // Fetch non-crypto assets from database
+    const assets = await fetchNonCryptoAssets();
+
+    if (assets.length === 0) {
+      console.log(
+        "⚠️  No supported non-crypto assets found in venue_markets\n"
+      );
       return;
     }
 
     console.log(
-      `🤖 ${activeAgents.length} agent(s) subscribed to Yahoo Finance\n`
+      `\n📋 Found ${assets.length} supported non-crypto asset(s) to analyze\n`
     );
 
+    // Track statistics
+    let assetsProcessed = 0;
+    let assetsSkipped = 0;
     let signalsGenerated = 0;
-    let researchSignalsCreated = 0;
+    let errorsCount = 0;
 
-    // Process each token
-    for (const market of venueMarkets) {
+    // Process each asset
+    for (const asset of assets) {
+      const { symbol, marketName, assetType } = asset;
+
       try {
-        const token = market.token_symbol as string;
-        console.log(`[${token}] Analyzing...`);
+        console.log(`\n[${symbol}] Processing (${assetType})...`);
 
-        // Analyze token using Yahoo Finance
-        const analysis = await analyzeTokenSignal(token);
-
-        if (!analysis) {
-          console.log(`[${token}] ⏭️  No data available\n`);
+        // Check if recently processed
+        const recentlyProcessed = await wasRecentlyProcessed(
+          symbol,
+          institute.id
+        );
+        if (recentlyProcessed) {
+          console.log(
+            `[${symbol}] ⏭️  Skipping - already processed within 6 hours`
+          );
+          assetsSkipped++;
           continue;
         }
 
-        // Only proceed if we have a valid signal
-        if (!analysis.side) {
-          console.log(`[${token}] ⏭️  ${analysis.reasoning}\n`);
+        // Fetch asset data using hybrid provider
+        console.log(`[${symbol}] 📡 Fetching data (Finnhub + MarketAux)...`);
+        const assetData = await provider.getAssetData(symbol, assetType);
+
+        if (assetData.error) {
+          console.log(`[${symbol}] ⚠️  ${assetData.error}`);
+        }
+
+        // Log what we got
+        console.log(`[${symbol}] 📦 Data source: ${assetData.provider}`);
+
+        if (assetData.quote) {
+          console.log(
+            `[${symbol}] 💰 Price: ${
+              assetData.quote.currentPrice
+            } (${assetData.quote.changePercent?.toFixed(2)}%)`
+          );
+        } else {
+          console.log(
+            `[${symbol}] ⚠️  No price data (Finnhub free tier limitation)`
+          );
+        }
+
+        if (assetData.news) {
+          const sentimentEmoji =
+            assetData.news.averageSentiment > 0.1
+              ? "📈"
+              : assetData.news.averageSentiment < -0.1
+              ? "📉"
+              : "➡️";
+          console.log(
+            `[${symbol}] 📰 News: ${
+              assetData.news.articleCount
+            } articles, sentiment: ${assetData.news.averageSentiment.toFixed(
+              2
+            )} ${sentimentEmoji}`
+          );
+          console.log(
+            `[${symbol}]    Bullish: ${assetData.news.bullishCount}, Bearish: ${assetData.news.bearishCount}, Neutral: ${assetData.news.neutralCount}`
+          );
+        } else {
+          console.log(`[${symbol}] ⚠️  No news data available`);
+        }
+
+        // Skip if no meaningful data
+        if (!assetData.quote && !assetData.news) {
+          console.log(`[${symbol}] ⏭️  Skipping - no market data available`);
+          assetsSkipped++;
           continue;
         }
+
+        // Classify using LLM
+        console.log(`[${symbol}] 🤖 Analyzing with LLM...`);
+        const classification = await classifier.classifyAssetData(assetData);
 
         console.log(
-          `[${token}] ✅ Signal: ${analysis.side} (confidence: ${(
-            analysis.confidence * 100
+          `[${symbol}] 📊 Result: ${classification.sentiment} (confidence: ${(
+            classification.confidence * 100
           ).toFixed(1)}%)`
         );
-        console.log(`[${token}]    ${analysis.reasoning}`);
 
-        // Store in research_signals table
-        const researchSignal = await prisma.research_signals.create({
-          data: {
-            institute_id: institute.id,
-            signal_text: analysis.reasoning,
-            extracted_token: token,
-            extracted_side: analysis.side,
-            is_valid_signal: true,
-            processed_for_trades: false,
-          },
-        });
-        researchSignalsCreated++;
+        if (classification.isSignalCandidate && classification.side) {
+          console.log(`[${symbol}] ✅ Signal: ${classification.side}`);
+          console.log(`[${symbol}]    Reasoning: ${classification.reasoning}`);
 
-        // Create signals for each subscribed agent
-        for (const agent of activeAgents) {
-          try {
-            // Check if token is available on agent's venue
-            const tokenAvailable = await prisma.venue_markets.findFirst({
-              where: {
-                token_symbol: token,
-                venue: agent.venue,
-                is_active: true,
-              },
-            });
+          // Store in research_signals
+          await storeResearchSignal(
+            institute.id,
+            symbol,
+            classification,
+            assetData
+          );
+          signalsGenerated++;
 
-            if (!tokenAvailable) {
-              console.log(
-                `[${token}] ⏭️  Not available on ${agent.venue} for agent ${agent.name}`
-              );
-              continue;
-            }
-
-            // Calculate position size based on confidence (0-10% of balance)
-            const positionSizePercent = Math.min(10, analysis.confidence * 10);
-
-            // Create signal in signals table
-            try {
-              await prisma.signals.create({
-                data: {
-                  agent_id: agent.id,
-                  token_symbol: token,
-                  venue: agent.venue,
-                  side: analysis.side,
-                  size_model: {
-                    type: "balance-percentage",
-                    value: positionSizePercent,
-                    source: "yahoo-finance",
-                  },
-                  risk_model: {}, // Risk management is hardcoded in position monitor
-                  source_tweets: [], // No tweets for research signals
-                  lunarcrush_score: null,
-                  lunarcrush_reasoning: analysis.reasoning,
-                  lunarcrush_breakdown: {
-                    source: "yahoo-finance",
-                    confidence: analysis.confidence,
-                    priceChange: analysis.priceChange,
-                    volumeChange: analysis.volumeChange,
-                    technicalIndicators: analysis.technicalIndicators,
-                  },
-                },
-              });
-
-              signalsGenerated++;
-              console.log(
-                `[${token}] ✅ Signal created for agent ${agent.name}: ${
-                  analysis.side
-                } ${token} (${positionSizePercent.toFixed(2)}% position)`
-              );
-            } catch (createError: any) {
-              // P2002: Unique constraint violation (signal already exists for this agent+token in 6h window)
-              if (createError.code === "P2002") {
-                console.log(
-                  `[${token}] ⏭️  Signal already exists for agent ${agent.name} (within 6-hour window)`
-                );
-              } else {
-                throw createError;
-              }
-            }
-          } catch (error: any) {
-            console.error(
-              `[${token}] ❌ Error creating signal for agent ${agent.name}:`,
-              error.message
-            );
+          console.log(`[${symbol}] 💾 Stored in research_signals`);
+        } else {
+          console.log(`[${symbol}] ➖ No actionable signal`);
+          if (classification.reasoning) {
+            console.log(`[${symbol}]    Reason: ${classification.reasoning}`);
           }
+
+          // Still store for tracking (with is_valid_signal = false)
+          await storeResearchSignal(
+            institute.id,
+            symbol,
+            classification,
+            assetData
+          );
         }
 
-        // Mark research signal as processed
-        await prisma.research_signals.update({
-          where: { id: researchSignal.id },
-          data: { processed_for_trades: true },
-        });
-
-        console.log(`[${token}] ✅ Processing complete\n`);
+        assetsProcessed++;
       } catch (error: any) {
-        console.error(`[${market.token_symbol}] ❌ Error:`, error.message);
+        console.error(`[${symbol}] ❌ Error: ${error.message}`);
+        errorsCount++;
       }
     }
 
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    // Summary
+    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("📊 RESEARCH SIGNAL GENERATION SUMMARY");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log(`  Tokens Analyzed: ${venueMarkets.length}`);
-    console.log(`  Research Signals Created: ${researchSignalsCreated}`);
-    console.log(`  Trading Signals Generated: ${signalsGenerated}`);
+    console.log(`  Total Assets: ${assets.length}`);
+    console.log(`  Processed: ${assetsProcessed}`);
+    console.log(`  Skipped: ${assetsSkipped}`);
+    console.log(`  Signals Generated: ${signalsGenerated}`);
+    console.log(`  Errors: ${errorsCount}`);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
   } catch (error: any) {
     console.error("[ResearchSignal] ❌ Fatal error:", error.message);
@@ -297,25 +488,51 @@ async function generateResearchSignals() {
  * Main worker loop
  */
 async function runWorker() {
-  console.log("🚀 Research Signal Worker starting...");
+  console.log("🚀 Non-Crypto Research Signal Worker starting...");
   console.log(`⏱️  Interval: ${INTERVAL}ms (${INTERVAL / 1000 / 60} minutes)`);
   console.log("");
-  console.log("📋 Research Signal Generation Flow:");
-  console.log("   1. Fetch market data from Yahoo Finance");
-  console.log("   2. Analyze price movements, volume, and trends");
-  console.log("   3. Generate signals for subscribed agents");
-  console.log("   4. Store in research_signals and signals tables");
+  console.log("📋 Signal Generation Flow:");
+  console.log("   1. Fetch non-crypto assets from OSTIUM venue_markets");
+  console.log("   2. Get quotes from Finnhub (stocks only on free tier)");
+  console.log("   3. Get news + sentiment from MarketAux");
+  console.log("   4. Analyze with LLM classifier");
+  console.log("   5. Store signals in research_signals table");
   console.log("");
-  console.log("🛡️  Risk Management (Hardcoded in Position Monitor):");
-  console.log("   • Hard Stop Loss: 10%");
-  console.log("   • Trailing Stop: Activates at +3% profit, trails by 1%");
+  console.log("📊 Supported Asset Types:");
+  console.log("   • Stocks (NVDA, AAPL, MSFT, TSLA, etc.) - quotes + news");
+  console.log("   • Indices (SPX, DJI, NDX, etc.) - news only via ETF proxies");
+  console.log("   • Forex (EUR, GBP, AUD, etc.) - news only via ETF proxies");
+  console.log(
+    "   • Commodities (XAU, XAG, CL, etc.) - news only via ETF proxies"
+  );
   console.log("");
 
-  // Check Yahoo Finance availability
-  if (canUseYahooFinance()) {
-    console.log("✅ Yahoo Finance: ENABLED");
+  // Check provider availability
+  const providers = getAvailableProviders();
+  console.log("📡 Data Providers:");
+  if (providers.finnhub) {
+    console.log("   ✅ Finnhub: ENABLED (stock quotes)");
   } else {
-    console.log("⚠️  Yahoo Finance: DISABLED");
+    console.log("   ⚠️  Finnhub: NOT CONFIGURED");
+    console.log("      Set FINNHUB_API_KEY to enable stock quotes");
+  }
+
+  if (providers.marketaux) {
+    console.log("   ✅ MarketAux: ENABLED (news + sentiment)");
+  } else {
+    console.log("   ⚠️  MarketAux: NOT CONFIGURED");
+    console.log("      Set MARKETAUX_API_KEY to enable news sentiment");
+  }
+
+  // Check LLM availability
+  const classifier = createNewsSignalClassifier();
+  if (classifier) {
+    console.log("   ✅ LLM Classifier: ENABLED");
+  } else {
+    console.log("   ⚠️  LLM Classifier: NOT CONFIGURED");
+    console.log(
+      "      Set PERPLEXITY_API_KEY, EIGENAI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY"
+    );
   }
 
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -336,6 +553,8 @@ registerCleanup(async () => {
     clearInterval(workerInterval);
     workerInterval = null;
   }
+  await disconnectPrisma();
+  console.log("✅ Prisma disconnected");
 });
 
 // Setup graceful shutdown
@@ -343,32 +562,35 @@ setupGracefulShutdown("Research Signal Worker", server);
 
 // Start worker
 if (require.main === module) {
-  runWorker().catch((error) => {
-    console.error("[ResearchSignal] ❌ Worker failed to start:", error);
-    process.exit(1);
-  });
-
-  console.log('✅ Environment check passed');
-  console.log('   DATABASE_URL: [SET]');
-  console.log('   PORT:', PORT);
-  console.log('   NODE_ENV:', process.env.NODE_ENV || 'development');
+  console.log("✅ Environment check passed");
+  console.log("   DATABASE_URL: [SET]");
+  console.log(
+    "   FINNHUB_API_KEY:",
+    process.env.FINNHUB_API_KEY ? "[SET]" : "[NOT SET]"
+  );
+  console.log(
+    "   MARKETAUX_API_KEY:",
+    process.env.MARKETAUX_API_KEY ? "[SET]" : "[NOT SET]"
+  );
+  console.log("   PORT:", PORT);
+  console.log("   NODE_ENV:", process.env.NODE_ENV || "development");
 
   // Test database connection before starting
   checkDatabaseHealth()
-    .then(healthy => {
+    .then((healthy: boolean) => {
       if (!healthy) {
-        console.error('❌ FATAL: Cannot connect to database!');
-        console.error('   Check DATABASE_URL and database availability.');
+        console.error("❌ FATAL: Cannot connect to database!");
+        console.error("   Check DATABASE_URL and database availability.");
         process.exit(1);
       }
-      console.log('✅ Database connection verified');
-      
+      console.log("✅ Database connection verified");
+
       // Start worker
       return runWorker();
     })
-    .catch(error => {
-      console.error('[ResearchSignal] ❌ Worker failed to start:', error);
-      console.error('   Error details:', error.stack);
+    .catch((error: Error) => {
+      console.error("[ResearchSignal] ❌ Worker failed to start:", error);
+      console.error("   Error details:", error.stack);
       process.exit(1);
     });
 }

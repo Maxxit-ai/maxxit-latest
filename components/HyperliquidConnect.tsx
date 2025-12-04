@@ -1,23 +1,16 @@
 /**
- * Hyperliquid Connect - NEW Flow (Vprime-telegram-clean)
- * 
- * Flow:
- * 1. Connect wallet
- * 2. Check/set trading preferences (Agent HOW)
- * 3. Generate user's agent address (ONE per user, NOT per deployment)
- * 4. Show whitelisting instructions
- * 5. Create deployment
+ * Hyperliquid Connect - Brutalist Design
  */
 
 import { useState, useEffect } from 'react';
-import { X, Wallet, Copy, Check, ExternalLink, Zap, Shield, CheckCircle, AlertCircle, Loader2, Settings } from 'lucide-react';
+import { X, Wallet, Copy, Check, ExternalLink, CheckCircle, AlertCircle, Settings, Activity, Zap } from 'lucide-react';
 import { ethers } from 'ethers';
 import { TradingPreferencesModal } from './TradingPreferencesModal';
 
 interface HyperliquidConnectProps {
   agentId: string;
   agentName: string;
-  agentVenue: string; // 'HYPERLIQUID' or 'MULTI'
+  agentVenue: string;
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -46,7 +39,6 @@ export function HyperliquidConnect({
   const [error, setError] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  // Default to testnet unless explicitly set to 'false'
   const isTestnet = process.env.NEXT_PUBLIC_HYPERLIQUID_TESTNET !== 'false';
   const hyperliquidUrl = isTestnet 
     ? 'https://app.hyperliquid-testnet.xyz/API'
@@ -64,8 +56,6 @@ export function HyperliquidConnect({
         if (accounts.length > 0) {
           const address = accounts[0];
           setUserWallet(address);
-          
-          // Check if user has already completed setup
           await checkSetupStatus(address);
         }
       }
@@ -76,35 +66,23 @@ export function HyperliquidConnect({
 
   const checkSetupStatus = async (wallet: string) => {
     try {
-      // Check if user already has addresses (from previous deployments)
       const response = await fetch(`/api/user/check-setup-status?userWallet=${wallet}`);
       if (response.ok) {
         const data = await response.json();
         
         if (data.setupComplete) {
-          // User already has addresses - SKIP setup flow
-          console.log('[HyperliquidConnect] User already has addresses - skipping setup');
-          console.log('[HyperliquidConnect] Hyperliquid:', data.addresses.hyperliquid);
-          console.log('[HyperliquidConnect] Ostium:', data.addresses.ostium);
-          
-          // Store address for display
           if (data.addresses.hyperliquid) {
             setAgentAddress(data.addresses.hyperliquid);
           }
-          
-          // Create deployment immediately (no setup needed)
           await createDeploymentDirectly(wallet);
         } else {
-          // First time user - check preferences
           await checkUserPreferences(wallet);
         }
       } else {
-        // Fallback to preference check
         await checkUserPreferences(wallet);
       }
     } catch (err) {
       console.error('Error checking setup status:', err);
-      // Fallback to preference check
       await checkUserPreferences(wallet);
     }
   };
@@ -116,7 +94,6 @@ export function HyperliquidConnect({
         const data = await response.json();
         const prefs = data.preferences;
         
-        // Check if user has customized preferences (not all defaults)
         const hasCustom =
           prefs.risk_tolerance !== 50 ||
           prefs.trade_frequency !== 50 ||
@@ -147,12 +124,8 @@ export function HyperliquidConnect({
       const address = await signer.getAddress();
       
       setUserWallet(address);
-      
-      // Check if user has already completed setup
       await checkSetupStatus(address);
       
-      // If setup not complete, will move to preferences step
-      // If setup complete, deployment will be created directly
       if (step === 'connect') {
         setStep('preferences');
       }
@@ -169,17 +142,10 @@ export function HyperliquidConnect({
     setError('');
 
     try {
-      console.log('[HyperliquidConnect] Creating deployment directly (user already has addresses)');
-      
-      // User already has addresses - just create deployment
       const response = await fetch('/api/hyperliquid/create-deployment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId,
-          userWallet: wallet,
-          // Backend will fetch addresses from user_agent_addresses
-        }),
+        body: JSON.stringify({ agentId, userWallet: wallet }),
       });
 
       if (!response.ok) {
@@ -187,13 +153,8 @@ export function HyperliquidConnect({
         throw new Error(errorData.error || 'Failed to create deployment');
       }
 
-      const data = await response.json();
-      console.log('[HyperliquidConnect] ✅ Deployment created:', data.deployment.id);
-      
-      // Show success immediately
       setStep('complete');
       
-      // Notify parent
       if (onSuccess) {
         setTimeout(() => onSuccess(), 1500);
       }
@@ -208,13 +169,10 @@ export function HyperliquidConnect({
   const handlePreferencesSet = async () => {
     setShowPreferencesModal(false);
     setHasPreferences(true);
-    
-    // Move to generate step
     setStep('generate');
   };
 
   const skipPreferences = () => {
-    // User chose to use defaults
     setStep('generate');
   };
 
@@ -223,7 +181,6 @@ export function HyperliquidConnect({
     setError('');
 
     try {
-      // Call NEW API to generate/get user's agent address
       const response = await fetch(`/api/agents/${agentId}/generate-deployment-address`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -240,8 +197,6 @@ export function HyperliquidConnect({
 
       const data = await response.json();
       
-      // For MULTI venue, we get both addresses
-      // For HYPERLIQUID, we get just Hyperliquid address
       if (data.venue === 'MULTI') {
         setAgentAddress(data.addresses.hyperliquid.address);
       } else {
@@ -272,15 +227,10 @@ export function HyperliquidConnect({
     setError('');
 
     try {
-      // Create deployment using NEW API
       const response = await fetch('/api/hyperliquid/create-deployment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId,
-          userWallet,
-          // No agentAddress or encrypted keys - backend fetches from user_agent_addresses
-        }),
+        body: JSON.stringify({ agentId, userWallet }),
       });
 
       if (!response.ok) {
@@ -288,13 +238,10 @@ export function HyperliquidConnect({
         throw new Error(errorData.error || 'Failed to create deployment');
       }
 
-      const data = await response.json();
-      console.log('[HyperliquidConnect] Deployment created:', data);
-      
       setStep('complete');
       onSuccess?.();
     } catch (err: any) {
-      console.error('[HyperliquidConnect] Deployment error:', err);
+      console.error('Deployment error:', err);
       setError(err.message || 'Failed to create deployment');
     } finally {
       setLoading(false);
@@ -303,179 +250,152 @@ export function HyperliquidConnect({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+        <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-lg w-full max-h-[90vh] overflow-y-auto">
           {/* Header */}
-          <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 rounded-t-xl flex items-center justify-between z-10">
-            <div className="flex items-center gap-3">
-              <Zap className="h-6 w-6" />
-              <div>
-                <h2 className="text-xl font-bold">Deploy {agentName}</h2>
-                <p className="text-sm text-purple-100 mt-1">
-                  {agentVenue === 'MULTI' ? 'Multi-Venue Trading' : 'Hyperliquid Perpetuals'}
-                </p>
+          <div className="border-b border-[var(--border)] p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center">
+                  <Zap className="h-5 w-5 text-[var(--accent)]" />
+                </div>
+                <div>
+                  <h2 className="font-display text-xl">{agentName}</h2>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    {agentVenue === 'MULTI' ? 'MULTI-VENUE' : 'HYPERLIQUID'}
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={onClose}
+                className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
           </div>
 
           {/* Content */}
           <div className="p-6 space-y-6">
-            {/* Error Message */}
+            {/* Error */}
             {error && (
-              <div className="flex items-start gap-2 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
-                <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+              <div className="flex items-start gap-3 p-4 border border-[var(--danger)] bg-[var(--danger)]/10">
+                <AlertCircle className="h-5 w-5 text-[var(--danger)] flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-[var(--danger)]">{error}</p>
               </div>
             )}
 
-            {/* Step 1: Connect Wallet */}
+            {/* Step 1: Connect */}
             {step === 'connect' && (
               <div className="space-y-4">
-                <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-700">
+                <div className="border border-[var(--border)] p-6">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded-full">
-                      <span className="text-white font-bold">1</span>
-                    </div>
-                    <h3 className="font-bold text-lg text-blue-900 dark:text-blue-100">
-                      Connect Your Wallet
-                    </h3>
+                    <span className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center font-mono text-[var(--accent)]">1</span>
+                    <h3 className="font-display text-lg">CONNECT WALLET</h3>
                   </div>
-                  <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
-                    Connect the wallet you use for trading. We'll generate a secure agent address for you.
+                  <p className="text-sm text-[var(--text-secondary)] mb-6">
+                    Connect your trading wallet to generate a secure agent address.
                   </p>
                   
                   <button
                     onClick={connectWallet}
                     disabled={loading}
-                    className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {loading ? (
                       <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Connecting...
+                        <Activity className="h-5 w-5 animate-pulse" />
+                        CONNECTING...
                       </>
                     ) : (
                       <>
                         <Wallet className="h-5 w-5" />
-                        Connect MetaMask
+                        CONNECT METAMASK
                       </>
                     )}
                   </button>
                 </div>
 
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 space-y-2 text-xs text-gray-600 dark:text-gray-400">
-                  <p>🔐 <strong>Your private key never leaves your wallet.</strong></p>
-                  <p>🤖 <strong>We generate ONE agent address per user</strong> (reusable for all agents).</p>
-                  <p>💰 <strong>Your funds stay in YOUR account</strong> - agent can only trade.</p>
+                <div className="border border-[var(--border)] p-4 space-y-2 text-xs text-[var(--text-muted)]">
+                  <p><span className="text-[var(--accent)]">→</span> Your private key never leaves your wallet</p>
+                  <p><span className="text-[var(--accent)]">→</span> One agent address per user (reusable)</p>
+                  <p><span className="text-[var(--accent)]">→</span> Your funds stay in your account</p>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Trading Preferences */}
+            {/* Step 2: Preferences */}
             {step === 'preferences' && (
               <div className="space-y-4">
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                    <p className="text-sm text-green-800 dark:text-green-200 font-semibold">
-                      ✅ Wallet Connected: {userWallet.slice(0, 10)}...{userWallet.slice(-8)}
-                    </p>
-                  </div>
+                <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4">
+                  <p className="text-sm text-[var(--accent)]">
+                    ✓ WALLET: {userWallet.slice(0, 10)}...{userWallet.slice(-8)}
+                  </p>
                 </div>
 
-                <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-6 border border-purple-200 dark:border-purple-700">
+                <div className="border border-[var(--border)] p-6">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center w-10 h-10 bg-purple-600 rounded-full">
-                      <span className="text-white font-bold">2</span>
-                    </div>
-                    <h3 className="font-bold text-lg text-purple-900 dark:text-purple-100">
-                      Customize Your Trading Style (Agent HOW)
-                    </h3>
+                    <span className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center font-mono text-[var(--accent)]">2</span>
+                    <h3 className="font-display text-lg">TRADING STYLE</h3>
                   </div>
 
-                  <p className="text-sm text-purple-800 dark:text-purple-200 mb-4">
+                  <p className="text-sm text-[var(--text-secondary)] mb-4">
                     {hasPreferences
-                      ? "You've already set your trading preferences. You can update them or continue with existing settings."
-                      : "Set your trading preferences to personalize position sizing. This creates a 'trade clone' matching your style."}
+                      ? "You've set your preferences. Update or continue."
+                      : "Customize position sizing to match your style."}
                   </p>
 
-                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-4">
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 text-sm">
-                      What You'll Set:
-                    </h4>
-                    <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                      <li>• <strong>Risk Tolerance:</strong> Conservative → Aggressive</li>
-                      <li>• <strong>Trade Frequency:</strong> Patient → Active</li>
-                      <li>• <strong>Social Sentiment Weight:</strong> Ignore → Follow</li>
-                      <li>• <strong>Price Momentum Focus:</strong> Contrarian → Momentum</li>
-                      <li>• <strong>Market Rank Priority:</strong> Any Coin → Top Only</li>
-                    </ul>
-                  </div>
-
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-700 mb-4">
-                    <p className="text-xs text-blue-800 dark:text-blue-200">
-                      💡 <strong>Result:</strong> Position sizes will range from 0.5% to 10% based on your preferences,
-                      instead of a fixed 5% for all trades.
-                    </p>
+                  <div className="border border-[var(--border)] p-4 mb-4 space-y-2 text-sm text-[var(--text-muted)]">
+                    <p>• Risk Tolerance</p>
+                    <p>• Trade Frequency</p>
+                    <p>• Social Sentiment Weight</p>
+                    <p>• Price Momentum Focus</p>
                   </div>
 
                   <div className="flex gap-3">
                     <button
                       onClick={() => setShowPreferencesModal(true)}
-                      className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                      className="flex-1 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
                     >
-                      <Settings className="h-5 w-5" />
-                      {hasPreferences ? 'Update Preferences' : 'Set Preferences'}
+                      <Settings className="h-4 w-4" />
+                      {hasPreferences ? 'UPDATE' : 'SET PREFERENCES'}
                     </button>
                     <button
                       onClick={skipPreferences}
-                      className="px-6 py-3 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className="py-3 px-6 border border-[var(--border)] font-bold hover:border-[var(--text-primary)] transition-colors"
                     >
-                      {hasPreferences ? 'Keep Current' : 'Use Defaults'}
+                      {hasPreferences ? 'KEEP' : 'SKIP'}
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Step 3: Generate Address */}
+            {/* Step 3: Generate */}
             {step === 'generate' && (
               <div className="space-y-4">
-                <div className="bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg p-6 border border-green-200 dark:border-green-700">
+                <div className="border border-[var(--border)] p-6">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center w-10 h-10 bg-green-600 rounded-full">
-                      <span className="text-white font-bold">3</span>
-                    </div>
-                    <h3 className="font-bold text-lg text-green-900 dark:text-green-100">
-                      Generate Agent Address
-                    </h3>
+                    <span className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center font-mono text-[var(--accent)]">3</span>
+                    <h3 className="font-display text-lg">GENERATE ADDRESS</h3>
                   </div>
 
-                  <p className="text-sm text-green-800 dark:text-green-200 mb-4">
-                    We'll generate ONE reusable agent address for your account. You can use this for all your agent deployments.
+                  <p className="text-sm text-[var(--text-secondary)] mb-6">
+                    Generate your reusable agent address for all deployments.
                   </p>
 
                   <button
                     onClick={generateAgentAddress}
                     disabled={loading}
-                    className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {loading ? (
                       <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Generating...
+                        <Activity className="h-5 w-5 animate-pulse" />
+                        GENERATING...
                       </>
                     ) : (
-                      <>
-                        Generate Address
-                        <span className="ml-1">→</span>
-                      </>
+                      'GENERATE →'
                     )}
                   </button>
                 </div>
@@ -485,99 +405,60 @@ export function HyperliquidConnect({
             {/* Step 4: Whitelist */}
             {step === 'whitelist' && (
               <div className="space-y-4">
-                <div className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-lg p-6 border border-yellow-200 dark:border-yellow-700">
+                <div className="border border-[var(--border)] p-6">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center w-10 h-10 bg-yellow-600 rounded-full">
-                      <span className="text-white font-bold">4</span>
-                    </div>
-                    <h3 className="font-bold text-lg text-yellow-900 dark:text-yellow-100">
-                      Whitelist Agent on Hyperliquid
-                    </h3>
+                    <span className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center font-mono text-[var(--accent)]">4</span>
+                    <h3 className="font-display text-lg">WHITELIST AGENT</h3>
                   </div>
 
                   {/* Agent Address */}
                   <div className="mb-4">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Your Agent Address (copy this):
-                    </label>
+                    <p className="data-label mb-2">YOUR AGENT ADDRESS</p>
                     <div className="flex items-center gap-2">
-                      <code className="flex-1 bg-white dark:bg-gray-900 px-4 py-3 rounded-lg text-sm break-all font-mono text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700">
+                      <code className="flex-1 bg-[var(--bg-elevated)] px-4 py-3 text-sm break-all font-mono text-[var(--text-primary)] border border-[var(--border)]">
                         {agentAddress}
                       </code>
                       <button
                         onClick={copyAddress}
-                        className="p-3 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors border border-gray-200 dark:border-gray-700"
-                        title="Copy address"
+                        className="p-3 border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+                        title="Copy"
                       >
                         {copied ? (
-                          <Check className="h-5 w-5 text-green-600" />
+                          <Check className="h-5 w-5 text-[var(--accent)]" />
                         ) : (
-                          <Copy className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                          <Copy className="h-5 w-5 text-[var(--text-muted)]" />
                         )}
                       </button>
                     </div>
-                    <p className="mt-2 text-xs text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/30 rounded p-2">
-                      🔒 This address is unique to you. You can reuse it for all agent deployments.
-                    </p>
                   </div>
 
                   {/* Instructions */}
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-700 mb-4">
-                    <h4 className="font-bold text-blue-900 dark:text-blue-100 mb-3 text-sm">
-                      📋 Whitelisting Steps:
-                    </h4>
-                    <ol className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
-                      <li className="flex gap-2">
-                        <span className="font-bold">1.</span>
-                        <span>Copy the agent address above</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold">2.</span>
-                        <span>Click "Open Hyperliquid" below</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold">3.</span>
-                        <span>Connect with {userWallet.slice(0, 6)}...{userWallet.slice(-4)}</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold">4.</span>
-                        <span>Go to Settings → API/Agent</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold">5.</span>
-                        <span>Add/Authorize agent, paste the address</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold">6.</span>
-                        <span>Come back and click "I've Whitelisted It"</span>
-                      </li>
-                    </ol>
+                  <div className="border border-[var(--border)] p-4 mb-4 space-y-2 text-sm text-[var(--text-secondary)]">
+                    <p className="font-bold text-[var(--text-primary)] mb-3">STEPS:</p>
+                    <p><span className="text-[var(--accent)] font-mono">01</span> Copy the address above</p>
+                    <p><span className="text-[var(--accent)] font-mono">02</span> Open Hyperliquid</p>
+                    <p><span className="text-[var(--accent)] font-mono">03</span> Go to Settings → API/Agent</p>
+                    <p><span className="text-[var(--accent)] font-mono">04</span> Add/Authorize agent</p>
+                    <p><span className="text-[var(--accent)] font-mono">05</span> Come back and confirm</p>
                   </div>
 
-                  {/* Action Buttons */}
+                  {/* Buttons */}
                   <div className="flex gap-3">
                     <a
                       href={hyperliquidUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+                      className="flex-1 py-3 border border-[var(--accent)] text-[var(--accent)] font-bold hover:bg-[var(--accent)]/10 transition-colors flex items-center justify-center gap-2"
                     >
-                      <span>Open Hyperliquid</span>
+                      OPEN HYPERLIQUID
                       <ExternalLink className="h-4 w-4" />
                     </a>
                     <button
                       onClick={completeDeployment}
                       disabled={loading}
-                      className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+                      className="py-3 px-6 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50"
                     >
-                      {loading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Deploying...
-                        </>
-                      ) : (
-                        "I've Whitelisted It"
-                      )}
+                      {loading ? 'DEPLOYING...' : 'DONE'}
                     </button>
                   </div>
                 </div>
@@ -587,52 +468,27 @@ export function HyperliquidConnect({
             {/* Step 5: Complete */}
             {step === 'complete' && (
               <div className="space-y-4">
-                <div className="bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg p-8 border border-green-200 dark:border-green-700 text-center">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-green-600 rounded-full mb-4">
-                    <CheckCircle className="h-10 w-10 text-white" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-green-900 dark:text-green-100 mb-2">
-                    All Set! 🎉
-                  </h3>
-                  <p className="text-green-800 dark:text-green-200 mb-4">
-                    {agentName} is deployed and ready to trade with your personalized settings!
+                <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-8 text-center">
+                  <CheckCircle className="h-16 w-16 mx-auto text-[var(--accent)] mb-4" />
+                  <h3 className="font-display text-2xl mb-2">DEPLOYED</h3>
+                  <p className="text-[var(--text-secondary)]">
+                    {agentName} is ready to trade with your settings
                   </p>
-                  <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-green-200 dark:border-green-700 space-y-2 text-left text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Your Account:</span>
-                      <code className="text-gray-800 dark:text-gray-200 font-mono">{userWallet.slice(0, 10)}...{userWallet.slice(-8)}</code>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Agent Address:</span>
-                      <code className="text-gray-800 dark:text-gray-200 font-mono">{agentAddress.slice(0, 10)}...{agentAddress.slice(-8)}</code>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Status:</span>
-                      <span className="text-green-600 dark:text-green-400 font-semibold">✅ Active</span>
-                    </div>
-                  </div>
                 </div>
 
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-5 border border-blue-200 dark:border-blue-700">
-                  <h3 className="font-bold text-blue-900 dark:text-blue-100 mb-3 text-sm">What happens next?</h3>
-                  <ul className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-0.5">📊</span>
-                      <span>{agentName} monitors signals from your selected sources</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-0.5">🎯</span>
-                      <span>Position sizes personalized to YOUR trading style</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-0.5">🤖</span>
-                      <span>Positions open automatically using YOUR funds</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-0.5">💰</span>
-                      <span>All PnL appears in YOUR Hyperliquid account</span>
-                    </li>
-                  </ul>
+                <div className="border border-[var(--border)] p-4 space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-muted)]">Account</span>
+                    <code className="font-mono">{userWallet.slice(0, 10)}...{userWallet.slice(-8)}</code>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-muted)]">Agent</span>
+                    <code className="font-mono">{agentAddress.slice(0, 10)}...{agentAddress.slice(-8)}</code>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-muted)]">Status</span>
+                    <span className="text-[var(--accent)] font-bold">ACTIVE</span>
+                  </div>
                 </div>
 
                 <button
@@ -640,9 +496,9 @@ export function HyperliquidConnect({
                     onSuccess?.();
                     onClose();
                   }}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+                  className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
                 >
-                  Done
+                  DONE
                 </button>
               </div>
             )}
@@ -650,7 +506,6 @@ export function HyperliquidConnect({
         </div>
       </div>
 
-      {/* Trading Preferences Modal */}
       {showPreferencesModal && (
         <TradingPreferencesModal
           userWallet={userWallet}
@@ -661,4 +516,3 @@ export function HyperliquidConnect({
     </>
   );
 }
-

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { db } from '../client/src/lib/db';
 import { usePrivy } from '@privy-io/react-auth';
-import { Rocket } from 'lucide-react';
+import { Rocket, X, TrendingUp, Activity } from 'lucide-react';
 import { HyperliquidConnect } from './HyperliquidConnect';
 import { OstiumConnect } from './OstiumConnect';
 import { OstiumApproval } from './OstiumApproval';
@@ -39,7 +39,7 @@ export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDr
   // Fetch agent venue if not provided
   useEffect(() => {
     async function fetchAgentVenue() {
-      if (venue) return; // Already have venue
+      if (venue) return;
       
       try {
         const agents = await db.get('agents', {
@@ -111,15 +111,12 @@ export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDr
       return;
     }
 
-    // Handle different venues
     if (venue === 'HYPERLIQUID') {
       setHyperliquidModalOpen(true);
     } else if (venue === 'OSTIUM') {
-      // Deploy Ostium - assign agent and open approval modal
       try {
         setLoading(true);
         const userWallet = user.wallet.address;
-        console.log('[Ostium Deploy from Drawer] Starting deployment for agent:', agentId, 'user wallet:', userWallet);
 
         const response = await fetch('/api/ostium/deploy-complete', {
           method: 'POST',
@@ -132,155 +129,191 @@ export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDr
         if (!response.ok) {
           throw new Error(data.error || 'Failed to deploy Ostium agent');
         }
-
-        console.log('[Ostium Deploy from Drawer] Agent assigned:', data);
         
-        // Open approval modal for user to sign
         setOstiumApprovalModal({
           deploymentId: data.deploymentId,
           agentAddress: data.agentAddress,
           userWallet: data.userWallet,
         });
       } catch (err: any) {
-        console.error('[Ostium Deploy from Drawer] Error:', err);
+        console.error('[Ostium Deploy] Error:', err);
         alert(`Failed to deploy: ${err.message}`);
       } finally {
         setLoading(false);
       }
     } else if (venue === 'MULTI') {
-      // For MULTI venue agents, open venue selector modal
       setMultiVenueSelectorOpen(true);
     } else {
-      // For SPOT/GMX, navigate to Safe wallet deployment page
       window.location.href = `/deploy-agent/${agentId}`;
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-50" onClick={onClose}>
       <div
-        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-xl overflow-y-auto"
+        className="fixed right-0 top-0 h-full w-full max-w-xl bg-[var(--bg-deep)] border-l border-[var(--border)] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
         data-testid={`drawer-agent-${agentId}`}
       >
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-foreground">{agentName}</h2>
+        {/* Header */}
+        <div className="sticky top-0 bg-[var(--bg-deep)] border-b border-[var(--border)] p-6 z-10">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="data-label mb-2">AGENT DETAILS</p>
+              <h2 className="font-display text-2xl text-[var(--text-primary)]">{agentName}</h2>
+              {venue && (
+                <span className="inline-block mt-2 text-xs px-2 py-0.5 border border-[var(--accent)] text-[var(--accent)]">
+                  {venue === 'MULTI' ? 'MULTI-VENUE' : venue}
+                </span>
+              )}
+            </div>
             <button
               onClick={onClose}
-              className="text-muted-foreground hover:text-foreground"
+              className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
               data-testid="button-close-drawer"
             >
-              ✕
+              <X className="h-5 w-5" />
             </button>
           </div>
+        </div>
 
+        <div className="p-6 space-y-8">
           {/* Deploy Button */}
-          <div className="mb-6">
+          <div>
             {isDeployed ? (
-              <div className="space-y-3">
-                <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 flex items-center gap-3">
-                  <Rocket className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-semibold text-foreground">Agent Deployed</p>
-                    <p className="text-sm text-muted-foreground">
-                      This agent is actively trading for you
-                    </p>
+              <div className="space-y-4">
+                <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4">
+                  <div className="flex items-center gap-3">
+                    <Activity className="h-5 w-5 text-[var(--accent)]" />
+                    <div>
+                      <p className="font-bold text-[var(--text-primary)]">AGENT DEPLOYED</p>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Actively trading for you
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <button
                   onClick={() => window.location.href = `/agent/${agentId}`}
-                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg text-base font-semibold hover-elevate active-elevate-2 transition-all"
+                  className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
                 >
-                  <Rocket className="h-5 w-5" />
-                  View Performance Dashboard
+                  VIEW DASHBOARD →
                 </button>
               </div>
             ) : authenticated ? (
               <button
                 onClick={handleDeploy}
-                className="w-full inline-flex items-center justify-center gap-2 px-6 py-4 bg-primary text-primary-foreground rounded-lg text-base font-semibold hover-elevate active-elevate-2 transition-all"
+                disabled={loading}
+                className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50"
                 data-testid="button-deploy-agent"
               >
-                <Rocket className="h-5 w-5" />
-                {venue === 'HYPERLIQUID' 
-                  ? 'Deploy Hyperliquid Agent' 
-                  : venue === 'OSTIUM'
-                  ? 'Deploy Ostium Agent'
-                  : 'Deploy Agent & Connect Safe Wallet'}
+                <span className="flex items-center justify-center gap-2">
+                  <Rocket className="h-5 w-5" />
+                  {loading ? 'DEPLOYING...' : `DEPLOY ${venue || 'AGENT'} →`}
+                </span>
               </button>
             ) : (
               <button
                 onClick={login}
-                className="w-full inline-flex items-center justify-center gap-2 px-6 py-4 bg-primary text-primary-foreground rounded-lg text-base font-semibold hover-elevate active-elevate-2 transition-all"
+                className="w-full py-4 border border-[var(--accent)] text-[var(--accent)] font-bold hover:bg-[var(--accent)]/10 transition-colors"
                 data-testid="button-connect-to-deploy"
               >
-                <Rocket className="h-5 w-5" />
-                Connect Wallet to Deploy
+                CONNECT WALLET TO DEPLOY
               </button>
             )}
           </div>
 
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-4 text-foreground">
-              30-Day Performance
-            </h3>
-            {loading ? (
-              <div className="h-64 flex items-center justify-center text-muted-foreground">
-                Loading...
+          {/* Performance Chart */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp className="h-4 w-4 text-[var(--accent)]" />
+              <h3 className="font-display text-lg">30-DAY PERFORMANCE</h3>
+            </div>
+            
+            <div className="border border-[var(--border)] p-4">
+              {loading ? (
+                <div className="h-64 flex items-center justify-center text-[var(--text-muted)]">
+                  <span className="animate-pulse">Loading...</span>
+                </div>
+              ) : data.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={data}>
+                    <XAxis
+                      dataKey="day"
+                      stroke="var(--text-muted)"
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={{ stroke: 'var(--border)' }}
+                    />
+                    <YAxis
+                      stroke="var(--text-muted)"
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={{ stroke: 'var(--border)' }}
+                      tickFormatter={(value) => `${value.toFixed(1)}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--bg-surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 0,
+                        fontSize: 12,
+                      }}
+                      labelStyle={{ color: 'var(--text-muted)' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="return_pct"
+                      stroke="var(--accent)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-[var(--text-muted)] border border-dashed border-[var(--border)]">
+                  No performance data available
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Agent Info */}
+          <div>
+            <h3 className="font-display text-lg mb-4">AGENT INFO</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between py-3 border-b border-[var(--border)]">
+                <span className="text-[var(--text-muted)]">Venue</span>
+                <span className="font-mono text-[var(--text-primary)]">{venue || 'N/A'}</span>
               </div>
-            ) : data.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={data}>
-                  <XAxis
-                    dataKey="day"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                  />
-                  <YAxis
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                    tickFormatter={(value) => `${value.toFixed(1)}%`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="return_pct"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-muted-foreground">
-                No performance data available
+              <div className="flex justify-between py-3 border-b border-[var(--border)]">
+                <span className="text-[var(--text-muted)]">Execution</span>
+                <span className="font-mono text-[var(--accent)]">GASLESS</span>
               </div>
-            )}
+              <div className="flex justify-between py-3 border-b border-[var(--border)]">
+                <span className="text-[var(--text-muted)]">Custody</span>
+                <span className="font-mono text-[var(--accent)]">NON-CUSTODIAL</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Hyperliquid Setup Modal */}
+      {/* Modals */}
       {hyperliquidModalOpen && (
         <HyperliquidConnect
           agentId={agentId}
+          agentVenue={venue}
           agentName={agentName}
           onClose={() => setHyperliquidModalOpen(false)}
           onSuccess={() => {
             setHyperliquidModalOpen(false);
             setIsDeployed(true);
-            onClose(); // Close the drawer
+            onClose();
           }}
         />
       )}
 
-      {/* Ostium Setup Modal */}
       {ostiumModalOpen && (
         <OstiumConnect
           agentId={agentId}
@@ -289,12 +322,11 @@ export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDr
           onSuccess={() => {
             setOstiumModalOpen(false);
             setIsDeployed(true);
-            onClose(); // Close the drawer
+            onClose();
           }}
         />
       )}
 
-      {/* Ostium Approval Modal - User signs with wallet */}
       {ostiumApprovalModal && (
         <OstiumApproval
           deploymentId={ostiumApprovalModal.deploymentId}
@@ -303,13 +335,12 @@ export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDr
           onApprovalComplete={() => {
             setOstiumApprovalModal(null);
             setIsDeployed(true);
-            onClose(); // Close the drawer
+            onClose();
           }}
           onClose={() => setOstiumApprovalModal(null)}
         />
       )}
 
-      {/* Multi-Venue Selector Modal */}
       {multiVenueSelectorOpen && (
         <MultiVenueSelector
           agentId={agentId}
