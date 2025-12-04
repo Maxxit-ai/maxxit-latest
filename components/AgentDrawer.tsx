@@ -303,6 +303,7 @@ export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDr
       {hyperliquidModalOpen && (
         <HyperliquidConnect
           agentId={agentId}
+          agentVenue={venue}
           agentName={agentName}
           onClose={() => setHyperliquidModalOpen(false)}
           onSuccess={() => {

@@ -1,3 +1,4 @@
+import { prisma } from '@maxxit/database';
 /**
  * Trade Executor - Calls external venue services via HTTP
  * Routes signals to appropriate venue services (Hyperliquid, Ostium)
@@ -9,10 +10,14 @@ interface ExecutionResult {
   positionId?: string;
   error?: string;
   reason?: string;
+  ostiumTradeIndex?: number;
+  entryPrice?: number;
+  collateral?: number;
+  leverage?: number;
 }
 
 const HYPERLIQUID_SERVICE_URL = process.env.HYPERLIQUID_SERVICE_URL || 'https://hyperliquid-service.onrender.com';
-const OSTIUM_SERVICE_URL = process.env.OSTIUM_SERVICE_URL || '';
+const OSTIUM_SERVICE_URL = process.env.OSTIUM_SERVICE_URL || 'http://localhost:5002';
 
 /**
  * Execute a trade signal by calling the appropriate venue service
@@ -61,7 +66,6 @@ async function executeHyperliquidTrade(
       : signal.risk_model;
 
     // Get user's Hyperliquid agent address from user_agent_addresses
-    const { prisma } = await import('./prisma-client');
     const userAddress = await prisma.user_agent_addresses.findUnique({
       where: { user_wallet: deployment.user_wallet.toLowerCase() },
       select: { hyperliquid_agent_address: true },
@@ -188,7 +192,6 @@ async function executeOstiumTrade(
       : signal.risk_model;
 
     // Get user's Ostium agent address from user_agent_addresses
-    const { prisma } = await import('./prisma-client');
     const userAddress = await prisma.user_agent_addresses.findUnique({
       where: { user_wallet: deployment.user_wallet.toLowerCase() },
       select: { ostium_agent_address: true },
@@ -305,10 +308,26 @@ async function executeOstiumTrade(
 
     const result = await response.json() as any;
 
+    console.log(`[TradeExecutor] Ostium response:`, JSON.stringify(result, null, 2));
+
+    const actualTradeIndex = result.actualTradeIndex ?? result.result?.actualTradeIndex;
+    const resultData = result.result || {};
+    
+    const entryPrice = result.entryPrice || resultData.entryPrice || 0;
+    
+    console.log(`[TradeExecutor]    Trade Index: ${actualTradeIndex ?? 'pending (keeper not filled yet)'}`);
+    console.log(`[TradeExecutor]    Entry Price: $${entryPrice || 'pending'}`);
+    console.log(`[TradeExecutor]    Collateral: ${resultData.collateral || collateralUSDC} USDC`);
+    console.log(`[TradeExecutor]    Leverage: ${resultData.leverage || leverage}x`);
+
     return {
       success: true,
-      txHash: result.txHash || result.hash,
-      positionId: result.positionId,
+      txHash: result.txHash || result.transactionHash || result.hash || result.orderId,
+      positionId: result.positionId || result.orderId || result.tradeId,
+      ostiumTradeIndex: actualTradeIndex,
+      entryPrice: entryPrice,
+      collateral: resultData.collateral || collateralUSDC,
+      leverage: resultData.leverage || leverage,
     };
   } catch (error: any) {
     console.error('[TradeExecutor] Ostium execution failed:', error.message);

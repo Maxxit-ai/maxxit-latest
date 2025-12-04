@@ -4,10 +4,8 @@
  * Uses deployment-agent-address logic (copied locally for microservice)
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@maxxit/database';
 import * as crypto from 'crypto';
-
-const prisma = new PrismaClient();
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || process.env.MASTER_ENCRYPTION_KEY;
 

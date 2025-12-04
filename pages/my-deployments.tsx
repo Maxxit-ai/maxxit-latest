@@ -1,23 +1,23 @@
-import { useEffect, useState } from 'react';
-import { Header } from '@components/Header';
-import GMXSetupButton from '@components/GMXSetupButton';
-import { SPOTSetupButton } from '@components/SPOTSetupButton';
-import { HyperliquidSetupButton } from '@components/HyperliquidSetupButton';
-import { OstiumSetupButton } from '@components/OstiumSetupButton';
-import { HyperliquidAgentModal } from '@components/HyperliquidAgentModal';
-import { usePrivy } from '@privy-io/react-auth';
-import { 
-  Wallet, 
-  Activity, 
-  MessageCircle, 
+import { useEffect, useState } from "react";
+import { Header } from "@components/Header";
+import GMXSetupButton from "@components/GMXSetupButton";
+import { SPOTSetupButton } from "@components/SPOTSetupButton";
+import { HyperliquidSetupButton } from "@components/HyperliquidSetupButton";
+import { OstiumSetupButton } from "@components/OstiumSetupButton";
+import { HyperliquidAgentModal } from "@components/HyperliquidAgentModal";
+import { usePrivy } from "@privy-io/react-auth";
+import {
+  Wallet,
+  Activity,
+  MessageCircle,
   CheckCircle,
   TrendingUp,
   Settings,
   X,
   Copy,
   Zap,
-  ExternalLink
-} from 'lucide-react';
+  ExternalLink,
+} from "lucide-react";
 
 interface Deployment {
   id: string;
@@ -40,10 +40,10 @@ export default function MyDeployments() {
   const [loading, setLoading] = useState(true);
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
   const [hyperliquidModalOpen, setHyperliquidModalOpen] = useState(false);
-  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string>('');
-  const [selectedAgentName, setSelectedAgentName] = useState<string>('');
-  const [linkCode, setLinkCode] = useState<string>('');
-  const [botUsername, setBotUsername] = useState<string>('');
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string>("");
+  const [selectedAgentName, setSelectedAgentName] = useState<string>("");
+  const [linkCode, setLinkCode] = useState<string>("");
+  const [botUsername, setBotUsername] = useState<string>("");
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -59,14 +59,16 @@ export default function MyDeployments() {
     if (!user?.wallet?.address) return;
 
     try {
-      const response = await fetch(`/api/deployments?userWallet=${user.wallet.address}`);
-      
-      if (!response.ok) throw new Error('Failed to fetch deployments');
+      const response = await fetch(
+        `/api/deployments?userWallet=${user.wallet.address}`
+      );
+
+      if (!response.ok) throw new Error("Failed to fetch deployments");
 
       const data = await response.json();
       setDeployments(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Failed to fetch deployments:', error);
+      console.error("Failed to fetch deployments:", error);
       setDeployments([]);
     } finally {
       setLoading(false);
@@ -76,33 +78,33 @@ export default function MyDeployments() {
   const handleConnectTelegram = (deploymentId: string) => {
     setSelectedDeploymentId(deploymentId);
     setTelegramModalOpen(true);
-    setLinkCode('');
-    setBotUsername('');
+    setLinkCode("");
+    setBotUsername("");
     setGenerating(false);
   };
 
   const generateLinkCode = async () => {
     setGenerating(true);
     try {
-      const response = await fetch('/api/telegram/generate-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+      const response = await fetch("/api/telegram/generate-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           deploymentId: selectedDeploymentId,
-          userWallet: user?.wallet?.address || ''
+          userWallet: user?.wallet?.address || "",
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to generate link code');
+        throw new Error(error.error || "Failed to generate link code");
       }
 
       const data = await response.json();
       setLinkCode(data.linkCode);
       setBotUsername(data.botUsername);
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      alert("Error: " + error.message);
     } finally {
       setGenerating(false);
     }
@@ -146,14 +148,17 @@ export default function MyDeployments() {
   return (
     <div className="min-h-screen bg-[var(--bg-deep)]">
       <Header />
-      
+
       <div className="max-w-6xl mx-auto px-6 py-12">
         {/* Header */}
         <div className="mb-12">
           <p className="data-label mb-2">DASHBOARD</p>
-          <h1 className="font-display text-4xl md:text-5xl mb-4">MY DEPLOYMENTS</h1>
+          <h1 className="font-display text-4xl md:text-5xl mb-4">
+            MY DEPLOYMENTS
+          </h1>
           <p className="text-[var(--text-secondary)] max-w-xl">
-            Manage your agent subscriptions and connect Telegram for manual trading
+            Manage your agent subscriptions and connect Telegram for manual
+            trading
           </p>
         </div>
 
@@ -167,7 +172,7 @@ export default function MyDeployments() {
               <p className="text-[var(--text-muted)] mb-6 text-center">
                 Connect your wallet to view your deployments
               </p>
-              <button 
+              <button
                 onClick={login}
                 className="px-8 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
               >
@@ -183,7 +188,7 @@ export default function MyDeployments() {
               <p className="text-[var(--text-muted)] mb-6 text-center">
                 Deploy an agent to start automated trading
               </p>
-              <a 
+              <a
                 href="/"
                 className="px-8 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
               >
@@ -194,19 +199,28 @@ export default function MyDeployments() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {deployments.map((deployment, index) => (
-              <div key={deployment.id} className="border border-[var(--border)] bg-[var(--bg-surface)]">
+              <div
+                key={deployment.id}
+                className="border border-[var(--border)] bg-[var(--bg-surface)]"
+              >
                 {/* Card Header */}
                 <div className="border-b border-[var(--border)] p-6">
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <span className="text-[var(--accent)] font-mono text-sm">#{String(index + 1).padStart(2, '0')}</span>
-                      <h3 className="font-display text-xl mt-1">{deployment.agent.name}</h3>
+                      <span className="text-[var(--accent)] font-mono text-sm">
+                        #{String(index + 1).padStart(2, "0")}
+                      </span>
+                      <h3 className="font-display text-xl mt-1">
+                        {deployment.agent.name}
+                      </h3>
                     </div>
-                    <span className={`text-xs px-2 py-1 font-bold ${
-                      deployment.status === 'ACTIVE' 
-                        ? 'bg-[var(--accent)] text-[var(--bg-deep)]' 
-                        : 'border border-[var(--border)] text-[var(--text-muted)]'
-                    }`}>
+                    <span
+                      className={`text-xs px-2 py-1 font-bold ${
+                        deployment.status === "ACTIVE"
+                          ? "bg-[var(--accent)] text-[var(--bg-deep)]"
+                          : "border border-[var(--border)] text-[var(--text-muted)]"
+                      }`}
+                    >
                       {deployment.status}
                     </span>
                   </div>
@@ -214,7 +228,7 @@ export default function MyDeployments() {
                     {deployment.agent.venue}
                   </span>
                 </div>
-                
+
                 {/* Card Content */}
                 <div className="p-6 space-y-4">
                   {/* Safe Wallet */}
@@ -224,7 +238,8 @@ export default function MyDeployments() {
                       Safe Wallet
                     </span>
                     <span className="font-mono text-sm">
-                      {deployment.safeWallet.slice(0, 6)}...{deployment.safeWallet.slice(-4)}
+                      {deployment.safeWallet.slice(0, 6)}...
+                      {deployment.safeWallet.slice(-4)}
                     </span>
                   </div>
 
@@ -240,7 +255,9 @@ export default function MyDeployments() {
                         ENABLED
                       </span>
                     ) : (
-                      <span className="text-[var(--text-muted)] text-sm">NOT ENABLED</span>
+                      <span className="text-[var(--text-muted)] text-sm">
+                        NOT ENABLED
+                      </span>
                     )}
                   </div>
 
@@ -253,46 +270,48 @@ export default function MyDeployments() {
                           ⚡ Setup required before trading
                         </p>
                       </div>
-                      {deployment.agent.venue === 'MULTI' ? (
+                      {deployment.agent.venue === "MULTI" ? (
                         <div className="space-y-2">
-                          {deployment.enabledVenues?.includes('SPOT') && (
-                            <SPOTSetupButton 
+                          {deployment.enabledVenues?.includes("SPOT") && (
+                            <SPOTSetupButton
                               safeAddress={deployment.safeWallet}
                               onSetupComplete={() => fetchDeployments()}
                             />
                           )}
-                          {deployment.enabledVenues?.includes('HYPERLIQUID') && (
-                            <HyperliquidSetupButton 
+                          {deployment.enabledVenues?.includes(
+                            "HYPERLIQUID"
+                          ) && (
+                            <HyperliquidSetupButton
                               safeAddress={deployment.safeWallet}
                               onSetupComplete={() => fetchDeployments()}
                             />
                           )}
-                          {deployment.enabledVenues?.includes('OSTIUM') && (
-                            <OstiumSetupButton 
+                          {deployment.enabledVenues?.includes("OSTIUM") && (
+                            <OstiumSetupButton
                               agentId={deployment.agentId}
                               agentName={deployment.agent.name}
                               onSetupComplete={() => fetchDeployments()}
                             />
                           )}
                         </div>
-                      ) : deployment.agent.venue === 'GMX' ? (
-                        <GMXSetupButton 
+                      ) : deployment.agent.venue === "GMX" ? (
+                        <GMXSetupButton
                           safeAddress={deployment.safeWallet}
                           onSetupComplete={() => fetchDeployments()}
                         />
-                      ) : deployment.agent.venue === 'HYPERLIQUID' ? (
-                        <HyperliquidSetupButton 
+                      ) : deployment.agent.venue === "HYPERLIQUID" ? (
+                        <HyperliquidSetupButton
                           safeAddress={deployment.safeWallet}
                           onSetupComplete={() => fetchDeployments()}
                         />
-                      ) : deployment.agent.venue === 'OSTIUM' ? (
-                        <OstiumSetupButton 
+                      ) : deployment.agent.venue === "OSTIUM" ? (
+                        <OstiumSetupButton
                           agentId={deployment.agentId}
                           agentName={deployment.agent.name}
                           onSetupComplete={() => fetchDeployments()}
                         />
                       ) : (
-                        <SPOTSetupButton 
+                        <SPOTSetupButton
                           safeAddress={deployment.safeWallet}
                           onSetupComplete={() => fetchDeployments()}
                         />
@@ -306,7 +325,9 @@ export default function MyDeployments() {
                     {deployment.telegramLinked ? (
                       <div className="flex items-center gap-2 text-[var(--accent)]">
                         <CheckCircle className="w-4 h-4" />
-                        <span className="text-sm font-bold">TELEGRAM CONNECTED</span>
+                        <span className="text-sm font-bold">
+                          TELEGRAM CONNECTED
+                        </span>
                       </div>
                     ) : (
                       <button
@@ -329,7 +350,12 @@ export default function MyDeployments() {
                       VIEW
                     </a>
                     <button
-                      onClick={() => handleSetupHyperliquid(deployment.agentId, deployment.agent.name)}
+                      onClick={() =>
+                        handleSetupHyperliquid(
+                          deployment.agentId,
+                          deployment.agent.name
+                        )
+                      }
                       className="py-3 px-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold text-sm hover:bg-[var(--accent-dim)] transition-colors flex items-center gap-2"
                     >
                       <Zap className="w-4 h-4" />
@@ -357,7 +383,9 @@ export default function MyDeployments() {
                   <MessageCircle className="w-5 h-5 text-[var(--accent)]" />
                   <div>
                     <h2 className="font-display text-lg">CONNECT TELEGRAM</h2>
-                    <p className="text-xs text-[var(--text-muted)]">Link for manual trading</p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Link for manual trading
+                    </p>
                   </div>
                 </div>
                 <button
@@ -394,12 +422,16 @@ export default function MyDeployments() {
                   {/* Step 1 */}
                   <div className="border border-[var(--border)] p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-bold text-sm">STEP 1: OPEN BOT</span>
+                      <span className="font-bold text-sm">
+                        STEP 1: OPEN BOT
+                      </span>
                       <span className="text-xs text-[var(--accent)]">1/2</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => window.open(`https://t.me/${botUsername}`, '_blank')}
+                        onClick={() =>
+                          window.open(`https://t.me/${botUsername}`, "_blank")
+                        }
                         className="flex-1 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
                       >
                         OPEN @{botUsername}
@@ -409,7 +441,11 @@ export default function MyDeployments() {
                         onClick={copyBotLink}
                         className="p-3 border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
                       >
-                        {copied ? <CheckCircle className="w-4 h-4 text-[var(--accent)]" /> : <Copy className="w-4 h-4" />}
+                        {copied ? (
+                          <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -417,7 +453,9 @@ export default function MyDeployments() {
                   {/* Step 2 */}
                   <div className="border border-[var(--border)] p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-bold text-sm">STEP 2: SEND COMMAND</span>
+                      <span className="font-bold text-sm">
+                        STEP 2: SEND COMMAND
+                      </span>
                       <span className="text-xs text-[var(--accent)]">2/2</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -428,7 +466,11 @@ export default function MyDeployments() {
                         onClick={copyCommand}
                         className="p-3 border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
                       >
-                        {copied ? <CheckCircle className="w-4 h-4 text-[var(--accent)]" /> : <Copy className="w-4 h-4" />}
+                        {copied ? (
+                          <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
                   </div>

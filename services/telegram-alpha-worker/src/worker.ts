@@ -12,34 +12,31 @@
 
 import dotenv from "dotenv";
 import express from "express";
-import { prisma } from "./lib/prisma-client";
+import { prisma, checkDatabaseHealth, disconnectPrisma } from "@maxxit/database";
 import {
   setupGracefulShutdown,
   registerCleanup,
-} from "./lib/graceful-shutdown";
-import { checkDatabaseHealth } from "./lib/prisma-client";
+  createHealthCheckHandler,
+} from "@maxxit/common";
 import { createLLMClassifier } from "./lib/llm-classifier";
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5006;
-const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "120000"); // 2 minutes default
+const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds default
 
 let workerInterval: NodeJS.Timeout | null = null;
 
 // Health check server
 const app = express();
-app.get("/health", async (req, res) => {
+app.get("/health", createHealthCheckHandler("telegram-alpha-worker", async () => {
   const dbHealthy = await checkDatabaseHealth();
-  res.status(dbHealthy ? 200 : 503).json({
-    status: dbHealthy ? "ok" : "degraded",
-    service: "telegram-alpha-worker",
-    interval: INTERVAL,
+  return {
     database: dbHealthy ? "connected" : "disconnected",
+    interval: INTERVAL,
     isRunning: workerInterval !== null,
-    timestamp: new Date().toISOString(),
-  });
-});
+  };
+}));
 
 const server = app.listen(PORT, () => {
   console.log(`🏥 Telegram Alpha Worker health check on port ${PORT}`);
@@ -213,6 +210,8 @@ registerCleanup(async () => {
     clearInterval(workerInterval);
     workerInterval = null;
   }
+  await disconnectPrisma();
+  console.log("✅ Prisma disconnected");
 });
 
 // Setup graceful shutdown

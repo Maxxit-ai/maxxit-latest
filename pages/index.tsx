@@ -671,6 +671,7 @@ export default function Home() {
         <HyperliquidConnect
           agentId={hyperliquidAgentId}
           agentName={hyperliquidAgentName}
+          agentVenue={"OSTIUM"}
           onClose={() => setHyperliquidModalOpen(false)}
           onSuccess={() => console.log('Setup complete')}
         />

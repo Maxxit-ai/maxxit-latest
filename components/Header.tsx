@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
-import { Home, Wallet, User, Copy, Check, LogOut, X, Plus, FileText } from 'lucide-react';
+import { Home, Wallet, User, Plus } from 'lucide-react';
+import { Bot, BarChart3, FileText, Copy, Check, LogOut, X } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 
 export function Header() {
