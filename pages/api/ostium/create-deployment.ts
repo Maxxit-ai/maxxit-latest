@@ -55,53 +55,100 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    const normalizedWallet = userWallet.toLowerCase();
+    
     // Check if deployment already exists for this agent and user
     const existingDeployment = await prisma.agent_deployments.findFirst({
       where: {
         agent_id: agentId,
-        user_wallet: userWallet.toLowerCase(),
+        user_wallet: normalizedWallet,
       },
     });
 
-    // CRITICAL FIX: Only add Ostium to enabled_venues
-    // Don't auto-add Hyperliquid just because agent venue is MULTI
-    // Hyperliquid gets added when user whitelists it separately
-    let enabledVenues = ['OSTIUM'];
-    
+    // If deployment already exists, just return it (prevent duplicates)
     if (existingDeployment) {
-      // If deployment exists, append Ostium to existing venues (avoid duplicates)
+      // Append Ostium to existing venues if not already there
       const currentVenues = existingDeployment.enabled_venues || [];
-      enabledVenues = Array.from(new Set([...currentVenues, 'OSTIUM']));
-      console.log('[Ostium Create Deployment] Appending OSTIUM to existing venues:', enabledVenues);
+      if (!currentVenues.includes('OSTIUM')) {
+        const updatedDeployment = await prisma.agent_deployments.update({
+          where: { id: existingDeployment.id },
+          data: {
+            enabled_venues: [...currentVenues, 'OSTIUM'],
+            status: 'ACTIVE',
+            sub_active: true,
+            module_enabled: true,
+          },
+        });
+        console.log('[Ostium Create Deployment] Updated existing deployment with OSTIUM:', updatedDeployment.id);
+        
+        return res.status(200).json({
+          success: true,
+          deployment: {
+            id: updatedDeployment.id,
+            agentId: updatedDeployment.agent_id,
+            userWallet: updatedDeployment.user_wallet,
+            agentAddress: userAddress.ostium_agent_address,
+            status: updatedDeployment.status,
+          },
+          message: 'Deployment updated with OSTIUM venue',
+        });
+      }
+      
+      console.log('[Ostium Create Deployment] Returning existing deployment:', existingDeployment.id);
+      return res.status(200).json({
+        success: true,
+        deployment: {
+          id: existingDeployment.id,
+          agentId: existingDeployment.agent_id,
+          userWallet: existingDeployment.user_wallet,
+          agentAddress: userAddress.ostium_agent_address,
+          status: existingDeployment.status,
+        },
+        message: 'Deployment already exists',
+      });
     }
 
-    const deploymentData = {
-      safe_wallet: userWallet.toLowerCase(),
-      enabled_venues: enabledVenues, // Only the venue being whitelisted
-      status: 'ACTIVE' as const,
-      sub_active: true,
-      module_enabled: true, // Ostium doesn't need Safe module
-    };
-
+    // Create new deployment with race condition handling
     let deployment;
-
-    if (existingDeployment) {
-      // Update existing deployment
-      console.log('[Ostium Create Deployment] Updating existing deployment:', existingDeployment.id);
-      deployment = await prisma.agent_deployments.update({
-        where: { id: existingDeployment.id },
-        data: deploymentData,
-      });
-    } else {
-      // Create new deployment
+    try {
       console.log('[Ostium Create Deployment] Creating new deployment');
       deployment = await prisma.agent_deployments.create({
         data: {
           agent_id: agentId,
-          user_wallet: userWallet.toLowerCase(),
-          ...deploymentData,
+          user_wallet: normalizedWallet,
+          safe_wallet: normalizedWallet,
+          enabled_venues: ['OSTIUM'],
+          status: 'ACTIVE',
+          sub_active: true,
+          module_enabled: true,
         },
       });
+    } catch (error: any) {
+      // Handle race condition - another request may have created it
+      if (error.code === 'P2002') {
+        console.log('[Ostium Create Deployment] Race condition detected, fetching existing deployment');
+        const racedDeployment = await prisma.agent_deployments.findFirst({
+          where: {
+            agent_id: agentId,
+            user_wallet: normalizedWallet,
+          },
+        });
+        
+        if (racedDeployment) {
+          return res.status(200).json({
+            success: true,
+            deployment: {
+              id: racedDeployment.id,
+              agentId: racedDeployment.agent_id,
+              userWallet: racedDeployment.user_wallet,
+              agentAddress: userAddress.ostium_agent_address,
+              status: racedDeployment.status,
+            },
+            message: 'Deployment created (concurrent)',
+          });
+        }
+      }
+      throw error;
     }
 
     console.log('[Ostium Create Deployment] ✅ Deployment created/updated:', deployment.id);
