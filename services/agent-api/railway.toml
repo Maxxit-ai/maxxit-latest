@@ -2,13 +2,13 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "cd services/signal-generator-worker && npm start"
+startCommand = "cd services/agent-api && npm start"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 [env]
-PORT = "5006"
-WORKER_INTERVAL = "300000"
+PORT = "4001"
 NODE_ENV = "production"
+
