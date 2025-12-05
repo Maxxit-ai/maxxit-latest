@@ -1,9 +1,10 @@
+@import url("https://fonts.googleapis.com/css2?family=Russo+One&family=Space+Mono:wght@400;700&family=Crimson+Pro:wght@400;600&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* Distinctive fonts - Terminal meets Editorial */
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Crimson+Pro:ital,wght@0,200..900;1,200..900&display=swap');
 
 :root {
   /* Warm, earthy palette with electric green accent */
@@ -18,7 +19,7 @@
   --accent-glow: rgba(0, 255, 136, 0.15);
   --border: #2a2a24;
   --danger: #ff4444;
-  
+
   /* Mapped to Tailwind */
   --background: 60 11% 4%;
   --foreground: 60 10% 96%;
@@ -39,18 +40,18 @@
   * {
     @apply border-[var(--border)];
   }
-  
+
   html {
     scroll-behavior: smooth;
   }
-  
+
   body {
     background: var(--bg-deep);
     color: var(--text-primary);
-    font-family: 'Space Mono', monospace;
+    font-family: "Space Mono", monospace;
     -webkit-font-smoothing: antialiased;
   }
-  
+
   ::selection {
     background: var(--accent);
     color: var(--bg-deep);
@@ -60,18 +61,24 @@
 @layer components {
   /* Terminal-style blinking cursor */
   .cursor-blink::after {
-    content: '_';
+    content: "_";
     animation: blink 1s step-end infinite;
   }
-  
+
   @keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
+    0%,
+    50% {
+      opacity: 1;
+    }
+    51%,
+    100% {
+      opacity: 0;
+    }
   }
-  
+
   /* Scan line effect */
   .scanlines::before {
-    content: '';
+    content: "";
     position: absolute;
     inset: 0;
     background: repeating-linear-gradient(
@@ -84,24 +91,35 @@
     pointer-events: none;
     z-index: 10;
   }
-  
+
   /* Glitch text effect on hover */
   .glitch-hover {
     position: relative;
   }
-  
+
   .glitch-hover:hover {
     animation: glitch 0.3s ease;
   }
-  
+
   @keyframes glitch {
-    0%, 100% { transform: translate(0); }
-    20% { transform: translate(-2px, 2px); }
-    40% { transform: translate(2px, -2px); }
-    60% { transform: translate(-2px, -2px); }
-    80% { transform: translate(2px, 2px); }
+    0%,
+    100% {
+      transform: translate(0);
+    }
+    20% {
+      transform: translate(-2px, 2px);
+    }
+    40% {
+      transform: translate(2px, -2px);
+    }
+    60% {
+      transform: translate(-2px, -2px);
+    }
+    80% {
+      transform: translate(2px, 2px);
+    }
   }
-  
+
   /* Accent underline */
   .accent-underline {
     text-decoration: underline;
@@ -109,31 +127,31 @@
     text-underline-offset: 4px;
     text-decoration-thickness: 2px;
   }
-  
+
   /* Border box style */
   .border-box {
     border: 1px solid var(--border);
     position: relative;
   }
-  
+
   .border-box::before {
-    content: '+';
+    content: "+";
     position: absolute;
     top: -8px;
     left: -8px;
     color: var(--accent);
     font-size: 14px;
   }
-  
+
   .border-box::after {
-    content: '+';
+    content: "+";
     position: absolute;
     bottom: -8px;
     right: -8px;
     color: var(--accent);
     font-size: 14px;
   }
-  
+
   /* Data readout style */
   .data-label {
     font-size: 10px;
@@ -141,43 +159,50 @@
     text-transform: uppercase;
     color: var(--text-muted);
   }
-  
+
   .data-value {
-    font-family: 'Bebas Neue', sans-serif;
+    font-family: "Russo One", sans-serif;
     font-size: 2.5rem;
     line-height: 1;
     letter-spacing: 0.02em;
   }
-  
+
   /* Status indicator */
   .status-live {
     display: inline-flex;
     align-items: center;
     gap: 6px;
   }
-  
+
   .status-live::before {
-    content: '';
+    content: "";
     width: 6px;
     height: 6px;
     background: var(--accent);
     border-radius: 50%;
     animation: pulse-dot 2s ease-in-out infinite;
   }
-  
+
   @keyframes pulse-dot {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-glow); }
-    50% { opacity: 0.7; box-shadow: 0 0 0 8px transparent; }
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 var(--accent-glow);
+    }
+    50% {
+      opacity: 0.7;
+      box-shadow: 0 0 0 8px transparent;
+    }
   }
-  
+
   /* ASCII border */
   .ascii-border {
     position: relative;
     padding: 2rem;
   }
-  
+
   .ascii-border::before {
-    content: '┌──────────────────────────────────────────┐';
+    content: "┌──────────────────────────────────────────┐";
     position: absolute;
     top: 0;
     left: 0;
@@ -187,17 +212,17 @@
     overflow: hidden;
     width: 100%;
   }
-  
+
   /* Hover lift */
   .hover-lift {
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
-  
+
   .hover-lift:hover {
     transform: translateY(-4px);
     box-shadow: 0 20px 40px -20px var(--accent-glow);
   }
-  
+
   /* Tag style */
   .tag {
     display: inline-block;
@@ -207,7 +232,7 @@
     text-transform: uppercase;
     border: 1px solid currentColor;
   }
-  
+
   /* Number counter animation */
   .counter {
     font-variant-numeric: tabular-nums;
@@ -216,37 +241,39 @@
 
 @layer utilities {
   .font-display {
-    font-family: 'Bebas Neue', sans-serif;
+    font-family: "Russo One", -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 400;
+    font-style: normal;
   }
-  
+
   .font-mono {
-    font-family: 'Space Mono', monospace;
+    font-family: "Space Mono", monospace;
   }
-  
+
   .font-serif {
-    font-family: 'Crimson Pro', serif;
+    font-family: "Crimson Pro", serif;
   }
-  
+
   .text-accent {
     color: var(--accent);
   }
-  
+
   .bg-accent {
     background-color: var(--accent);
   }
-  
+
   .border-accent {
     border-color: var(--accent);
   }
-  
+
   /* Grid pattern */
   .bg-grid-pattern {
-    background-image: 
-      linear-gradient(var(--border) 1px, transparent 1px),
+    background-image: linear-gradient(var(--border) 1px, transparent 1px),
       linear-gradient(90deg, var(--border) 1px, transparent 1px);
     background-size: 40px 40px;
   }
-  
+
   /* Dot pattern */
   .bg-dots {
     background-image: radial-gradient(var(--text-muted) 1px, transparent 1px);
