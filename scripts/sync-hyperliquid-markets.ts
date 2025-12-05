@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 
-#!/usr/bin/env ts-node
+// #!/usr/bin/env ts-node
 /**
  * Sync Hyperliquid Markets to Database
  * Fetches all available markets from Hyperliquid API and stores them in venue_markets table

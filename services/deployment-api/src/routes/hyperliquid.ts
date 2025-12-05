@@ -99,7 +99,7 @@ router.post('/create-deployment', async (req: Request, res: Response) => {
         id: deployment.id,
         agentId: deployment.agent_id,
         userWallet: deployment.user_wallet,
-        agentAddress: deployment.hyperliquid_agent_address,
+        agentAddress: deployment?.module_address || '',
         status: deployment.status,
       },
       message: existingDeployment ? 'Deployment updated' : 'Deployment created',

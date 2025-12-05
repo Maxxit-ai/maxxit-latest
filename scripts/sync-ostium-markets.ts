@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 
-#!/usr/bin/env ts-node
+// #!/usr/bin/env ts-node
 /**
  * Sync Ostium Markets to Database
  * Fetches all available markets from Ostium SDK and stores them in venue_markets table
