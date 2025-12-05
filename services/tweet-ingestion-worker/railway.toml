@@ -2,13 +2,14 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "cd services/signal-generator-worker && npm start"
+startCommand = "cd services/tweet-ingestion-worker && npm start"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 [env]
-PORT = "5006"
+PORT = "5003"
 WORKER_INTERVAL = "300000"
 NODE_ENV = "production"
+
