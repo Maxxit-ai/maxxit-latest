@@ -119,7 +119,7 @@ async function processTelegramAlphaMessages() {
           message.message_text
         );
 
-        // Update message with classification
+        // Update message with classification and signature verification data
         await prisma.telegram_posts.update({
           where: { id: message.id },
           data: {
@@ -132,6 +132,12 @@ async function processTelegramAlphaMessages() {
                 : classification.sentiment === "bearish"
                 ? "SHORT"
                 : null,
+            // EigenAI signature verification fields
+            llm_signature: classification.signature,
+            llm_raw_output: classification.rawOutput,
+            llm_model_used: classification.model,
+            llm_chain_id: classification.chainId,
+            llm_reasoning: classification.reasoning,
           },
         });
 

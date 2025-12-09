@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
-import { Home, Wallet, User, Plus } from 'lucide-react';
+import { Home, Wallet, User, Plus, TrendingUp } from 'lucide-react';
 import { Bot, BarChart3, FileText, Copy, Check, LogOut, X } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 
@@ -63,6 +63,15 @@ export function Header() {
               >
                 <Wallet className="h-4 w-4" />
                 <span className="hidden sm:inline">Deployments</span>
+              </button>
+            </Link>
+            <Link href="/your-trades">
+              <button
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                data-testid="nav-your-trades"
+              >
+                <TrendingUp className="h-4 w-4" />
+                <span className="hidden sm:inline">Your Trades</span>
               </button>
             </Link>
             <Link href="/creator">

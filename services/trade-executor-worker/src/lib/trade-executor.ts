@@ -240,8 +240,77 @@ async function executeOstiumTrade(
       throw new Error(`Order must have minimum value of $10. Balance: $${usdcBalance.toFixed(2)}`);
     }
 
+    // ====== STEP 1: Find max leverage for this token from ostium_available_pairs ======
+    const tokenSymbol = signal.token_symbol;
+    
+    // Try multiple matching strategies
+    const possibleSymbols = [
+      `${tokenSymbol}/USD`,  // BTC/USD
+      `USD/${tokenSymbol}`,  // USD/JPY
+    ];
+    
+    let ostiumPair = null;
+    
+    // First try exact matches with /USD or USD/
+    for (const symbol of possibleSymbols) {
+      ostiumPair = await prisma.ostium_available_pairs.findFirst({
+        where: { symbol },
+      });
+      if (ostiumPair) break;
+    }
+    
+    // If no match, try partial match (token appears in either part of the pair)
+    if (!ostiumPair) {
+      ostiumPair = await prisma.ostium_available_pairs.findFirst({
+        where: {
+          OR: [
+            { symbol: { startsWith: `${tokenSymbol}/` } },
+            { symbol: { endsWith: `/${tokenSymbol}` } },
+          ],
+        },
+      });
+    }
+    
+    if (!ostiumPair) {
+      throw new Error(`Token ${tokenSymbol} not found in Ostium available pairs. Please check if this market is supported.`);
+    }
+    
+    const maxLeverage = ostiumPair.max_leverage;
+    console.log(`[TradeExecutor] Found Ostium pair: ${ostiumPair.symbol} with max leverage: ${maxLeverage}x`);
+    
+    // ====== STEP 2: Fetch user trading preferences ======
+    const userPreferences = await prisma.user_trading_preferences.findUnique({
+      where: { user_wallet: deployment.user_wallet.toLowerCase() },
+    });
+    
+    // ====== STEP 3: Calculate weighted score from preferences ======
+    let leveragePercentage = 50; // Default to 50% if no preferences set
+    
+    if (userPreferences) {
+      // Weighted calculation (higher weight for risk_tolerance, social_sentiment, trade_frequency)
+      const weightedScore = 
+        (userPreferences.risk_tolerance * 0.30) +      // 30% weight
+        (userPreferences.social_sentiment_weight * 0.25) + // 25% weight
+        (userPreferences.trade_frequency * 0.25) +     // 25% weight
+        (userPreferences.price_momentum_focus * 0.10) + // 10% weight
+        (userPreferences.market_rank_priority * 0.10);  // 10% weight
+      
+      leveragePercentage = Math.round(weightedScore); // Already 0-100
+      console.log(`[TradeExecutor] User preferences calculated leverage percentage: ${leveragePercentage}%`);
+      console.log(`[TradeExecutor]   - Risk Tolerance: ${userPreferences.risk_tolerance}`);
+      console.log(`[TradeExecutor]   - Social Sentiment: ${userPreferences.social_sentiment_weight}`);
+      console.log(`[TradeExecutor]   - Trade Frequency: ${userPreferences.trade_frequency}`);
+      console.log(`[TradeExecutor]   - Price Momentum: ${userPreferences.price_momentum_focus}`);
+      console.log(`[TradeExecutor]   - Market Rank: ${userPreferences.market_rank_priority}`);
+    } else {
+      console.log(`[TradeExecutor] No user preferences found, using default ${leveragePercentage}% of max leverage`);
+    }
+    
+    // Calculate final leverage as percentage of max leverage
+    const leverage = Math.max(1, Math.floor((maxLeverage * leveragePercentage) / 100));
+    console.log(`[TradeExecutor] Calculated leverage: ${leverage}x (${leveragePercentage}% of max ${maxLeverage}x)`);
+    
     // Calculate collateral based on signal's size_model (Agent HOW percentage)
-    const leverage = sizeModel.leverage || 10;
     let collateralUSDC: number;
     
     if (sizeModel.type === 'fixed-usdc') {

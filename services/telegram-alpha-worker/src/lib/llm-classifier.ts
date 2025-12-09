@@ -9,6 +9,10 @@ interface ClassificationResult {
   sentiment: "bullish" | "bearish" | "neutral";
   confidence: number; // 0-1
   reasoning?: string;
+  signature?: string; // EigenAI response signature for verification
+  rawOutput?: string; // Full raw output from LLM API (for EigenAI signature verification)
+  model?: string; // Model used (for EigenAI signature verification)
+  chainId?: number; // Chain ID (for EigenAI signature verification)
 }
 
 type LLMProvider = "openai" | "anthropic" | "perplexity" | "eigenai";
@@ -59,18 +63,43 @@ export class LLMTweetClassifier {
 
     try {
       let response: string;
+      let signature: string | undefined;
+      let rawOutput: string | undefined;
+      let model: string | undefined;
+      let chainId: number | undefined;
 
       if (this.provider === "openai") {
         response = await this.callOpenAI(prompt);
       } else if (this.provider === "eigenai") {
-        response = await this.callEigenAI(prompt);
+        const eigenResponse = await this.callEigenAI(prompt);
+        response = eigenResponse.content;
+        signature = eigenResponse.signature;
+        rawOutput = eigenResponse.rawOutput;
+        model = eigenResponse.model;
+        chainId = eigenResponse.chainId;
       } else if (this.provider === "perplexity") {
         response = await this.callPerplexity(prompt);
       } else {
         response = await this.callAnthropic(prompt);
       }
 
-      return this.parseResponse(response, tweetText);
+      const result = this.parseResponse(response, tweetText);
+      
+      // Include signature and verification data if available (for EigenAI responses)
+      if (signature) {
+        result.signature = signature;
+      }
+      if (rawOutput) {
+        result.rawOutput = rawOutput;
+      }
+      if (model) {
+        result.model = model;
+      }
+      if (chainId !== undefined) {
+        result.chainId = chainId;
+      }
+      
+      return result;
     } catch (error: any) {
       console.error(
         "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -176,8 +205,15 @@ Respond ONLY with the JSON object, no other text.`;
 
   /**
    * Call EigenAI API (OpenAI-compatible format)
+   * Returns content, signature, and verification metadata
    */
-  private async callEigenAI(prompt: string): Promise<string> {
+  private async callEigenAI(prompt: string): Promise<{ 
+    content: string; 
+    signature?: string; 
+    rawOutput?: string;
+    model?: string;
+    chainId?: number;
+  }> {
     const response = await fetch(`${this.eigenAIBaseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -199,6 +235,7 @@ Respond ONLY with the JSON object, no other text.`;
         ],
         temperature: 0.3,
         max_tokens: 500,
+        seed: 42, // Required for deterministic signatures
         response_format: { type: "json_object" },
       }),
     });
@@ -209,7 +246,25 @@ Respond ONLY with the JSON object, no other text.`;
     }
 
     const data = (await response.json()) as any;
-    return data.choices[0].message.content;
+    
+    // Debug: Log if signature is missing
+    if (!data.signature) {
+      console.warn("[EigenAI] ⚠️  Signature field missing from API response");
+      console.warn("[EigenAI] Response keys:", Object.keys(data));
+    }
+    
+    // Extract the full raw output for signature verification
+    // This includes the <|channel|> tags and all content
+    const rawOutput = data.choices[0].message.content;
+    
+    // EigenAI includes signature field in response for verification
+    return {
+      content: rawOutput, // Return full output (including <|channel|> tags)
+      signature: data.signature,
+      rawOutput: rawOutput, // Store full output for verification
+      model: data.model, // e.g., "gpt-oss-120b-f16"
+      chainId: 1, // EigenAI always uses chain_id = 1 (not in response, hardcoded)
+    };
   }
 
   /**

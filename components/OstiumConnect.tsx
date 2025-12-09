@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { X, Wallet, CheckCircle, AlertCircle, Zap, Activity, ExternalLink } from 'lucide-react';
 import { ethers } from 'ethers';
+import { TradingPreferencesModal } from './TradingPreferencesModal';
 
 interface OstiumConnectProps {
   agentId: string;
@@ -40,7 +41,9 @@ export function OstiumConnect({
   const [usdcApproved, setUsdcApproved] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string>('');
   const [step, setStep] = useState<'connect' | 'agent' | 'delegate' | 'usdc' | 'complete'>('connect');
-
+  const [hasPreferences, setHasPreferences] = useState(false);
+  const [showPreferencesModal, setShowPreferencesModal] = useState(false);
+  
   // Guard refs to prevent duplicate API calls
   const isCheckingRef = useRef(false);
   const isAssigningRef = useRef(false);
@@ -55,6 +58,13 @@ export function OstiumConnect({
     }
   }, [authenticated, user?.wallet?.address, step, hasInitialized]);
 
+  // Auto-open preferences when connected and none set
+  useEffect(() => {
+    if (authenticated && user?.wallet?.address && !hasPreferences) {
+      setShowPreferencesModal(true);
+    }
+  }, [authenticated, user?.wallet?.address, hasPreferences]);
+
   const checkSetupStatus = async () => {
     if (!user?.wallet?.address) return;
 
@@ -67,6 +77,7 @@ export function OstiumConnect({
 
     try {
       console.log('[OstiumConnect] Checking setup status for wallet:', user.wallet.address);
+      await checkUserPreferences(user.wallet.address);
       const setupResponse = await fetch(`/api/user/check-setup-status?userWallet=${user.wallet.address}&agentId=${agentId}`);
 
       if (setupResponse.ok) {
@@ -144,7 +155,25 @@ export function OstiumConnect({
       await assignAgent();
     } finally {
       isCheckingRef.current = false;
-      setLoading(false);
+    }
+  };
+
+  const checkUserPreferences = async (wallet: string) => {
+    try {
+      const response = await fetch(`/api/user/trading-preferences?wallet=${wallet}`);
+      if (response.ok) {
+        const data = await response.json();
+        const prefs = data.preferences;
+        const hasCustom =
+          prefs.risk_tolerance !== 50 ||
+          prefs.trade_frequency !== 50 ||
+          prefs.social_sentiment_weight !== 50 ||
+          prefs.price_momentum_focus !== 50 ||
+          prefs.market_rank_priority !== 50;
+        setHasPreferences(hasCustom);
+      }
+    } catch (err) {
+      console.error('[OstiumConnect] Error checking preferences:', err);
     }
   };
 
@@ -460,6 +489,11 @@ export function OstiumConnect({
     }
   };
 
+  const handlePreferencesSet = async () => {
+    setShowPreferencesModal(false);
+    setHasPreferences(true);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -706,6 +740,14 @@ export function OstiumConnect({
           )}
         </div>
       </div>
+
+      {showPreferencesModal && (
+        <TradingPreferencesModal
+          userWallet={user?.wallet?.address || ''}
+          onClose={() => setShowPreferencesModal(false)}
+          onSave={handlePreferencesSet}
+        />
+      )}
     </div>
   );
 }

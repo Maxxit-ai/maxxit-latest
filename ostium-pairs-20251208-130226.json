@@ -1,0 +1,310 @@
+[
+  {
+    "id": 0,
+    "symbol": "BTC/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  },
+  {
+    "id": 1,
+    "symbol": "ETH/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  },
+  {
+    "id": 2,
+    "symbol": "EUR/USD",
+    "maxLeverage": "200",
+    "makerMaxLeverage": "0",
+    "group": "forex"
+  },
+  {
+    "id": 3,
+    "symbol": "GBP/USD",
+    "maxLeverage": "200",
+    "makerMaxLeverage": "0",
+    "group": "forex"
+  },
+  {
+    "id": 4,
+    "symbol": "USD/JPY",
+    "maxLeverage": "200",
+    "makerMaxLeverage": "0",
+    "group": "forex"
+  },
+  {
+    "id": 5,
+    "symbol": "XAU/USD",
+    "maxLeverage": "150",
+    "makerMaxLeverage": "0",
+    "group": "commodities"
+  },
+  {
+    "id": 6,
+    "symbol": "HG/USD",
+    "maxLeverage": "150",
+    "makerMaxLeverage": "0",
+    "group": "commodities"
+  },
+  {
+    "id": 7,
+    "symbol": "CL/USD",
+    "maxLeverage": "150",
+    "makerMaxLeverage": "0",
+    "group": "commodities"
+  },
+  {
+    "id": 8,
+    "symbol": "XAG/USD",
+    "maxLeverage": "150",
+    "makerMaxLeverage": "0",
+    "group": "commodities"
+  },
+  {
+    "id": 9,
+    "symbol": "SOL/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  },
+  {
+    "id": 10,
+    "symbol": "SPX/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "indices"
+  },
+  {
+    "id": 11,
+    "symbol": "DJI/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "indices"
+  },
+  {
+    "id": 12,
+    "symbol": "NDX/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "indices"
+  },
+  {
+    "id": 13,
+    "symbol": "NIK/JPY",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "indices"
+  },
+  {
+    "id": 14,
+    "symbol": "FTSE/GBP",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "indices"
+  },
+  {
+    "id": 15,
+    "symbol": "DAX/EUR",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "indices"
+  },
+  {
+    "id": 16,
+    "symbol": "USD/CAD",
+    "maxLeverage": "200",
+    "makerMaxLeverage": "0",
+    "group": "forex"
+  },
+  {
+    "id": 17,
+    "symbol": "USD/MXN",
+    "maxLeverage": "200",
+    "makerMaxLeverage": "0",
+    "group": "forex"
+  },
+  {
+    "id": 18,
+    "symbol": "NVDA/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 19,
+    "symbol": "GOOG/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 20,
+    "symbol": "AMZN/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 21,
+    "symbol": "META/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 22,
+    "symbol": "TSLA/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 23,
+    "symbol": "AAPL/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 24,
+    "symbol": "MSFT/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 25,
+    "symbol": "USD/CHF",
+    "maxLeverage": "200",
+    "makerMaxLeverage": "0",
+    "group": "forex"
+  },
+  {
+    "id": 26,
+    "symbol": "AUD/USD",
+    "maxLeverage": "200",
+    "makerMaxLeverage": "0",
+    "group": "forex"
+  },
+  {
+    "id": 27,
+    "symbol": "NZD/USD",
+    "maxLeverage": "200",
+    "makerMaxLeverage": "0",
+    "group": "forex"
+  },
+  {
+    "id": 28,
+    "symbol": "XPD/USD",
+    "maxLeverage": "150",
+    "makerMaxLeverage": "0",
+    "group": "commodities"
+  },
+  {
+    "id": 29,
+    "symbol": "XPT/USD",
+    "maxLeverage": "150",
+    "makerMaxLeverage": "0",
+    "group": "commodities"
+  },
+  {
+    "id": 30,
+    "symbol": "HSI/HKD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "indices"
+  },
+  {
+    "id": 31,
+    "symbol": "COIN/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 32,
+    "symbol": "HOOD/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 33,
+    "symbol": "MSTR/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 34,
+    "symbol": "CRCL/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 35,
+    "symbol": "BMNR/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 36,
+    "symbol": "SBET/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 37,
+    "symbol": "GLXY/USD",
+    "maxLeverage": "100",
+    "makerMaxLeverage": "0",
+    "group": "stocks"
+  },
+  {
+    "id": 38,
+    "symbol": "BNB/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  },
+  {
+    "id": 39,
+    "symbol": "XRP/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  },
+  {
+    "id": 40,
+    "symbol": "TRX/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  },
+  {
+    "id": 41,
+    "symbol": "HYPE/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  },
+  {
+    "id": 42,
+    "symbol": "LINK/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  },
+  {
+    "id": 43,
+    "symbol": "ADA/USD",
+    "maxLeverage": "50",
+    "makerMaxLeverage": "20",
+    "group": "crypto"
+  }
+]

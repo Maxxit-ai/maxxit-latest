@@ -108,6 +108,13 @@ export function HyperliquidConnect({
     }
   };
 
+  // Auto-open preferences modal when we reach the preferences step and user has none set
+  useEffect(() => {
+    if (step === 'preferences' && !hasPreferences) {
+      setShowPreferencesModal(true);
+    }
+  }, [step, hasPreferences]);
+
   const connectWallet = async () => {
     if (!window.ethereum) {
       setError('MetaMask not found. Please install MetaMask.');

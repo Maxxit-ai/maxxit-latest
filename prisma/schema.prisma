@@ -509,6 +509,18 @@ model venue_markets {
   @@index([venue, token_symbol])
 }
 
+model ostium_available_pairs {
+  id                  Int       @id
+  symbol              String
+  max_leverage        Float?
+  maker_max_leverage  Float?
+  group               String?
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@index([group])
+}
+
 model venue_routing_config {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   agent_id         String?  @unique @db.Uuid

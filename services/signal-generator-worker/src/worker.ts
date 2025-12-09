@@ -185,15 +185,13 @@ async function generateSignals() {
           // Generate signal for each subscribed agent using the precomputed data
           for (const agent of subscribedAgents) {
             try {
-              const signalCreated = await generateSignalForAgentAndToken(
+              await generateSignalForAgentAndToken(
                 tweet,
                 agent,
                 token,
                 lunarCrushData
               );
-              if (signalCreated) {
-                signalsGenerated++;
-              }
+              signalsGenerated++;
             } catch (error: any) {
               console.log(
                 `  ❌ Error generating signal for agent ${agent.name}:`,
@@ -281,15 +279,13 @@ async function generateSignals() {
           // Generate signal for each subscribed agent using the precomputed data
           for (const agent of subscribedAgents) {
             try {
-              const signalCreated = await generateSignalForAgentAndToken(
+              await generateSignalForAgentAndToken(
                 normalizedMessage,
                 agent,
                 token,
                 lunarCrushData
               );
-              if (signalCreated) {
-                signalsGenerated++;
-              }
+              signalsGenerated++;
             } catch (error: any) {
               console.log(
                 `  ❌ Error generating signal for agent ${agent.name}:`,
@@ -422,7 +418,7 @@ async function generateSignalForAgentAndToken(
     reasoning: string | null;
     breakdown: any | null;
   } | null
-): Promise<boolean> {
+) {
   try {
     // Stablecoins should NOT be traded (they are base currency)
     const EXCLUDED_TOKENS = ["USDC", "USDT", "DAI", "USDC.E", "BUSD", "FRAX"];

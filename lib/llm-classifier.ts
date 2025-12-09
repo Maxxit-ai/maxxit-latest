@@ -9,6 +9,7 @@ interface ClassificationResult {
   sentiment: "bullish" | "bearish" | "neutral";
   confidence: number; // 0-1
   reasoning?: string;
+  signature?: string; // EigenAI response signature for verification
 }
 
 type LLMProvider = "openai" | "anthropic" | "perplexity" | "eigenai";
@@ -59,18 +60,26 @@ export class LLMTweetClassifier {
 
     try {
       let response: string;
+      let signature: string | undefined;
 
       if (this.provider === "openai") {
         response = await this.callOpenAI(prompt);
       } else if (this.provider === "eigenai") {
-        response = await this.callEigenAI(prompt);
+        const eigenResponse = await this.callEigenAI(prompt);
+        response = eigenResponse.content;
+        signature = eigenResponse.signature;
       } else if (this.provider === "perplexity") {
         response = await this.callPerplexity(prompt);
       } else {
         response = await this.callAnthropic(prompt);
       }
 
-      return this.parseResponse(response, tweetText);
+      const result = this.parseResponse(response, tweetText);
+      // Include signature if available (for EigenAI responses)
+      if (signature) {
+        result.signature = signature;
+      }
+      return result;
     } catch (error) {
       console.error("[LLM Classifier] Error:", error);
       // Fallback to regex-based classification
@@ -154,8 +163,9 @@ Respond ONLY with the JSON object, no other text.`;
 
   /**
    * Call EigenAI API (OpenAI-compatible format)
+   * Returns both the content and the signature for verification
    */
-  private async callEigenAI(prompt: string): Promise<string> {
+  private async callEigenAI(prompt: string): Promise<{ content: string; signature?: string; fullResponse?: any }> {
     const response = await fetch(`${this.eigenAIBaseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -177,6 +187,7 @@ Respond ONLY with the JSON object, no other text.`;
         ],
         temperature: 0.3,
         max_tokens: 500,
+        seed: 42, // Move seed to root level for EigenAI
         response_format: { type: "json_object" },
       }),
     });
@@ -187,7 +198,24 @@ Respond ONLY with the JSON object, no other text.`;
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    
+    // Debug: Log if signature is missing
+    if (!data.signature) {
+      console.warn("[EigenAI] ⚠️  Signature field missing from API response");
+      console.warn("[EigenAI] Response keys:", Object.keys(data));
+      console.warn("[EigenAI] Full response structure:", JSON.stringify(data, null, 2).substring(0, 500));
+    }
+    
+    // Extract the full raw output for signature verification
+    // This includes the <|channel|> tags and all content
+    const rawOutput = data.choices[0].message.content;
+    
+    // EigenAI includes a signature field in the response for verification
+    return {
+      content: rawOutput, // Return full output (including <|channel|> tags)
+      signature: data.signature,
+      fullResponse: data, // Keep full response for debugging/verification
+    };
   }
 
   /**
