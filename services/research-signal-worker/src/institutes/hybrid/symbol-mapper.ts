@@ -1,11 +1,11 @@
 /**
- * Symbol Mapper
+ * Symbol Mapper for Hybrid Institute
  *
- * Maps Ostium venue symbols to Finnhub API symbols
+ * Maps Ostium venue symbols to Finnhub and MarketAux API symbols
  * Different providers use different ticker formats
  */
 
-import { AssetType, SymbolMapping } from "./types";
+import { AssetType, SymbolMapping } from "../../providers/types";
 
 /**
  * Mapping configuration for Ostium symbols to Finnhub tickers
@@ -150,3 +150,4 @@ export function getSupportedNonCryptoSymbols(): string[] {
 export function isSymbolSupported(ostiumSymbol: string): boolean {
   return ostiumSymbol.toUpperCase() in FINNHUB_SYMBOL_MAP;
 }
+

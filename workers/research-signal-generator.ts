@@ -1,29 +1,39 @@
 /**
  * Research Signal Generator Worker
  * Processes research institute signals and creates trading signals for subscribed agents
- * 
+ *
  * Uses Agent HOW: Personalized position sizing based on user preferences
- * 
+ *
  * Run: npx tsx workers/research-signal-generator.ts
  */
 
-import { parseResearchSignal } from '../lib/research-signal-parser';
-import { prisma } from '../lib/prisma';
-import { getPositionSizeForSignal } from '../lib/agent-how';
+import { parseResearchSignal } from "../lib/research-signal-parser";
+import { prisma } from "../lib/prisma";
+import { getPositionSizeForSignal } from "../lib/agent-how";
 
 async function processResearchSignals() {
-  console.log('\n╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║                                                               ║');
-  console.log('║      📊 RESEARCH SIGNAL GENERATOR WORKER                     ║');
-  console.log('║                                                               ║');
-  console.log('╚═══════════════════════════════════════════════════════════════╝\n');
+  console.log(
+    "\n╔═══════════════════════════════════════════════════════════════╗"
+  );
+  console.log(
+    "║                                                               ║"
+  );
+  console.log(
+    "║      📊 RESEARCH SIGNAL GENERATOR WORKER                     ║"
+  );
+  console.log(
+    "║                                                               ║"
+  );
+  console.log(
+    "╚═══════════════════════════════════════════════════════════════╝\n"
+  );
 
   try {
     // Get unprocessed research signals that are valid
     const signals = await prisma.research_signals.findMany({
       where: {
-        processed_for_trades: false,
-        is_valid_signal: true, // Only process signals marked as valid
+        processed_for_signals: false,
+        is_signal_candidate: true, // Only process signals marked as valid
       },
       include: {
         research_institutes: {
@@ -44,15 +54,17 @@ async function processResearchSignals() {
         },
       },
       orderBy: {
-        created_at: 'asc',
+        created_at: "asc",
       },
       take: 50, // Process max 50 signals at a time
     });
 
-    console.log(`📊 Found ${signals.length} unprocessed valid research signals\n`);
+    console.log(
+      `📊 Found ${signals.length} unprocessed valid research signals\n`
+    );
 
     if (signals.length === 0) {
-      console.log('✅ No signals to process\n');
+      console.log("✅ No signals to process\n");
       return { success: true, signalsProcessed: 0 };
     }
 
@@ -61,18 +73,40 @@ async function processResearchSignals() {
 
     for (const signal of signals) {
       try {
-        console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        const tokens = signal.extracted_tokens || [];
+        const token = tokens[0] || null;
+
+        if (!token) {
+          console.log(
+            `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+          );
+          console.log(
+            `📝 Skipping Signal: ${signal.id.substring(
+              0,
+              8
+            )}... (no token extracted)`
+          );
+          await prisma.research_signals.update({
+            where: { id: signal.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        console.log(
+          `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+        );
         console.log(`📝 Processing Signal: ${signal.id.substring(0, 8)}...`);
         console.log(`   Institute: ${signal.research_institutes.name}`);
-        console.log(`   Token: ${signal.extracted_token}`);
-        console.log(`   Side: ${signal.extracted_side}`);
+        console.log(`   Tokens: ${tokens.join(", ") || "none"}`);
+        console.log(`   Side: ${signal.signal_type}`);
         console.log(`   Leverage: ${signal.extracted_leverage}x`);
 
         // Get agents following this institute
         const agentLinks = signal.research_institutes.agent_research_institutes;
         const activeAgents = agentLinks
-          .map(link => link.agents)
-          .filter(agent => agent.status === 'ACTIVE');
+          .map((link) => link.agents)
+          .filter((agent) => agent.status === "PUBLIC");
 
         console.log(`   👥 Active agents following: ${activeAgents.length}`);
 
@@ -80,7 +114,7 @@ async function processResearchSignals() {
           console.log(`   ⚠️  No active agents - skipping`);
           await prisma.research_signals.update({
             where: { id: signal.id },
-            data: { processed_for_trades: true },
+            data: { processed_for_signals: true },
           });
           signalsProcessed++;
           continue;
@@ -92,13 +126,17 @@ async function processResearchSignals() {
             // Check for duplicate (same agent, token, same 6h bucket)
             const now = new Date();
             const bucket6hStart = new Date(
-              Math.floor(now.getTime() / (6 * 60 * 60 * 1000)) * 6 * 60 * 60 * 1000
+              Math.floor(now.getTime() / (6 * 60 * 60 * 1000)) *
+                6 *
+                60 *
+                60 *
+                1000
             );
 
             const existing = await prisma.signals.findFirst({
               where: {
                 agent_id: agent.id,
-                token_symbol: signal.extracted_token,
+                token_symbol: token,
                 created_at: {
                   gte: bucket6hStart,
                 },
@@ -106,24 +144,28 @@ async function processResearchSignals() {
             });
 
             if (existing) {
-              console.log(`      ⚠️  ${agent.name}: Signal already exists for this token in current bucket`);
+              console.log(
+                `      ⚠️  ${agent.name}: Signal already exists for this token in current bucket`
+              );
               continue;
             }
 
             // For MULTI venue agents, default to HYPERLIQUID (Agent Where will route dynamically)
-            const signalVenue = agent.venue === 'MULTI' ? 'HYPERLIQUID' : agent.venue;
+            const signalVenue =
+              agent.venue === "MULTI" ? "HYPERLIQUID" : agent.venue;
 
             // Get personalized position size using Agent HOW
             // Use first active deployment's user preferences (or default 5% if no deployments)
             let positionSize = 5; // Default
-            let reasoning = 'Default position size (no user preferences available)';
-            
+            let reasoning =
+              "Default position size (no user preferences available)";
+
             try {
               // Get active deployments for this agent
               const deployments = await prisma.agent_deployments.findMany({
                 where: {
                   agent_id: agent.id,
-                  status: 'ACTIVE',
+                  status: "ACTIVE",
                 },
                 select: {
                   user_wallet: true,
@@ -133,10 +175,10 @@ async function processResearchSignals() {
 
               if (deployments.length > 0) {
                 const userWallet = deployments[0].user_wallet;
-                
+
                 // Calculate personalized position size (Agent HOW)
                 const positionResult = await getPositionSizeForSignal({
-                  tokenSymbol: signal.extracted_token!,
+                  tokenSymbol: token!,
                   confidence: 0.7, // Research signals have default 70% confidence
                   userWallet,
                   venue: signalVenue,
@@ -144,10 +186,14 @@ async function processResearchSignals() {
 
                 positionSize = positionResult.value;
                 reasoning = positionResult.reasoning;
-                console.log(`      📊 Agent HOW: ${positionSize.toFixed(2)}% position`);
+                console.log(
+                  `      📊 Agent HOW: ${positionSize.toFixed(2)}% position`
+                );
               }
             } catch (sizeError: any) {
-              console.log(`      ⚠️  Agent HOW failed: ${sizeError.message} - using default 5%`);
+              console.log(
+                `      ⚠️  Agent HOW failed: ${sizeError.message} - using default 5%`
+              );
             }
 
             // Create trading signal with PERSONALIZED position size
@@ -155,10 +201,10 @@ async function processResearchSignals() {
               data: {
                 agent_id: agent.id,
                 venue: signalVenue, // MULTI agents → HYPERLIQUID (Agent Where will re-route if needed)
-                token_symbol: signal.extracted_token!,
-                side: signal.extracted_side!,
+                token_symbol: token!,
+                side: signal.signal_type!,
                 size_model: {
-                  type: 'balance-percentage',
+                  type: "balance-percentage",
                   value: positionSize, // PERSONALIZED via Agent HOW
                   reasoning, // Store reasoning for transparency
                 },
@@ -173,17 +219,26 @@ async function processResearchSignals() {
               },
             });
 
-            console.log(`      ✅ ${agent.name} (${agent.venue}): Signal ${tradingSignal.id.substring(0, 8)}... (${positionSize.toFixed(2)}% position)`);
+            console.log(
+              `      ✅ ${agent.name} (${
+                agent.venue
+              }): Signal ${tradingSignal.id.substring(
+                0,
+                8
+              )}... (${positionSize.toFixed(2)}% position)`
+            );
             tradingSignalsCreated++;
           } catch (agentError: any) {
-            console.error(`      ❌ ${agent.name}: Failed - ${agentError.message}`);
+            console.error(
+              `      ❌ ${agent.name}: Failed - ${agentError.message}`
+            );
           }
         }
 
         // Mark research signal as processed
         await prisma.research_signals.update({
           where: { id: signal.id },
-          data: { processed_for_trades: true },
+          data: { processed_for_signals: true },
         });
 
         signalsProcessed++;
@@ -192,11 +247,11 @@ async function processResearchSignals() {
       }
     }
 
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log(`\n📈 Summary:`);
     console.log(`   Research signals processed: ${signalsProcessed}`);
     console.log(`   Trading signals created: ${tradingSignalsCreated}`);
-    console.log('\n✅ Research signal generation complete!\n');
+    console.log("\n✅ Research signal generation complete!\n");
 
     return {
       success: true,
@@ -204,7 +259,7 @@ async function processResearchSignals() {
       tradingSignalsCreated,
     };
   } catch (error: any) {
-    console.error('\n❌ Fatal error:', error.message);
+    console.error("\n❌ Fatal error:", error.message);
     console.error(error.stack);
     return { success: false, error: error.message };
   }
@@ -215,15 +270,14 @@ async function processResearchSignals() {
 const isMainModule = import.meta.url === `file://${process.argv[1]}`;
 if (isMainModule) {
   processResearchSignals()
-    .then(result => {
-      console.log('[ResearchSignalWorker] Result:', result);
+    .then((result) => {
+      console.log("[ResearchSignalWorker] Result:", result);
       process.exit(result.success ? 0 : 1);
     })
-    .catch(error => {
-      console.error('[ResearchSignalWorker] Fatal error:', error);
+    .catch((error) => {
+      console.error("[ResearchSignalWorker] Fatal error:", error);
       process.exit(1);
     });
 }
 
 export { processResearchSignals };
-

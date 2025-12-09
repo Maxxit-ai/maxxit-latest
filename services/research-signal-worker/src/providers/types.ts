@@ -1,7 +1,7 @@
 /**
- * Data Provider Types
+ * Shared Data Provider Types
  *
- * Shared interfaces for all market data providers (Finnhub, etc.)
+ * Shared interfaces for all market data providers
  * Designed for modularity - new providers can implement these interfaces
  */
 

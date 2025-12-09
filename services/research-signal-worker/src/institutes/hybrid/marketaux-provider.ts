@@ -1,5 +1,5 @@
 /**
- * MarketAux Data Provider
+ * MarketAux Data Provider for Hybrid Institute
  *
  * Fetches financial news with sentiment analysis from MarketAux API (Free tier)
  * API Reference: https://www.marketaux.com/documentation
@@ -19,7 +19,7 @@ import {
   AssetType,
   ProviderConfig,
   NewsSentiment,
-} from "./types";
+} from "../../providers/types";
 
 const MARKETAUX_BASE_URL = "https://api.marketaux.com/v1";
 
@@ -363,3 +363,4 @@ export function createMarketAuxProvider(): MarketAuxProvider | null {
 
   return new MarketAuxProvider({ apiKey });
 }
+
