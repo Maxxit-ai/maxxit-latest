@@ -1,9 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { bucket6hUtc } from '../../../lib/time-utils';
 import { createLunarCrushScorer } from '../../../lib/lunarcrush-score';
-
-const prisma = new PrismaClient();
 
 /**
  * Admin endpoint to trigger signal creation once for testing

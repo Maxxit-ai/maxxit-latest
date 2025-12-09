@@ -1,8 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { z } from 'zod';
-
-const prisma = new PrismaClient();
 
 const createCtAccountSchema = z.object({
   xUsername: z.string().min(1).max(50),

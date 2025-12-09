@@ -1,12 +1,10 @@
-#!/usr/bin/env ts-node
+import { prisma } from '../lib/prisma';
+
+// #!/usr/bin/env ts-node
 /**
  * Sync Hyperliquid Markets to Database
  * Fetches all available markets from Hyperliquid API and stores them in venue_markets table
  */
-
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
 
 async function syncHyperliquidMarkets() {
   console.log('🔄 Syncing Hyperliquid Markets from API...\n');
@@ -109,9 +107,8 @@ async function syncHyperliquidMarkets() {
   } catch (error: any) {
     console.error('❌ Fatal error:', error.message);
     throw error;
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 
 // Run if executed directly

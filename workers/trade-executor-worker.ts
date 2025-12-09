@@ -4,9 +4,8 @@
  * Schedule: Every 5 minutes (synced with signal generation)
  */
 
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export async function executeTradesForSignals() {
   console.log('[TradeWorker] Starting trade execution...');
@@ -268,9 +267,8 @@ export async function executeTradesForSignals() {
   } catch (error: any) {
     console.error('[TradeWorker] Fatal error:', error);
     return { success: false, error: error.message };
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 
 // Auto-run if executed directly

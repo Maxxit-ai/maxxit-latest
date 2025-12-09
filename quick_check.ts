@@ -1,9 +1,6 @@
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
-
+import { prisma } from './lib/prisma';
 dotenv.config();
-
-const prisma = new PrismaClient();
 
 async function quickCheck() {
   try {
@@ -178,9 +175,8 @@ async function quickCheck() {
     
   } catch (error: any) {
     console.error('❌ Error:', error.message);
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 
 quickCheck();

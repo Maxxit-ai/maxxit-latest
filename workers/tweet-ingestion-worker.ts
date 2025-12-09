@@ -5,11 +5,9 @@
  */
 
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { createMultiMethodXApiClient } from '../lib/x-api-multi';
 import { classifyTweet } from '../lib/llm-classifier';
-
-const prisma = new PrismaClient();
 
 async function ingestTweets() {
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -206,9 +204,8 @@ async function ingestTweets() {
   } catch (error: any) {
     console.error('\n❌ ERROR during tweet ingestion:', error);
     throw error;
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 
 // Run if executed directly

@@ -1,9 +1,6 @@
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
-
+import { prisma } from './lib/prisma';
 dotenv.config();
-
-const prisma = new PrismaClient();
 
 async function testPipelineFlow() {
   console.log('\n🧪 MANUAL PIPELINE FLOW TEST\n');
@@ -354,9 +351,8 @@ async function testPipelineFlow() {
   } catch (error: any) {
     console.error('❌ Test failed:', error.message);
     console.error(error.stack);
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 
 testPipelineFlow();

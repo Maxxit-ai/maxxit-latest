@@ -1,8 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../../lib/prisma';
 /**
  * Admin endpoint to update APR and Sharpe metrics for an agent
  * 

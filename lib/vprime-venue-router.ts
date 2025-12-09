@@ -3,9 +3,8 @@
  * Agent Where: Intelligent venue routing for multi-venue deployments
  */
 
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export interface VenueRouterInput {
   tokenSymbol: string;

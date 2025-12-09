@@ -7,11 +7,9 @@
  * Run: npx tsx workers/research-signal-generator.ts
  */
 
-import { PrismaClient } from '@prisma/client';
 import { parseResearchSignal } from '../lib/research-signal-parser';
+import { prisma } from '../lib/prisma';
 import { getPositionSizeForSignal } from '../lib/agent-how';
-
-const prisma = new PrismaClient();
 
 async function processResearchSignals() {
   console.log('\n╔═══════════════════════════════════════════════════════════════╗');
@@ -209,9 +207,8 @@ async function processResearchSignals() {
     console.error('\n❌ Fatal error:', error.message);
     console.error(error.stack);
     return { success: false, error: error.message };
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 
 // Auto-run if executed directly

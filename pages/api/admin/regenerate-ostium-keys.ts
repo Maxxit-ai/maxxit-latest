@@ -8,11 +8,9 @@
  * Body: { userWallet?: string } // Optional - if not provided, regenerates all users
  */
 
-import { PrismaClient } from '@prisma/client';
 import { getOrCreateOstiumAgentAddress } from '../../../lib/deployment-agent-address';
+import { prisma } from '../../../lib/prisma';
 import type { NextApiRequest, NextApiResponse } from 'next';
-
-const prisma = new PrismaClient();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -110,8 +108,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       success: false,
       error: error.message || 'Failed to regenerate keys',
     });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

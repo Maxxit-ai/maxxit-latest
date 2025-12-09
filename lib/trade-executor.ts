@@ -3,7 +3,8 @@
  * Routes signals to appropriate venue adapters and manages trade lifecycle
  */
 
-import { PrismaClient, Signal, Venue, AgentDeployment } from '@prisma/client';
+import { PrismaClient, Signal, AgentDeployment } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { createSafeWallet, getChainIdForVenue, SafeWalletService } from './safe-wallet';
 import { createSpotAdapter, SpotAdapter } from './adapters/spot-adapter';
 import { createGMXAdapter, GMXAdapter } from './adapters/gmx-adapter';
@@ -20,8 +21,6 @@ import {
   getOstiumBalance,
   transferOstiumUSDC,
 } from './adapters/ostium-adapter';
-
-const prisma = new PrismaClient();
 
 export interface ExecutionResult {
   success: boolean;
@@ -1286,11 +1285,11 @@ export class TradeExecutor {
       
       // Get token address
       const chain = chainId === 42161 ? 'arbitrum' : 'base';
-      const tokenRegistry = await prisma.tokenRegistry.findUnique({
+      const tokenRegistry = await prisma.token_registry.findUnique({
         where: {
-          chain_tokenSymbol: {
+          chain_token_symbol: {
             chain,
-            tokenSymbol: position.token_symbol,
+            token_symbol: position.token_symbol,
           },
         },
       });

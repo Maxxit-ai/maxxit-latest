@@ -4,10 +4,7 @@
  */
 
 import { ethers } from 'ethers';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../lib/prisma';
 const ARBITRUM_RPC = process.env.ARBITRUM_RPC || 'https://arb1.arbitrum.io/rpc';
 
 // Uniswap V3 Quoter on Arbitrum

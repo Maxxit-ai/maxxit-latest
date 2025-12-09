@@ -1,8 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../../lib/prisma';
 import { parseResearchSignal } from '../../../../lib/research-signal-parser';
-
-const prisma = new PrismaClient();
 
 /**
  * Admin API for ingesting research institute signals

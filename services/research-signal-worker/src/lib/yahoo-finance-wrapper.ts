@@ -14,7 +14,7 @@ async function getYahooFinance() {
     const module = await import("yahoo-finance2");
 
     // yahoo-finance2 exports a default class that needs to be instantiated
-    const YahooFinanceClass = module.default;
+    const YahooFinanceClass: any = module.default;
 
     // Instantiate the class with 'new'
     if (typeof YahooFinanceClass === "function") {

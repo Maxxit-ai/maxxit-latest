@@ -15,9 +15,7 @@
 
 import { ethers } from 'ethers';
 import * as crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from './prisma';
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || process.env.MASTER_ENCRYPTION_KEY;
 
@@ -134,6 +132,8 @@ export function generateAgentWallet(): {
 /**
  * Get or create Hyperliquid agent address for a USER
  * ONE address per user - shared across all agent deployments
+ * 
+ * Uses upsert pattern to handle race conditions safely
  */
 export async function getOrCreateHyperliquidAgentAddress(params: {
   userWallet: string;
@@ -190,44 +190,109 @@ export async function getOrCreateHyperliquidAgentAddress(params: {
   // Generate new agent wallet (first time user deploys)
   const wallet = generateAgentWallet();
 
-  // Store in user_agent_addresses (create or update)
-  if (userAddress) {
-    // User exists but no Hyperliquid address yet
-    await prisma.user_agent_addresses.update({
+  try {
+    // Use upsert to handle race conditions atomically
+    // If record exists, only update if Hyperliquid fields are null
+    // If record doesn't exist, create it
+    const result = await prisma.user_agent_addresses.upsert({
       where: { user_wallet: normalizedWallet },
-      data: {
-        hyperliquid_agent_address: wallet.address,
-        hyperliquid_agent_key_encrypted: wallet.encrypted.encrypted,
-        hyperliquid_agent_key_iv: wallet.encrypted.iv,
-        hyperliquid_agent_key_tag: wallet.encrypted.tag,
-        last_used_at: new Date(),
-      },
-    });
-  } else {
-    // First time user - create new record
-    await prisma.user_agent_addresses.create({
-      data: {
+      create: {
         user_wallet: normalizedWallet,
         hyperliquid_agent_address: wallet.address,
         hyperliquid_agent_key_encrypted: wallet.encrypted.encrypted,
         hyperliquid_agent_key_iv: wallet.encrypted.iv,
         hyperliquid_agent_key_tag: wallet.encrypted.tag,
       },
+      update: {
+        // Only update if not already set (race condition: another request may have created it)
+        hyperliquid_agent_address: userAddress?.hyperliquid_agent_address || wallet.address,
+        hyperliquid_agent_key_encrypted: userAddress?.hyperliquid_agent_key_encrypted || wallet.encrypted.encrypted,
+        hyperliquid_agent_key_iv: userAddress?.hyperliquid_agent_key_iv || wallet.encrypted.iv,
+        hyperliquid_agent_key_tag: userAddress?.hyperliquid_agent_key_tag || wallet.encrypted.tag,
+        last_used_at: new Date(),
+      },
+      select: {
+        hyperliquid_agent_address: true,
+        hyperliquid_agent_key_encrypted: true,
+        hyperliquid_agent_key_iv: true,
+        hyperliquid_agent_key_tag: true,
+      },
     });
+
+    // If the upsert returned existing data (race condition: another request won)
+    // we need to use THAT data, not our newly generated wallet
+    if (result.hyperliquid_agent_address !== wallet.address) {
+      console.log('[UserAgentAddress] Race condition detected - using existing Hyperliquid address:', result.hyperliquid_agent_address);
+      
+      const privateKey = decryptPrivateKey(
+        result.hyperliquid_agent_key_encrypted!,
+        result.hyperliquid_agent_key_iv!,
+        result.hyperliquid_agent_key_tag!
+      );
+
+      return {
+        address: result.hyperliquid_agent_address!,
+        privateKey,
+        encrypted: {
+          encrypted: result.hyperliquid_agent_key_encrypted!,
+          iv: result.hyperliquid_agent_key_iv!,
+          tag: result.hyperliquid_agent_key_tag!,
+        },
+      };
+    }
+
+    console.log('[UserAgentAddress] ✅ Created new Hyperliquid agent address for user:', wallet.address);
+
+    return {
+      address: wallet.address,
+      privateKey: wallet.privateKey,
+      encrypted: wallet.encrypted,
+    };
+  } catch (error: any) {
+    // Handle unique constraint error (P2002) - another request created the record
+    if (error.code === 'P2002') {
+      console.log('[UserAgentAddress] Race condition caught (P2002) - fetching existing record');
+      
+      // Fetch the existing record that was created by the parallel request
+      const existingAddress = await prisma.user_agent_addresses.findUnique({
+        where: { user_wallet: normalizedWallet },
+        select: {
+          hyperliquid_agent_address: true,
+          hyperliquid_agent_key_encrypted: true,
+          hyperliquid_agent_key_iv: true,
+          hyperliquid_agent_key_tag: true,
+        },
+      });
+
+      if (existingAddress?.hyperliquid_agent_address && existingAddress?.hyperliquid_agent_key_encrypted) {
+        const privateKey = decryptPrivateKey(
+          existingAddress.hyperliquid_agent_key_encrypted,
+          existingAddress.hyperliquid_agent_key_iv!,
+          existingAddress.hyperliquid_agent_key_tag!
+        );
+
+        return {
+          address: existingAddress.hyperliquid_agent_address,
+          privateKey,
+          encrypted: {
+            encrypted: existingAddress.hyperliquid_agent_key_encrypted,
+            iv: existingAddress.hyperliquid_agent_key_iv!,
+            tag: existingAddress.hyperliquid_agent_key_tag!,
+          },
+        };
+      }
+    }
+    
+    // Re-throw other errors
+    throw error;
   }
-
-  console.log('[UserAgentAddress] ✅ Created new Hyperliquid agent address for user:', wallet.address);
-
-  return {
-    address: wallet.address,
-    privateKey: wallet.privateKey,
-    encrypted: wallet.encrypted,
-  };
 }
 
 /**
  * Get or create Ostium agent address for a USER
  * ONE address per user - shared across all agent deployments
+ * 
+ * Uses upsert pattern to handle race conditions safely
  */
 export async function getOrCreateOstiumAgentAddress(params: {
   userWallet: string;
@@ -284,39 +349,100 @@ export async function getOrCreateOstiumAgentAddress(params: {
   // Generate new agent wallet (first time user deploys)
   const wallet = generateAgentWallet();
 
-  // Store in user_agent_addresses (create or update)
-  if (userAddress) {
-    // User exists but no Ostium address yet
-    await prisma.user_agent_addresses.update({
+  try {
+    // Use upsert to handle race conditions atomically
+    const result = await prisma.user_agent_addresses.upsert({
       where: { user_wallet: normalizedWallet },
-      data: {
-        ostium_agent_address: wallet.address,
-        ostium_agent_key_encrypted: wallet.encrypted.encrypted,
-        ostium_agent_key_iv: wallet.encrypted.iv,
-        ostium_agent_key_tag: wallet.encrypted.tag,
-        last_used_at: new Date(),
-      },
-    });
-  } else {
-    // First time user - create new record
-    await prisma.user_agent_addresses.create({
-      data: {
+      create: {
         user_wallet: normalizedWallet,
         ostium_agent_address: wallet.address,
         ostium_agent_key_encrypted: wallet.encrypted.encrypted,
         ostium_agent_key_iv: wallet.encrypted.iv,
         ostium_agent_key_tag: wallet.encrypted.tag,
       },
+      update: {
+        // Only update if not already set (race condition: another request may have created it)
+        ostium_agent_address: userAddress?.ostium_agent_address || wallet.address,
+        ostium_agent_key_encrypted: userAddress?.ostium_agent_key_encrypted || wallet.encrypted.encrypted,
+        ostium_agent_key_iv: userAddress?.ostium_agent_key_iv || wallet.encrypted.iv,
+        ostium_agent_key_tag: userAddress?.ostium_agent_key_tag || wallet.encrypted.tag,
+        last_used_at: new Date(),
+      },
+      select: {
+        ostium_agent_address: true,
+        ostium_agent_key_encrypted: true,
+        ostium_agent_key_iv: true,
+        ostium_agent_key_tag: true,
+      },
     });
+
+    // If the upsert returned existing data (race condition: another request won)
+    // we need to use THAT data, not our newly generated wallet
+    if (result.ostium_agent_address !== wallet.address) {
+      console.log('[UserAgentAddress] Race condition detected - using existing Ostium address:', result.ostium_agent_address);
+      
+      const privateKey = decryptPrivateKey(
+        result.ostium_agent_key_encrypted!,
+        result.ostium_agent_key_iv!,
+        result.ostium_agent_key_tag!
+      );
+
+      return {
+        address: result.ostium_agent_address!,
+        privateKey,
+        encrypted: {
+          encrypted: result.ostium_agent_key_encrypted!,
+          iv: result.ostium_agent_key_iv!,
+          tag: result.ostium_agent_key_tag!,
+        },
+      };
+    }
+
+    console.log('[UserAgentAddress] ✅ Created new Ostium agent address for user:', wallet.address);
+
+    return {
+      address: wallet.address,
+      privateKey: wallet.privateKey,
+      encrypted: wallet.encrypted,
+    };
+  } catch (error: any) {
+    // Handle unique constraint error (P2002) - another request created the record
+    if (error.code === 'P2002') {
+      console.log('[UserAgentAddress] Race condition caught (P2002) - fetching existing record');
+      
+      // Fetch the existing record that was created by the parallel request
+      const existingAddress = await prisma.user_agent_addresses.findUnique({
+        where: { user_wallet: normalizedWallet },
+        select: {
+          ostium_agent_address: true,
+          ostium_agent_key_encrypted: true,
+          ostium_agent_key_iv: true,
+          ostium_agent_key_tag: true,
+        },
+      });
+
+      if (existingAddress?.ostium_agent_address && existingAddress?.ostium_agent_key_encrypted) {
+        const privateKey = decryptPrivateKey(
+          existingAddress.ostium_agent_key_encrypted,
+          existingAddress.ostium_agent_key_iv!,
+          existingAddress.ostium_agent_key_tag!
+        );
+
+        return {
+          address: existingAddress.ostium_agent_address,
+          privateKey,
+          encrypted: {
+            encrypted: existingAddress.ostium_agent_key_encrypted,
+            iv: existingAddress.ostium_agent_key_iv!,
+            tag: existingAddress.ostium_agent_key_tag!,
+          },
+        };
+      }
+    }
+    
+    // Re-throw other errors
+    throw error;
   }
-
-  console.log('[UserAgentAddress] ✅ Created new Ostium agent address for user:', wallet.address);
-
-  return {
-    address: wallet.address,
-    privateKey: wallet.privateKey,
-    encrypted: wallet.encrypted,
-  };
 }
 
 /**

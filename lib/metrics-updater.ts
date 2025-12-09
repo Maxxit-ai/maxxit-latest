@@ -3,9 +3,8 @@
  * Updates agent APR and Sharpe ratio after position closes
  */
 
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export interface MetricsUpdateResult {
   success: boolean;

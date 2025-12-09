@@ -1,8 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { createMultiMethodXApiClient } from '../../../lib/x-api-multi';
-
-const prisma = new PrismaClient();
 
 /**
  * Admin endpoint to manually trigger tweet ingestion for a specific CT account or all accounts

@@ -1,8 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../../lib/prisma';
 /**
  * API to list telegram alpha users (individual DM sources)
  * GET /api/telegram-alpha-users

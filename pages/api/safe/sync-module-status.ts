@@ -1,8 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { ethers } from 'ethers';
-
-const prisma = new PrismaClient();
 
 // RPC URLs for different chains
 const RPC_URLS: { [chainId: number]: string } = {
@@ -179,7 +177,6 @@ export default async function handler(
     return res.status(500).json({
       error: error.message || 'Failed to sync module status',
     });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }

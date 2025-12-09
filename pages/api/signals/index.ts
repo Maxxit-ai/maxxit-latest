@@ -1,9 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { bucket6hUtc } from '../../../lib/time-utils';
 import { serializePrisma } from '../../../lib/prisma-serializer';
-
-const prisma = new PrismaClient();
 
 export default async function handler(
   req: NextApiRequest,

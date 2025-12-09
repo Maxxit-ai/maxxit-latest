@@ -1,8 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../../lib/prisma';
 /**
  * DELETE /api/admin/delete-test-tweets
  * Removes all test tweets with IDs starting with "test_"

@@ -1,9 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { z } from 'zod';
 import { AgentStatusEnum } from '@shared/schema';
-
-const prisma = new PrismaClient();
 
 // Partial update schema for agents
 const updateAgentSchema = z.object({

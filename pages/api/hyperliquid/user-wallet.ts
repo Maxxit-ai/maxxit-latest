@@ -4,10 +4,8 @@
  */
 
 import { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { getUserAgentWallet } from '../../../lib/hyperliquid-user-wallet';
-
-const prisma = new PrismaClient();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -136,8 +134,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error: any) {
     console.error('[HyperliquidUserWallet] Error:', error);
     return res.status(500).json({ error: error.message || 'Internal server error' });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

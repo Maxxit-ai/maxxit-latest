@@ -1,7 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../../../lib/prisma';
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 // Map table names to Prisma models (using snake_case as defined in schema)

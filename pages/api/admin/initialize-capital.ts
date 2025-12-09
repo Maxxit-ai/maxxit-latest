@@ -1,9 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { prisma } from '../../../lib/prisma';
 import { ethers } from 'ethers';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
 const RPC_URLS: { [chainId: number]: string } = {
   11155111: process.env.SEPOLIA_RPC || 'https://ethereum-sepolia.publicnode.com',
   42161: process.env.ARBITRUM_RPC || 'https://arb1.arbitrum.io/rpc',
@@ -110,7 +107,6 @@ export default async function handler(
       success: false,
       error: error.message || 'Failed to generate capital initialization transaction data',
     });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }

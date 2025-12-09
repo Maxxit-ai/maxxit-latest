@@ -5,11 +5,9 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { ethers } from 'ethers';
 import crypto from 'crypto';
-
-const prisma = new PrismaClient();
 
 // Encryption settings
 const ENCRYPTION_KEY = process.env.AGENT_WALLET_ENCRYPTION_KEY;
@@ -127,8 +125,7 @@ export default async function handler(
       success: false,
       error: error.message || 'Failed to generate agent wallet' 
     });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

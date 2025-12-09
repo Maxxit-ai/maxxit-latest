@@ -1,8 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../../../lib/prisma';
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -69,8 +66,7 @@ export default async function handler(
     return res.status(500).json({
       error: error.message || 'Failed to fetch positions',
     });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

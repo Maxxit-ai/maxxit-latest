@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { createTelegramBot } from '../../../lib/telegram-bot';
 
-const prisma = new PrismaClient();
 const bot = createTelegramBot();
 
 /**
@@ -85,8 +84,7 @@ export default async function handler(
   } catch (error: any) {
     console.error('[API] Generate link error:', error);
     return res.status(500).json({ error: error.message });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

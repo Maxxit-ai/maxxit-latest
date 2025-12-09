@@ -7,11 +7,8 @@
  */
 
 import { ethers } from 'ethers';
+import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
 const ENCRYPTION_KEY = Buffer.from(
   process.env.AGENT_WALLET_ENCRYPTION_KEY || '',
   'hex'

@@ -1,8 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { classifyTweet } from '../../../lib/llm-classifier';
-
-const prisma = new PrismaClient();
 
 /**
  * Admin endpoint to classify all unclassified tweets

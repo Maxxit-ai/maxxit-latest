@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { createAutomatedAgentSignature, verifyAutomatedAgentSignature } from './agent-automated-signing';
-
-const prisma = new PrismaClient();
+import { prisma } from '../../../lib/prisma';
 
 export interface AutomatedAgentSigningResult {
   isValid: boolean;

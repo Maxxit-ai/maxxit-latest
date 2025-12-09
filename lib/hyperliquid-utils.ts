@@ -3,10 +3,9 @@
  * Helper functions for interacting with Hyperliquid positions and prices
  */
 
-import { PrismaClient } from '@prisma/client';
 import { getPrivateKeyForAddress } from './wallet-pool';
+import { prisma } from '../lib/prisma';
 
-const prisma = new PrismaClient();
 const HYPERLIQUID_SERVICE_URL = process.env.HYPERLIQUID_SERVICE_URL || 'http://localhost:5001';
 
 export interface HyperliquidPosition {

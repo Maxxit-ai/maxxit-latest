@@ -4,10 +4,8 @@
  * Schedule: Every 6 hours (after tweet classification)
  */
 
-import { PrismaClient } from '@prisma/client';
 import { syncAllDeployments } from '../lib/sync-deployments';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export async function generateSignals() {
   console.log('[SignalWorker] Starting signal generation...');
@@ -78,9 +76,8 @@ export async function generateSignals() {
   } catch (error: any) {
     console.error('[SignalWorker] Fatal error:', error);
     return { success: false, error: error.message };
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 
 // Auto-run if executed directly

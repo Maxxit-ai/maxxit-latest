@@ -4,11 +4,9 @@
  * Similar to tweet-ingestion-worker but for Telegram sources
  */
 
-import { PrismaClient } from '@prisma/client';
 import { createLLMClassifier } from '../lib/llm-classifier';
+import { prisma } from '../lib/prisma';
 import fetch from 'node-fetch';
-
-const prisma = new PrismaClient();
 
 // Telegram Bot API configuration
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';

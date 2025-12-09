@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { verifyProofOfIntent } from './proof-of-intent';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export interface ProofVerificationResult {
   isValid: boolean;

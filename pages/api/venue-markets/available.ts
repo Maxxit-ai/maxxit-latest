@@ -1,8 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../../lib/prisma';
 /**
  * GET /api/venue-markets/available
  * Query params: venue (OSTIUM | HYPERLIQUID | GMX | SPOT)
@@ -60,8 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error: any) {
     console.error('[VenueMarkets] Error:', error);
     return res.status(500).json({ error: error.message });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

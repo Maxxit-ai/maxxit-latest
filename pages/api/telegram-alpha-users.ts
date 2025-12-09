@@ -1,8 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../lib/prisma';
 /**
  * GET /api/telegram-alpha-users
  * Fetch all telegram alpha users for agent configuration
@@ -47,8 +44,7 @@ export default async function handler(
       success: false,
       error: error.message || 'Failed to fetch telegram alpha users' 
     });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

@@ -1,8 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../../lib/prisma';
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -41,8 +38,7 @@ export default async function handler(
   } catch (error: any) {
     console.error('[API] Fix Safe address error:', error);
     return res.status(500).json({ error: error.message });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

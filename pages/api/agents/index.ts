@@ -1,9 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { insertAgentSchema } from '@shared/schema';
 import { z } from 'zod';
-
-const prisma = new PrismaClient();
 
 // Convert camelCase to snake_case for Prisma field names
 function camelToSnake(str: string): string {

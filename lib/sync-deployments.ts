@@ -3,10 +3,8 @@
  * This ensures database reflects actual on-chain state
  */
 
-import { PrismaClient } from '@prisma/client';
 import { ethers } from 'ethers';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const RPC_URL = process.env.ARBITRUM_RPC || 'https://arb1.arbitrum.io/rpc';
 const MODULE_ADDRESS = process.env.TRADING_MODULE_ADDRESS || '0x6ad58921173219A19B7c4b6f54C07A4c040bf8Cb';

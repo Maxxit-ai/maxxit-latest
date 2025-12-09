@@ -6,15 +6,14 @@
  * - Real-time price tracking and risk management
  */
 
-import { PrismaClient } from '@prisma/client';
 import { TradeExecutor } from '../lib/trade-executor';
+import { prisma } from '../lib/prisma';
 import { getHyperliquidOpenPositions, getHyperliquidMarketPrice, getHyperliquidUserFills } from '../lib/hyperliquid-utils';
 import { updateMetricsForDeployment } from '../lib/metrics-updater';
 import { calculatePnL } from '../lib/price-oracle';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const prisma = new PrismaClient();
 const executor = new TradeExecutor();
 
 // Lock file to prevent concurrent monitor instances

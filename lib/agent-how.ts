@@ -11,10 +11,8 @@
  * - Agent HOW: Decides funding rate based on user's trading personality
  */
 
-import { PrismaClient } from '@prisma/client';
 import { createLunarCrushScorer } from './lunarcrush-score';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export interface UserTradingPreferences {
   risk_tolerance: number;          // 0-100: Conservative → Aggressive

@@ -1,10 +1,7 @@
 //search.ts (new file)
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../../lib/prisma';
 function snakeToCamel(str: string): string {
   return str.replace(/_([a-z0-9])/gi, (_, char) => char.toUpperCase());
 }

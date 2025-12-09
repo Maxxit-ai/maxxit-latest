@@ -1,8 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../../lib/prisma';
 /**
  * Admin endpoint to add OSTIUM to the venue_t enum
  * Safe to run multiple times (idempotent)
@@ -54,8 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       success: false,
       error: error.message || 'Failed to add OSTIUM to enum',
     });
-  } finally {
-    await prisma.$disconnect();
   }
+  // Note: Don't disconnect - using singleton
 }
 

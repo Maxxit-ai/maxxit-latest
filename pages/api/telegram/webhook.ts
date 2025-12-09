@@ -1,9 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { createTelegramBot, type TelegramUpdate } from '../../../lib/telegram-bot';
 import { createCommandParser } from '../../../lib/telegram-command-parser';
 import { TradeExecutor } from '../../../lib/trade-executor';
-const prisma = new PrismaClient();
 const bot = createTelegramBot();
 const parser = createCommandParser();
 
