@@ -62,10 +62,7 @@ typechain-types/
 
 SIGNAL_GENERATOR_ENV_VALUES.txt
 
-<<<<<<< HEAD
 non-crypto-assets.json
 reference-of-table.json
 ostium-assets.json
-=======
 .vercel
->>>>>>> origin/main

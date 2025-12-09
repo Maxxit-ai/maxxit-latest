@@ -14,6 +14,8 @@ from datetime import datetime
 import traceback
 import ssl
 import warnings
+import asyncio
+import asyncio
 
 # Disable SSL warnings for testnet (dev only)
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
@@ -288,57 +290,115 @@ def get_positions():
         network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
         sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
         
-        # Get open trades using SDK (it's async, so we need to run it)
         import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(sdk.get_open_trades(trader_address=address))
+        
+        # Step 1: Get current open trades
+        open_trades_result = loop.run_until_complete(sdk.get_open_trades(trader_address=address))
+        
+        # Step 2: Get recent history to find TX hashes for matching
+        recent_history = loop.run_until_complete(
+            sdk.subgraph.get_recent_history(trader=address.lower(), last_n_orders=100)
+        )
         loop.close()
         
-        # Parse result - SDK returns tuple (trades_list, trader_address)
-        open_trades = []
-        if isinstance(result, tuple) and len(result) > 0:
-            open_trades = result[0] if isinstance(result[0], list) else []
+        current_open_trades = []
+        if isinstance(open_trades_result, tuple) and len(open_trades_result) > 0:
+            current_open_trades = open_trades_result[0] if isinstance(open_trades_result[0], list) else []
         
-        # Format positions
+        # Build a lookup map from history for TX hashes
+        tx_hash_lookup = {}
+        tx_hash_by_price = {}
+        
+        for history_item in recent_history:
+            order_action = history_item.get('orderAction', '').lower()
+            if order_action == 'open':
+                pair_info = history_item.get('pair', {})
+                pair_id = pair_info.get('id', '')
+                trade_index = history_item.get('index', '0')
+                tx_hash = history_item.get('executedTx', '')
+                
+                if not tx_hash:
+                    continue
+                
+                # Strategy 1: Match by (pair_id, trade_index)
+                lookup_key = f"{pair_id}_{trade_index}"
+                tx_hash_lookup[lookup_key] = tx_hash
+                
+                # Strategy 2: Match by tradeID
+                trade_id = history_item.get('tradeID', '')
+                if trade_id:
+                    tx_hash_lookup[f"trade_{trade_id}"] = tx_hash
+                
+        logger.info(f"Built TX hash lookup with {len(tx_hash_lookup)} index entries, {len(tx_hash_by_price)} price entries")
+        
         positions = []
-        for trade in open_trades:
+        for trade in current_open_trades:
             try:
                 pair_info = trade.get('pair', {})
-                market_symbol = f"{pair_info.get('from', 'UNKNOWN')}/{pair_info.get('to', 'USD')}"
+                pair_from = pair_info.get('from', 'UNKNOWN')
+                pair_id = pair_info.get('id', '')
                 
-                # Ostium SDK doesn't return PnL directly - we need to calculate it
-                # Extract key fields for manual PnL calculation
-                collateral_usdc = float(int(trade.get('collateral', 0)) / 1e6)  # Collateral in USDC
-                entry_price_usd = float(int(trade.get('openPrice', 0)) / 1e18)  # Entry price
-                leverage = float(int(trade.get('leverage', 0)) / 100)  # Leverage
-                trade_notional_wei = int(trade.get('tradeNotional', 0))  # Position size in wei
-                position_size = float(trade_notional_wei / 1e18) if trade_notional_wei > 0 else 0.0  # Position size in tokens
+                token_symbol = pair_from.upper()
+                market_symbol = f"{pair_from}/{pair_info.get('to', 'USD')}"
                 
-                # Extract fees (funding + rollover) - these are in wei (18 decimals)
+                trade_index = trade.get('index', '0')
+                trade_id = trade.get('tradeID', trade.get('index', '0'))
+                
+                lookup_key = f"{pair_id}_{trade_index}"
+                tx_hash = tx_hash_lookup.get(lookup_key, '')
+                
+                if not tx_hash:
+                    tx_hash = tx_hash_lookup.get(f"trade_{trade_id}", '')
+                
+                if not tx_hash:
+                    entry_price_usd = float(int(trade.get('openPrice', 0)) / 1e18)
+                    price_key = f"{pair_id}_{round(entry_price_usd, 6)}"
+                    tx_hash = tx_hash_by_price.get(price_key, '')
+                    if tx_hash:
+                        logger.info(f"Found TX hash by price match for {token_symbol}: {tx_hash[:16]}...")
+                
+                if tx_hash:
+                    logger.info(f"Found TX hash for {token_symbol} position: {tx_hash[:16]}...")
+                else:
+                    logger.warning(f"No TX hash found for {token_symbol} position (index={trade_index}, pair={pair_id})")
+                
+                collateral_usdc = float(int(trade.get('collateral', 0)) / 1e6)
+                entry_price_usd = float(int(trade.get('openPrice', 0)) / 1e18)
+                leverage = float(int(trade.get('leverage', 0)) / 100)
+                trade_notional_wei = int(trade.get('tradeNotional', 0))
+                position_size = float(trade_notional_wei / 1e18) if trade_notional_wei > 0 else 0.0
+                
+                stop_loss_raw = trade.get('stopLossPrice', 0)
+                stop_loss_price = float(int(stop_loss_raw) / 1e18) if stop_loss_raw else 0.0
+                
+                take_profit_raw = trade.get('takeProfitPrice', 0)
+                take_profit_price = float(int(take_profit_raw) / 1e18) if take_profit_raw else 0.0
+                
                 funding_wei = int(trade.get('funding', 0))
                 rollover_wei = int(trade.get('rollover', 0))
                 total_fees_usd = float((funding_wei + rollover_wei) / 1e18)
                 
-                # Get current price from price feed to calculate unrealized PnL
-                # Note: We'll need to fetch current price separately
-                # For now, return 0 and let the position monitor calculate it
-                unrealized_pnl = 0.0
-                
                 positions.append({
-                    "market": market_symbol,
+                    "market": token_symbol,
+                    "marketFull": market_symbol,
                     "side": "long" if trade.get('isBuy') else "short",
-                    "size": collateral_usdc,  # Collateral in USDC
+                    "size": collateral_usdc,
                     "entryPrice": entry_price_usd,
                     "leverage": leverage,
-                    "unrealizedPnl": unrealized_pnl,  # Will be calculated by position monitor
-                    "tradeId": trade.get('tradeID', trade.get('index', '0')),
-                    # New fields for accurate PnL calculation
-                    "tradeNotional": trade_notional_wei,  # Position size in wei
-                    "positionSize": position_size,  # Position size in tokens (human-readable)
-                    "funding": funding_wei,  # Funding fees in wei
-                    "rollover": rollover_wei,  # Rollover fees in wei
-                    "totalFees": total_fees_usd,  # Total fees in USD
+                    "unrealizedPnl": 0.0,
+                    "tradeId": str(trade_id),
+                    "txHash": tx_hash,
+                    "tradeNotional": trade_notional_wei,
+                    "positionSize": position_size,
+                    "funding": funding_wei,
+                    "rollover": rollover_wei,
+                    "totalFees": total_fees_usd,
+                    "pairIndex": pair_id,
+                    "tradeIndex": trade_index,
+                    "stopLossPrice": stop_loss_price,
+                    "takeProfitPrice": take_profit_price,
                 })
             except Exception as parse_error:
                 logger.error(f"Error parsing trade: {parse_error}")
@@ -467,7 +527,6 @@ def open_position():
                 
             except Exception as e:
                 logger.error(f"Error fetching agent key: {e}")
-                import traceback
                 logger.error(traceback.format_exc())
                 return jsonify({
                     "success": False,
@@ -485,11 +544,11 @@ def open_position():
         side = data.get('side', 'long')
         leverage = float(data.get('leverage', 10))
         user_address = data.get('userAddress')
+        deployment_id = data.get('deploymentId')
+        signal_id = data.get('signalId')
         
-        # Protocol-level stop-loss percentage (from signal's risk_model or default to 10%)
-        stop_loss_percent = data.get('stopLossPercent', 0.10)  # Default 10% hard stop loss
+        stop_loss_percent = data.get('stopLossPercent', 0.10)
         
-        # Validation
         if not all([private_key, market, position_size]):
             return jsonify({
                 "success": False,
@@ -512,6 +571,68 @@ def open_position():
         logger.info(f"Opening {side} position: {position_size} USDC on {market} (leverage: {leverage}x, delegation: {use_delegation})")
         if use_delegation:
             logger.info(f"Trading on behalf of: {user_address}")
+        
+        if deployment_id and signal_id:
+            try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
+                
+                database_url = os.getenv('DATABASE_URL')
+                if database_url:
+                    conn = psycopg2.connect(database_url)
+                    cur = conn.cursor(cursor_factory=RealDictCursor)
+                    
+                    # Check if position already exists for this deployment+signal combination
+                    cur.execute(
+                        """
+                        SELECT id, ostium_trade_id, entry_tx_hash, ostium_trade_index 
+                        FROM positions 
+                        WHERE deployment_id = %s 
+                        AND signal_id = %s
+                        AND venue = 'OSTIUM'
+                        LIMIT 1
+                        """,
+                        (deployment_id, signal_id)
+                    )
+                    existing_position = cur.fetchone()
+                    cur.close()
+                    conn.close()
+                    
+                    if existing_position:
+                        # Position already exists for this deployment - return existing order details
+                        existing_trade_id = existing_position.get('ostium_trade_id') or existing_position.get('entry_tx_hash')
+                        existing_index = existing_position.get('ostium_trade_index')
+                        
+                        logger.info(f"✅ IDEMPOTENCY: Position already exists for deployment {deployment_id[:8]}... + signal {signal_id[:8]}...")
+                        logger.info(f"   Returning existing order (tradeId: {existing_trade_id})")
+                        
+                        # Return existing order details (idempotent response)
+                        return jsonify({
+                            "success": True,
+                            "orderId": existing_trade_id or 'pending',
+                            "tradeId": existing_trade_id or 'pending',
+                            "transactionHash": existing_position.get('entry_tx_hash', ''),
+                            "txHash": existing_position.get('entry_tx_hash', ''),
+                            "status": "pending",
+                            "message": "Order already exists (idempotency check - same deployment)",
+                            "actualTradeIndex": existing_index,
+                            "entryPrice": 0,  # Will be updated by position monitor
+                            "slSet": False,
+                            "slError": None,
+                            "result": {
+                                "market": market,
+                                "side": side,
+                                "collateral": position_size,
+                                "leverage": leverage,
+                                "actualTradeIndex": existing_index,
+                                "entryPrice": 0,
+                                "slConfigured": False,
+                                "tpConfigured": False,
+                            }
+                        })
+            except Exception as idempotency_error:
+                logger.warning(f"⚠️  Idempotency check failed: {idempotency_error}")
+                # Continue with order creation if check fails
         
         # Retry logic for SDK operations (handles connection errors during SDK initialization)
         max_sdk_retries = 3
@@ -728,22 +849,40 @@ def open_position():
             logger.info(f"📊 Found {len(open_trades)} open trades")
             
             if len(open_trades) > 0:
-                # Get the most recently opened trade (last in the list)
-                newly_opened_trade = open_trades[-1]
+                newly_opened_trade = None
+                for trade in open_trades:
+                    trade_market = trade.get('pair', {}).get('from', '').upper()
+                    trade_side = "long" if trade.get('isBuy') else "short"
+                    trade_collateral_raw = trade.get('collateral', 0)
+                    trade_collateral = float(int(trade_collateral_raw)) / 1e6 if trade_collateral_raw else 0
+                    
+                    if trade_market == market.upper() and \
+                       trade_side == side.lower() and \
+                       abs(trade_collateral - position_size) / position_size < 0.05:
+                        newly_opened_trade = trade
+                        break
                 
-                # Extract trade index and pair id
-                actual_trade_index = newly_opened_trade.get('index')
-                trade_pair_id = newly_opened_trade.get('pair', {}).get('id')
+                if newly_opened_trade:
+                    actual_trade_index = newly_opened_trade.get('index')
+                    trade_pair_id = newly_opened_trade.get('pair', {}).get('id')
+                    trade_entry_price = float(int(newly_opened_trade.get('openPrice', 0)) / 1e18) if newly_opened_trade.get('openPrice') else 0
+                    
+                    if trade_entry_price > 0:
+                        current_price = trade_entry_price
                 
                 logger.info(f"✅ Found newly opened trade!")
                 logger.info(f"   Trade Index: {actual_trade_index}")
                 logger.info(f"   Pair ID: {trade_pair_id}")
-                logger.info(f"   Entry Price: {newly_opened_trade.get('openPrice')}")
+                logger.info(f"   Entry Price: ${current_price:.4f}")
                 
                 # Verify it's the correct pair
                 if trade_pair_id != str(asset_index):
                     logger.warning(f"⚠️  Pair mismatch! Expected {asset_index}, got {trade_pair_id}")
-                    logger.warning(f"   Using the trade index anyway (might be correct)")
+                    logger.warning(f"   This might be a subgraph delay - position monitor will verify")
+                else:
+                    logger.warning(f"⚠️  No matching open trade found yet - order may not be filled")
+                    logger.warning(f"   Position monitor will update index once position is discovered")
+                    actual_trade_index = None
             else:
                 logger.warning(f"⚠️  No open trades found yet - order may not be filled")
                 logger.warning(f"   Position monitor will set TP/SL once trade is filled")
@@ -753,7 +892,6 @@ def open_position():
             logger.warning(f"⚠️  Error getting trade index via subgraph: {index_err}")
             logger.warning(f"   Order may not be filled yet (keeper takes 1-5 minutes)")
             logger.warning(f"   Position monitor will update index once order is filled")
-            import traceback
             logger.warning(traceback.format_exc())
             actual_trade_index = None
         
@@ -763,51 +901,10 @@ def open_position():
             logger.info(f"ℹ️  Index not available yet (order pending or delegation issue)")
             logger.info(f"   Position monitor will update index once position is discovered")
         
-        # Set SL after position opens (TP is NOT set - monitoring service handles it)
         sl_set_success = False
         sl_error = None
-        
-        if stop_loss_percent and actual_trade_index is not None and current_price > 0:
-            logger.info(f"🎯 Setting SL on position...")
-            logger.info(f"   Trade Index: {actual_trade_index}")
-            logger.info(f"   Pair Index: {asset_index}")
-            logger.info(f"   Entry Price: ${current_price:.4f}")
-            
-            try:
-                # Calculate SL price
-                is_long = side.lower() == 'long'
-                if is_long:
-                    # LONG: SL below entry price
-                    sl_price = current_price * (1 - stop_loss_percent)
-                else:
-                    # SHORT: SL above entry price
-                    sl_price = current_price * (1 + stop_loss_percent)
-                
-                logger.info(f"📉 Setting Stop-Loss: ${sl_price:.4f} ({(stop_loss_percent * 100):.1f}%)")
-                
-                # Call SDK update_sl
-                # Signature: update_sl(pair_id, index, new_sl, trader_address=None)
-                if use_delegation and user_address:
-                    checksummed_user = Web3.to_checksum_address(user_address)
-                    sdk.ostium.update_sl(asset_index, actual_trade_index, sl_price, checksummed_user)
-                else:
-                    sdk.ostium.update_sl(asset_index, actual_trade_index, sl_price)
-                
-                logger.info(f"   ✅ Stop-Loss set successfully")
-                sl_set_success = True
-                logger.info(f"✅ SL configured successfully on position")
-                logger.info(f"✅ TP NOT set - monitoring service handles trailing stops")
-                
-            except Exception as sl_error_ex:
-                sl_error = str(sl_error_ex)
-                logger.error(f"⚠️  Failed to set SL: {sl_error}")
-                logger.error(f"   Position opened successfully, but SL not set")
-                logger.error(f"   You may need to set it manually or via position monitor")
-        elif stop_loss_percent:
-            logger.warning(f"⚠️  SL percentage provided but cannot be set:")
-            logger.warning(f"   - Trade index available: {actual_trade_index is not None}")
-            logger.warning(f"   - Current price available: {current_price > 0}")
-            logger.warning(f"   Position monitor can set SL once trade is filled")
+        logger.info(f"ℹ️  SL will be set by position monitor once keeper fills the order")
+        logger.info(f"   Reason: Need to wait for keeper (1-5 min) and use user's filled position for accurate liquidation price")
         
         # Convert Web3 AttributeDict to regular dict for JSON serialization
         tx_hash = ''
@@ -953,7 +1050,6 @@ def close_position():
                 
             except Exception as e:
                 logger.error(f"Error fetching agent key: {e}")
-                import traceback
                 logger.error(traceback.format_exc())
                 return jsonify({
                     "success": False,
@@ -1045,7 +1141,7 @@ def close_position():
                 cur.execute(
                     """
                     SELECT ostium_trade_index FROM positions 
-                    WHERE entry_tx_hash = %s 
+                    WHERE ostium_trade_id = %s
                     AND venue = 'OSTIUM'
                     AND status = 'OPEN'
                     LIMIT 1
@@ -1061,6 +1157,7 @@ def close_position():
                     logger.info(f"📦 Found stored trade index in DB: {stored_trade_index}")
             except Exception as db_err:
                 logger.warning(f"Could not query DB for stored index: {db_err}")
+                logger.warning(traceback.format_exc())
         
         # Use stored index if available, otherwise fallback to 0
         if stored_trade_index is not None:
@@ -1112,11 +1209,21 @@ def close_position():
             else:
                 pair_index = None
         
-        # Use index=0 (works when there's only ONE position per market per user)
-        # LIMITATION: Multiple positions per market per user are not currently supported
-        trade_index = 0
         target_trade_id = trade_to_close.get('tradeID')
-        logger.info(f"🎯 Closing tradeID {target_trade_id} for {market} using index=0")
+        target_trade_index = trade_to_close.get('index', 0)
+        
+        # Use stored trade index if provided in request (from database), otherwise use from trade data
+        if stored_trade_index is not None:
+            trade_index = int(stored_trade_index)
+            logger.info(f"🎯 Using STORED trade index: {trade_index}")
+        elif target_trade_index is not None:
+            trade_index = int(target_trade_index)
+            logger.info(f"🎯 Using trade index from Ostium: {trade_index}")
+        else:
+            trade_index = 0
+            logger.warning(f"⚠️ No trade index available, using 0 as fallback (risky!)")
+        
+        logger.info(f"🎯 Closing tradeID {target_trade_id} for {market} using index={trade_index}")
         
         # Validate required fields
         if pair_index is None:
@@ -1308,7 +1415,7 @@ def close_position():
             # Re-raise other errors to be caught by outer exception handler
             raise
         
-        # Get realized PnL from result
+        # Note: APR calculator worker will sync accurate PnL from subgraph later
         realized_pnl = float(trade_to_close.get('pnl', 0))
         
         # Extract tx hash - SDK might return dict or receipt object
@@ -1373,7 +1480,7 @@ def transfer_usdc():
         # Execute transfer (withdraw to platform wallet)
         result = sdk.ostium.withdraw(
             amount=amount,
-            destination=to_address
+            receiving_address=to_address
         )
         
         logger.info(f"✅ Transfer complete: {result.get('transactionHash')}")
@@ -1392,6 +1499,34 @@ def transfer_usdc():
         logger.error(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+@app.route('/order-by-id', methods=['POST'])
+def get_order_by_id():
+    """
+    Fetch a single order (open or close) by order ID from the subgraph.
+    Body: { "orderId": "12345" }
+    """
+    try:
+        data = request.json
+        order_id = data.get('orderId')
+
+        if not order_id:
+            return jsonify({"success": False, "error": "orderId is required"}), 400
+
+        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        dummy_key = '0x' + '0' * 64
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+
+        order = asyncio.run(sdk.subgraph.get_order_by_id(order_id))
+
+        return jsonify({
+            "success": True,
+            "order": order[0] if isinstance(order, list) and len(order) > 0 else order
+        })
+    except Exception as e:
+        logger.error(f"get_order_by_id error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/approve-agent', methods=['POST'])
 def approve_agent():
@@ -1601,6 +1736,398 @@ def validate_market_endpoint():
         })
     except Exception as e:
         logger.error(f"Market validation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/closed-positions', methods=['POST'])
+def get_closed_positions():
+    """
+    Get closed position history for an address from Ostium subgraph
+    Body: { "address": "0x...", "count": 50 }
+    Returns closed positions with PnL information
+    """
+    try:
+        data = request.json
+        address = data.get('address')
+        count = int(data.get('count', 50))
+        
+        if not address:
+            return jsonify({"success": False, "error": "Missing address"}), 400
+        
+        address = address.lower()
+        
+        dummy_key = '0x' + '1' * 64
+        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        history = loop.run_until_complete(
+            sdk.subgraph.get_recent_history(trader=address, last_n_orders=count)
+        )
+        loop.close()
+        
+        if not history:
+            logger.info(f"No history found for {address}")
+            return jsonify({
+                "success": True,
+                "positions": [],
+                "count": 0
+            })
+        
+        # Filter to only closed trades (Close, TakeProfit, StopLoss, Liquidation)
+        close_actions = {'close', 'takeprofit', 'stoploss', 'liquidation'}
+        
+        closed_positions = []
+        for item in history:
+            order_action = item.get('orderAction', '').lower()
+            
+            pair_info = item.get('pair', {})
+            pair_from = pair_info.get('from', 'UNKNOWN')
+            pair_to = pair_info.get('to', 'USD')
+            
+            collateral_raw = item.get('collateral', 0)
+            collateral_usdc = float(int(collateral_raw)) / 1e6 if collateral_raw else 0
+            
+            amount_sent_raw = item.get('amountSentToTrader', 0)
+            amount_sent = float(int(amount_sent_raw)) / 1e6 if amount_sent_raw else 0
+            
+            price_raw = item.get('price', 0)
+            price = float(int(price_raw)) / 1e18 if price_raw else 0
+            
+            leverage_raw = item.get('leverage', 0)
+            leverage = int(float(leverage_raw)) // 100 if leverage_raw else 0
+            
+            profit_percent_raw = item.get('profitPercent', 0)
+            profit_percent = float(int(profit_percent_raw)) / 1e6 if profit_percent_raw else 0
+            
+            total_profit_percent_raw = item.get('totalProfitPercent', 0)
+            total_profit_percent = float(int(total_profit_percent_raw)) / 1e6 if total_profit_percent_raw else 0
+            
+            pnl_usdc = amount_sent - collateral_usdc if order_action in close_actions else 0
+            
+            # Fees (scaled by 10^6)
+            rollover_fee_raw = item.get('rolloverFee', 0)
+            rollover_fee = float(int(rollover_fee_raw)) / 1e6 if rollover_fee_raw else 0
+            
+            funding_fee_raw = item.get('fundingFee', 0)
+            funding_fee = float(int(funding_fee_raw)) / 1e6 if funding_fee_raw else 0
+            
+            position = {
+                "market": pair_from.upper(),
+                "marketFull": f"{pair_from}/{pair_to}",
+                "side": "long" if item.get('isBuy') else "short",
+                "orderAction": item.get('orderAction', 'Unknown'),
+                "collateral": collateral_usdc,
+                "leverage": leverage,
+                "price": price,
+                "amountSentToTrader": amount_sent,
+                "pnlUsdc": pnl_usdc,
+                "profitPercent": profit_percent,
+                "totalProfitPercent": total_profit_percent,
+                "rolloverFee": rollover_fee,
+                "fundingFee": funding_fee,
+                "executedAt": item.get('executedAt'),
+                "executedTx": item.get('executedTx', ''),
+                "tradeId": item.get('id', ''),
+                "tradeIndex": item.get('index'),
+                "isCancelled": item.get('isCancelled', False),
+                "cancelReason": item.get('cancelReason', ''),
+            }
+            
+            closed_positions.append(position)
+        
+        logger.info(f"Found {len(closed_positions)} positions in history for {address}")
+        
+        return jsonify({
+            "success": True,
+            "positions": closed_positions,
+            "count": len(closed_positions),
+            "totalOrders": len(history)
+        })
+    
+    except Exception as e:
+        logger.error(f"Get closed positions error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/set-stop-loss', methods=['POST'])
+def set_stop_loss():
+    """
+    Set stop-loss with liquidation price validation
+    Body: {
+        "agentAddress": "0x...",
+        "userAddress": "0x...",
+        "market": "BTC",
+        "tradeIndex": 2,
+        "stopLossPercent": 0.10,
+        "currentPrice": 90000,
+        "pairIndex": 0,
+        "useDelegation": true
+    }
+    """
+    try:
+        data = request.json
+        agent_address = data.get('agentAddress')
+        user_address = data.get('userAddress')
+        market = data.get('market')
+        trade_index = data.get('tradeIndex')
+        stop_loss_percent = float(data.get('stopLossPercent', 0.10))
+        current_price = float(data.get('currentPrice'))
+        pair_index = data.get('pairIndex')
+        use_delegation = data.get('useDelegation', True)
+        
+        if not all([agent_address, user_address, market, trade_index is not None, current_price, pair_index is not None]):
+            return jsonify({
+                "success": False,
+                "error": "Missing required fields"
+            }), 400
+        
+        logger.info(f"Setting SL for {market} (trade_index={trade_index}, pair_index={pair_index})")
+        logger.info(f"   User: {user_address}, Agent: {agent_address}")
+        logger.info(f"   SL%: {stop_loss_percent * 100:.1f}%, Current Price: ${current_price:.4f}")
+        
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            import sys
+            sys.path.insert(0, os.path.dirname(__file__))
+            from encryption_helper import decrypt_private_key
+            
+            database_url = os.getenv('DATABASE_URL')
+            if not database_url:
+                return jsonify({"success": False, "error": "DATABASE_URL not configured"}), 500
+            
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cur.execute(
+                """
+                SELECT 
+                    ostium_agent_key_encrypted,
+                    ostium_agent_key_iv,
+                    ostium_agent_key_tag
+                FROM user_agent_addresses 
+                WHERE LOWER(ostium_agent_address) = LOWER(%s)
+                """,
+                (agent_address,)
+            )
+            user_address_row = cur.fetchone()
+            
+            if not user_address_row or not user_address_row['ostium_agent_key_encrypted']:
+                cur.close()
+                conn.close()
+                return jsonify({"success": False, "error": f"Agent address {agent_address} not found"}), 404
+            
+            private_key = decrypt_private_key(
+                user_address_row['ostium_agent_key_encrypted'],
+                user_address_row['ostium_agent_key_iv'],
+                user_address_row['ostium_agent_key_tag']
+            )
+            cur.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Error fetching agent key: {e}")
+            return jsonify({"success": False, "error": f"Failed to fetch agent key: {str(e)}"}), 500
+        
+        sdk = get_sdk(private_key, use_delegation)
+        
+        liquidation_price = None
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            checksummed_user = Web3.to_checksum_address(user_address)
+            logger.info(f"   Querying liquidation price for user: {checksummed_user}")
+            
+            metrics = loop.run_until_complete(
+                sdk.get_open_trade_metrics(pair_index, trade_index, trader_address=checksummed_user)
+            )
+            loop.close()
+            
+            liquidation_price = metrics.get('liquidation_price')
+            if liquidation_price:
+                logger.info(f"   Liquidation Price: ${liquidation_price:.4f}")
+            else:
+                logger.warning(f"   ⚠️  Liquidation price not available from SDK")
+        except Exception as liq_error:
+            logger.warning(f"   ⚠️  Could not fetch liquidation price: {liq_error}")
+            logger.warning(f"   Proceeding with SL calculation without validation")
+        
+        is_long = data.get('side', 'long').lower() == 'long'
+        sl_price = current_price * (1 - stop_loss_percent) if is_long else current_price * (1 + stop_loss_percent)
+        
+        logger.info(f"   Initial SL: ${sl_price:.4f} ({stop_loss_percent * 100:.1f}%)")
+        
+        if liquidation_price:
+            LIQUIDATION_BUFFER = 0.02
+            
+            if is_long:
+                min_safe_sl = liquidation_price * (1 + LIQUIDATION_BUFFER)
+                if sl_price < min_safe_sl:
+                    logger.warning(f"   ⚠️  SL ${sl_price:.4f} too close to liq ${liquidation_price:.4f}")
+                    sl_price = min_safe_sl
+                    adjusted_percent = ((current_price - sl_price) / current_price) * 100
+                    logger.info(f"   ✅ Adjusted SL: ${sl_price:.4f} ({adjusted_percent:.1f}% below entry, 2% above liq)")
+            else:
+                max_safe_sl = liquidation_price * (1 - LIQUIDATION_BUFFER)
+                if sl_price > max_safe_sl:
+                    logger.warning(f"   ⚠️  SL ${sl_price:.4f} too close to liq ${liquidation_price:.4f}")
+                    sl_price = max_safe_sl
+                    adjusted_percent = ((sl_price - current_price) / current_price) * 100
+                    logger.info(f"   ✅ Adjusted SL: ${sl_price:.4f} ({adjusted_percent:.1f}% above entry, 2% below liq)")
+        
+        logger.info(f"   Setting SL: ${sl_price:.4f}")
+        
+        try:
+            if use_delegation:
+                checksummed_user = Web3.to_checksum_address(user_address)
+                sdk.ostium.update_sl(pair_index, trade_index, sl_price, checksummed_user)
+            else:
+                sdk.ostium.update_sl(pair_index, trade_index, sl_price)
+            
+            logger.info(f"   ✅ SL set successfully")
+            
+            return jsonify({
+                "success": True,
+                "message": f"SL set to ${sl_price:.4f}",
+                "slPrice": sl_price,
+                "liquidationPrice": liquidation_price,
+                "adjusted": liquidation_price and abs(sl_price - (current_price * (1 - stop_loss_percent if is_long else 1 + stop_loss_percent))) > 0.01
+            })
+            
+        except Exception as sl_error:
+            logger.error(f"   ❌ Failed to set SL: {sl_error}")
+            return jsonify({
+                "success": False,
+                "error": str(sl_error)
+            }), 500
+    
+    except Exception as e:
+        logger.error(f"Set SL error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/set-take-profit', methods=['POST'])
+def set_take_profit():
+    """
+    Set protocol-level take-profit for an existing trade
+    Body: {
+        "agentAddress": "0x...",
+        "userAddress": "0x...",
+        "market": "BTC",
+        "tradeIndex": 2,
+        "takeProfitPercent": 0.30,
+        "entryPrice": 90000,  # Entry price of the position (required for TP calculation)
+        "pairIndex": 0,
+        "side": "long",
+        "useDelegation": true
+    }
+    """
+    try:
+        data = request.json
+        agent_address = data.get('agentAddress')
+        user_address = data.get('userAddress')
+        market = data.get('market')
+        trade_index = data.get('tradeIndex')
+        take_profit_percent = float(data.get('takeProfitPercent', 0.30))
+        entry_price = float(data.get('entryPrice'))  # Use entry price, not current price
+        pair_index = data.get('pairIndex')
+        use_delegation = data.get('useDelegation', True)
+        
+        if not all([agent_address, user_address, market, trade_index is not None, entry_price, pair_index is not None]):
+            return jsonify({
+                "success": False,
+                "error": "Missing required fields (entryPrice is required for TP calculation)"
+            }), 400
+        
+        logger.info(f"Setting TP for {market} (trade_index={trade_index}, pair_index={pair_index})")
+        logger.info(f"   User: {user_address}, Agent: {agent_address}")
+        logger.info(f"   TP%: {take_profit_percent * 100:.1f}%, Entry Price: ${entry_price:.4f}")
+        
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            import sys
+            sys.path.insert(0, os.path.dirname(__file__))
+            from encryption_helper import decrypt_private_key
+            
+            database_url = os.getenv('DATABASE_URL')
+            if not database_url:
+                return jsonify({"success": False, "error": "DATABASE_URL not configured"}), 500
+            
+            conn = psycopg2.connect(database_url)
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cur.execute(
+                """
+                SELECT 
+                    ostium_agent_key_encrypted,
+                    ostium_agent_key_iv,
+                    ostium_agent_key_tag
+                FROM user_agent_addresses 
+                WHERE LOWER(ostium_agent_address) = LOWER(%s)
+                """,
+                (agent_address,)
+            )
+            user_address_row = cur.fetchone()
+            
+            if not user_address_row or not user_address_row['ostium_agent_key_encrypted']:
+                cur.close()
+                conn.close()
+                return jsonify({"success": False, "error": f"Agent address {agent_address} not found"}), 404
+            
+            private_key = decrypt_private_key(
+                user_address_row['ostium_agent_key_encrypted'],
+                user_address_row['ostium_agent_key_iv'],
+                user_address_row['ostium_agent_key_tag']
+            )
+            cur.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Error fetching agent key: {e}")
+            return jsonify({"success": False, "error": f"Failed to fetch agent key: {str(e)}"}), 500
+        
+        sdk = get_sdk(private_key, use_delegation)
+        
+        is_long = data.get('side', 'long').lower() == 'long'
+        # TP should be calculated from entry price to lock in profits from entry point
+        tp_price = entry_price * (1 + take_profit_percent) if is_long else entry_price * (1 - take_profit_percent)
+        
+        logger.info(f"   Entry: ${entry_price:.4f} → TP: ${tp_price:.4f} ({take_profit_percent * 100:.1f}% {'above' if is_long else 'below'} entry)")
+        
+        try:
+            if use_delegation:
+                checksummed_user = Web3.to_checksum_address(user_address)
+                sdk.ostium.update_tp(pair_index, trade_index, tp_price, checksummed_user)
+            else:
+                sdk.ostium.update_tp(pair_index, trade_index, tp_price)
+            
+            logger.info(f"   ✅ TP set successfully")
+            
+            return jsonify({
+                "success": True,
+                "message": f"TP set to ${tp_price:.4f}",
+                "tpPrice": tp_price
+            })
+            
+        except Exception as tp_error:
+            logger.error(f"   ❌ Failed to set TP: {tp_error}")
+            return jsonify({
+                "success": False,
+                "error": str(tp_error)
+            }), 500
+    
+    except Exception as e:
+        logger.error(f"Set TP error: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
 

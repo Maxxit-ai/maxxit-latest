@@ -11,12 +11,40 @@ const OSTIUM_SERVICE_URL =
 
 export interface OstiumPosition {
   market: string;
+  marketFull?: string;
   side: 'long' | 'short';
   size: number;
   entryPrice: number;
   leverage: number;
   unrealizedPnl: number;
   tradeId: string;
+  txHash?: string;
+  pairIndex?: string;
+  tradeIndex?: string;
+  stopLossPrice?: number;
+  takeProfitPrice?: number;
+}
+
+export interface OstiumClosedPosition {
+  market: string;
+  marketFull: string;
+  side: 'long' | 'short';
+  orderAction: string;
+  collateral: number;
+  leverage: number;
+  price: number;
+  amountSentToTrader: number;
+  pnlUsdc: number;
+  profitPercent: number;
+  totalProfitPercent: number;
+  rolloverFee: number;
+  fundingFee: number;
+  executedAt: string;
+  executedTx: string;
+  tradeId: string;
+  tradeIndex: string;
+  isCancelled: boolean;
+  cancelReason: string;
 }
 
 export interface OstiumBalance {
@@ -273,6 +301,58 @@ export async function checkOstiumHealth() {
   } catch (error: any) {
     console.error('[Ostium] Health check failed:', error.message);
     return { status: 'error', error: error.message };
+  }
+}
+
+/**
+ * Get closed position history for an address
+ * Returns positions with actual PnL from Ostium's subgraph
+ */
+export async function getOstiumClosedPositions(
+  address: string,
+  count: number = 50
+): Promise<OstiumClosedPosition[]> {
+  try {
+    const response = await fetch(`${OSTIUM_SERVICE_URL}/closed-positions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, count }),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to get closed positions');
+    }
+
+    return data.positions || [];
+  } catch (error: any) {
+    console.error('[Ostium] Get closed positions failed:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get a single order by ID (open or close)
+ */
+export async function getOstiumOrderById(orderId: string) {
+  try {
+    const response = await fetch(`${OSTIUM_SERVICE_URL}/order-by-id`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId }),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to get order');
+    }
+
+    return data.order;
+  } catch (error: any) {
+    console.error('[Ostium] Get order by id failed:', error.message);
+    throw error;
   }
 }
 

@@ -13,8 +13,9 @@
 
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
+import * as path from 'path';
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_URL = process.argv[2] || process.env.TELEGRAM_WEBHOOK_URL;

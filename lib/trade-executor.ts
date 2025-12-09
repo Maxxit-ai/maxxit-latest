@@ -29,6 +29,7 @@ export interface ExecutionResult {
   positionId?: string;
   error?: string;
   reason?: string;
+  message?: string;
   executionSummary?: any;
 }
 
@@ -1104,10 +1105,17 @@ export class TradeExecutor {
                                (result as any).result?.actualTradeIndex ?? 
                                null;
       
+      // Extract trade ID / order ID for precise matching
+      const tradeId = result.orderId || result.tradeId || null;
+      
       if (actualTradeIndex !== null) {
         console.log('[TradeExecutor]    ✅ Actual trade index stored:', actualTradeIndex);
       } else {
         console.warn('[TradeExecutor]    ⚠️  No actual trade index returned (will use index=0 as fallback)');
+      }
+      
+      if (tradeId) {
+        console.log('[TradeExecutor]    ✅ Trade ID stored:', tradeId);
       }
       
       // Use the current price we already fetched for entry_price estimate
@@ -1141,7 +1149,8 @@ export class TradeExecutor {
             qty: collateralUSDC, // Collateral amount in USDC (MUST be > 0)
             entry_tx_hash: result.txHash || result.orderId || 'OST-' + Date.now(),
             status: 'OPEN', // Explicitly set to OPEN (order is pending but position is open)
-            ostium_trade_index: actualTradeIndex, // Store actual trade index (fixes SDK bug)
+            ostium_trade_index: actualTradeIndex,
+            ostium_trade_id: tradeId,
             trailing_params: {
               enabled: true,
               trailingPercent: 1, // 1% trailing stop
@@ -1787,7 +1796,7 @@ export class TradeExecutor {
       
       // Check if position exists on-chain (match by tradeId or market+side)
       const positionExistsOnChain = onChainPositions.some(
-        p => p.tradeId === position.entry_tx_hash || 
+        p => p.tradeId === position.ostium_trade_id || 
              (p.market === position.token_symbol && p.side.toUpperCase() === position.side)
       );
 
@@ -1829,7 +1838,7 @@ export class TradeExecutor {
       const result = await closeOstiumPosition({
         agentAddress: agentAddress, // Use agentAddress instead of privateKey (service will look up key)
         market: position.token_symbol,
-        tradeId: position.entry_tx_hash, // Use tradeId for precise matching
+        tradeId: position.ostium_trade_id,
         useDelegation: true,
         userAddress: userArbitrumAddress,
         actualTradeIndex: storedIndex, // Pass stored index (fixes SDK bug)
@@ -1883,13 +1892,6 @@ export class TradeExecutor {
         pnl: pnl.toFixed(2) + ' USD',
       });
 
-      // Collect profit share (10%)
-      await this.collectOstiumFees({
-        deploymentId: position.deployment_id,
-        userAddress: userArbitrumAddress,
-        pnl,
-        positionSize: parseFloat(position.qty?.toString() || '0'),
-      });
 
       // Update agent APR metrics automatically (non-blocking)
       updateMetricsForDeployment(position.deployment_id).catch(err => {

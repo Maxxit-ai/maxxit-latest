@@ -274,6 +274,7 @@ model positions {
   exit_reason           String?
   status                String                  @default("OPEN")
   ostium_trade_index    Int?                   // Actual trade index from Ostium (fixes SDK bug)
+  ostium_trade_id       String?                // Order ID / Trade ID from Ostium SDK for precise matching
   billing_events        billing_events[]
   impact_factor_history impact_factor_history[]
   agent_deployments     agent_deployments       @relation(fields: [deployment_id], references: [id], onDelete: Cascade)

@@ -13,7 +13,7 @@ import { checkDatabaseHealth } from "@maxxit/database";
 dotenv.config();
 
 const PORT = process.env.PORT || 5001;
-const INTERVAL = parseInt(process.env.WORKER_INTERVAL || '30000'); // 30 seconds default
+const INTERVAL = parseInt(process.env.WORKER_INTERVAL || '600000'); // 10 minutes default
 
 let workerInterval: NodeJS.Timeout | null = null;
 
@@ -198,7 +198,16 @@ async function executeSignal(signalId: string, deploymentId: string) {
       // Use actual values from execution result
       const entryPrice = result.entryPrice || 0;
       const collateral = result.collateral || 0;
-      const ostiumTradeIndex = result.ostiumTradeIndex;
+      const rawTradeIndex = result.ostiumTradeIndex !== undefined && result.ostiumTradeIndex !== null
+        ? parseInt(String(result.ostiumTradeIndex), 10)
+        : undefined;
+      const ostiumTradeIndex = rawTradeIndex !== undefined && !isNaN(rawTradeIndex) ? rawTradeIndex : undefined;
+      const ostiumTradeId = result.tradeId || result.orderId || null;
+      
+      console.log(`[TradeExecutor]       DEBUG - Extracted values:`);
+      console.log(`[TradeExecutor]       - result.tradeId: ${result.tradeId}`);
+      console.log(`[TradeExecutor]       - result.orderId: ${result.orderId}`);
+      console.log(`[TradeExecutor]       - ostiumTradeId: ${ostiumTradeId}`);
 
       try {
         // Use upsert to handle race conditions (unique constraint on deployment_id + signal_id)
@@ -222,6 +231,7 @@ async function executeSignal(signalId: string, deploymentId: string) {
             entry_tx_hash: result.txHash,
             status: 'OPEN',
             ostium_trade_index: ostiumTradeIndex, // Store Ostium trade index for closing
+            ostium_trade_id: ostiumTradeId ? String(ostiumTradeId) : null,
           },
           update: {
             // If position already exists, update with new data (shouldn't happen normally)
@@ -229,6 +239,7 @@ async function executeSignal(signalId: string, deploymentId: string) {
             entry_price: entryPrice,
             qty: collateral,
             ostium_trade_index: ostiumTradeIndex,
+            ostium_trade_id: ostiumTradeId ? String(ostiumTradeId) : null,
           },
         });
 
@@ -236,9 +247,8 @@ async function executeSignal(signalId: string, deploymentId: string) {
         console.log(`[TradeExecutor]       TX Hash: ${result.txHash || 'N/A'}`);
         console.log(`[TradeExecutor]       Entry Price: $${entryPrice || 'pending'}`);
         console.log(`[TradeExecutor]       Collateral: $${collateral || 'N/A'}`);
-        if (ostiumTradeIndex !== undefined) {
-          console.log(`[TradeExecutor]       Ostium Trade Index: ${ostiumTradeIndex}`);
-        }
+        console.log(`[TradeExecutor]       Ostium Trade ID: ${ostiumTradeId || 'NOT SET'}`);
+        console.log(`[TradeExecutor]       Ostium Trade Index: ${ostiumTradeIndex !== undefined ? ostiumTradeIndex : 'NOT SET'}`);
       } catch (dbError: any) {
         // Handle any database errors gracefully
         if (dbError.code === 'P2002') {
@@ -263,7 +273,7 @@ async function executeSignal(signalId: string, deploymentId: string) {
         
         const signalAge = Date.now() - (signal?.created_at?.getTime() || 0);
         const MAX_RETRY_AGE = 24 * 60 * 60 * 1000; // 24 hours
-        const MAX_RETRIES = 10; // Maximum 10 retries
+        const MAX_RETRIES = 2;
         
         // Count retries by checking how many times RETRY # appears
         const retryCount = (signal?.executor_agreement_error?.match(/RETRY #/g)?.length || 0) + 1;

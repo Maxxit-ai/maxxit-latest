@@ -11,6 +11,8 @@ interface ExecutionResult {
   error?: string;
   reason?: string;
   ostiumTradeIndex?: number;
+  tradeId?: string;
+  orderId?: string;
   entryPrice?: number;
   collateral?: number;
   leverage?: number;
@@ -298,6 +300,8 @@ async function executeOstiumTrade(
         leverage: leverage,
         stopLossPercent: stopLossPercent, // Pass SL percentage to service
         takeProfitPercent: takeProfitPercent, // Pass TP percentage to service
+        deploymentId: deployment.id,
+        signalId: signal.id,
       }),
     });
 
@@ -315,6 +319,9 @@ async function executeOstiumTrade(
     
     const entryPrice = result.entryPrice || resultData.entryPrice || 0;
     
+    const tradeId = result.tradeId || result.orderId || null;
+    const orderId = result.orderId || result.tradeId || null;
+    
     console.log(`[TradeExecutor]    Trade Index: ${actualTradeIndex ?? 'pending (keeper not filled yet)'}`);
     console.log(`[TradeExecutor]    Entry Price: $${entryPrice || 'pending'}`);
     console.log(`[TradeExecutor]    Collateral: ${resultData.collateral || collateralUSDC} USDC`);
@@ -322,9 +329,11 @@ async function executeOstiumTrade(
 
     return {
       success: true,
-      txHash: result.txHash || result.transactionHash || result.hash || result.orderId,
-      positionId: result.positionId || result.orderId || result.tradeId,
+      txHash: result.txHash || result.transactionHash,
+      positionId: result.positionId || orderId || tradeId,
       ostiumTradeIndex: actualTradeIndex,
+      tradeId: tradeId,
+      orderId: orderId,
       entryPrice: entryPrice,
       collateral: resultData.collateral || collateralUSDC,
       leverage: resultData.leverage || leverage,

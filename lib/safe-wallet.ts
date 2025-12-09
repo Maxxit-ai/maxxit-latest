@@ -265,7 +265,7 @@ export const CHAIN_IDS = {
 /**
  * Get chain ID for venue
  */
-export function getChainIdForVenue(venue: 'SPOT' | 'GMX' | 'HYPERLIQUID'): number {
+export function getChainIdForVenue(venue: 'SPOT' | 'GMX' | 'HYPERLIQUID' | 'OSTIUM' | 'MULTI'): number {
   // Default to Arbitrum (production)
   // Set USE_SEPOLIA=true env var to use Sepolia testnet
   const useTestnet = process.env.USE_SEPOLIA === 'true';
@@ -277,6 +277,10 @@ export function getChainIdForVenue(venue: 'SPOT' | 'GMX' | 'HYPERLIQUID'): numbe
       return CHAIN_IDS.ARBITRUM; // GMX on Arbitrum only
     case 'HYPERLIQUID':
       return CHAIN_IDS.ARBITRUM; // Bridge from Arbitrum
+    case 'OSTIUM':
+      return CHAIN_IDS.ARBITRUM;
+    case 'MULTI':
+      return CHAIN_IDS.ARBITRUM;
     default:
       return useTestnet ? CHAIN_IDS.SEPOLIA : CHAIN_IDS.ARBITRUM;
   }

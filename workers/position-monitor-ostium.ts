@@ -1,19 +1,21 @@
 /**
  * Ostium Position Monitor
- * - Discovers positions directly from Ostium (via subgraph)
- * - Auto-creates DB records for discovered positions
- * - Monitors ALL Ostium positions across all deployments
+ * - Monitors positions created by Trade Executor
+ * - Reconciles with Ostium to detect external closes
  * - Real-time price tracking and trailing stops
  * - Similar to Hyperliquid monitor but for Arbitrum-based Ostium
  */
 
 import { PrismaClient } from '@prisma/client';
 import { TradeExecutor } from '../lib/trade-executor';
-import { getOstiumPositions, getOstiumBalance } from '../lib/adapters/ostium-adapter';
+import { getOstiumPositions } from '../lib/adapters/ostium-adapter';
 import { updateMetricsForDeployment } from '../lib/metrics-updater';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
 const executor = new TradeExecutor();
@@ -119,220 +121,41 @@ export async function monitorOstiumPositions() {
     let totalPositionsMonitored = 0;
     let totalPositionsClosed = 0;
 
+    const getOstiumKey = (pos: any) => {
+      if (pos.tradeId) return `tradeId:${pos.tradeId}`;
+      if (pos.tradeIndex !== undefined) return `tradeIndex:${pos.tradeIndex}`;
+      if (pos.txHash) return `tx:${pos.txHash}`;
+      return `fallback:${pos.market || 'unknown'}:${pos.side || 'unknown'}`;
+    };
+
+    const findMatchForPosition = (
+      dbPosition: any,
+      ostPositions: any[],
+      usedKeys: Set<string>
+    ) => {
+      if (dbPosition.ostium_trade_id) {
+        const matchByTradeId = ostPositions.find(p => {
+          const key = getOstiumKey(p);
+          return !usedKeys.has(key) && p.tradeId && `${p.tradeId}` === `${dbPosition.ostium_trade_id}`;
+        });
+        if (matchByTradeId) return matchByTradeId;
+      }
+    };
+
     // Monitor each deployment
     for (const deployment of deployments) {
       try {
         console.log(`\n📍 Deployment: ${deployment.agents.name} (${deployment.id.slice(0, 8)}...)`);
         console.log(`   User Wallet: ${deployment.safe_wallet}`);
         
-        // Get positions from Ostium for this user
         const ostiumPositions = await getOstiumPositions(deployment.safe_wallet);
+        const usedOstiumKeys = new Set<string>();
         
-        console.log(`   Positions Found: ${ostiumPositions.length}`);
-
-        // Discover and track new positions
-        for (const ostPosition of ostiumPositions) {
-          try {
-            // Check if position exists in DB by matching entry_tx_hash (tradeId)
-            // This prevents duplicates across multiple deployments for the same wallet
-            const existingPosition = await prisma.positions.findFirst({
-              where: {
-                entry_tx_hash: ostPosition.tradeId,
-                venue: 'OSTIUM',
-              },
-            });
-
-            // If position exists but is closed, reopen it
-            if (existingPosition && existingPosition.closed_at) {
-              console.log(`   🔄 Reopening position: ${ostPosition.side.toUpperCase()} ${ostPosition.market} (was incorrectly closed)`);
-              await prisma.positions.update({
-                where: { id: existingPosition.id },
-                data: {
-                  closed_at: null,
-                  exit_price: null,
-                  exit_tx_hash: null,
-                  exit_reason: null,
-                  pnl: null,
-                  status: 'OPEN',
-                  // Update current values
-                  entry_price: ostPosition.entryPrice,
-                  qty: ostPosition.size,
-                },
-              });
-              continue;
-            }
-
-            if (!existingPosition) {
-              // Auto-discover position - create in DB
-              console.log(`   ✨ Discovered new position: ${ostPosition.side.toUpperCase()} ${ostPosition.market} (Trade ID: ${ostPosition.tradeId})`);
-              
-              try {
-                // Calculate percentage of balance for discovered position
-                // This ensures consistency with percentage-based sizing (Agent HOW)
-                const balance = await getOstiumBalance(deployment.safe_wallet);
-                const usdcBalance = parseFloat(balance.usdcBalance);
-                const positionSizePercent = usdcBalance > 0 
-                  ? (ostPosition.size / usdcBalance) * 100 
-                  : 5; // Default 5% if balance is 0 (shouldn't happen)
-                
-                console.log(`   📊 Position size: ${ostPosition.size} USDC = ${positionSizePercent.toFixed(2)}% of balance (${usdcBalance.toFixed(2)} USDC)`);
-                
-                // Create a "discovered" signal for this position
-                // Use balance-percentage to match system design (Agent HOW)
-                // Wrapped in try-catch to handle race condition with other workers
-                const discoveredSignal = await prisma.signals.create({
-                  data: {
-                    agent_id: deployment.agent_id,
-                    venue: 'OSTIUM',
-                    token_symbol: ostPosition.market,
-                    side: ostPosition.side.toUpperCase(),
-                    size_model: {
-                      type: 'balance-percentage', // ✅ Fixed: Use percentage-based sizing
-                      value: positionSizePercent, // Calculated percentage
-                      leverage: ostPosition.leverage,
-                      reasoning: `Auto-discovered position: ${ostPosition.size} USDC = ${positionSizePercent.toFixed(2)}% of ${usdcBalance.toFixed(2)} USDC balance`,
-                    },
-                    risk_model: {
-                      type: 'trailing-stop',
-                      trailingPercent: 1,
-                    },
-                    source_tweets: [`DISCOVERED_FROM_OSTIUM_${ostPosition.tradeId}`],
-                  },
-                });
-
-                // Try to get actual trade index from storage contract
-                let actualTradeIndex: number | null = null;
-                
-                try {
-                  // Query storage contract to get real index
-                  // This fixes the SDK bug where all indices are '0'
-                  const { ethers } = require('ethers');
-                  const provider = new ethers.providers.JsonRpcProvider(
-                    process.env.OSTIUM_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc'
-                  );
-                  
-                  const STORAGE_CONTRACT = '0x0B9f5243B29938668c9Cfbd7557A389EC7Ef88b8';
-                  const STORAGE_ABI = [
-                    {
-                      "inputs": [
-                        {"name": "trader", "type": "address"},
-                        {"name": "pairIndex", "type": "uint256"},
-                        {"name": "index", "type": "uint256"}
-                      ],
-                      "name": "openTrades",
-                      "outputs": [{
-                        "components": [
-                          {"name": "trader", "type": "address"},
-                          {"name": "pairIndex", "type": "uint256"},
-                          {"name": "index", "type": "uint256"},
-                          {"name": "positionSizeAsset", "type": "uint256"},
-                          {"name": "openPrice", "type": "uint256"},
-                          {"name": "buy", "type": "bool"},
-                          {"name": "leverage", "type": "uint256"},
-                          {"name": "tp", "type": "uint256"},
-                          {"name": "sl", "type": "uint256"}
-                        ],
-                        "name": "",
-                        "type": "tuple"
-                      }],
-                      "stateMutability": "view",
-                      "type": "function"
-                    },
-                    {
-                      "inputs": [
-                        {"name": "trader", "type": "address"},
-                        {"name": "pairIndex", "type": "uint256"}
-                      ],
-                      "name": "openTradesCount",
-                      "outputs": [{"name": "", "type": "uint256"}],
-                      "stateMutability": "view",
-                      "type": "function"
-                    }
-                  ];
-                  
-                  const storageContract = new ethers.Contract(STORAGE_CONTRACT, STORAGE_ABI, provider);
-                  const userAddress = ethers.utils.getAddress(deployment.user_wallet);
-                  
-                  // Get pair index from market
-                  const pairIndex = await getPairIndexForMarket(ostPosition.market);
-                  
-                  if (pairIndex) {
-                    const count = await storageContract.openTradesCount(userAddress, pairIndex);
-                    const targetPrice = Math.floor(ostPosition.entryPrice * 1e18);
-                    
-                    // Search for matching trade
-                    for (let i = 0; i < count; i++) {
-                      try {
-                        const trade = await storageContract.openTrades(userAddress, pairIndex, i);
-                        const storedPrice = trade[4].toString(); // openPrice
-                        const storedIndex = trade[2].toString(); // index
-                        
-                        // Match by price (within 0.1% tolerance)
-                        if (Math.abs(parseInt(storedPrice) - targetPrice) < (targetPrice / 1000)) {
-                          actualTradeIndex = parseInt(storedIndex);
-                          console.log(`   ✅ Found actual trade index: ${actualTradeIndex}`);
-                          break;
-                        }
-                      } catch (e) {
-                        // Continue searching
-                      }
-                    }
-                  }
-                } catch (indexError: any) {
-                  console.log(`   ⚠️  Could not get trade index: ${indexError.message}`);
-                  console.log(`   Will use index=0 as fallback`);
-                }
-                
-                // Helper function to get pair index
-                async function getPairIndexForMarket(market: string): Promise<number | null> {
-                  try {
-                    const marketSymbol = market.replace('/USD', '').replace('/USDT', '');
-                    const response = await fetch(`${process.env.OSTIUM_SERVICE_URL || 'http://localhost:5002'}/markets`);
-                    const data = await response.json();
-                    if (data.success && data.markets) {
-                      return data.markets[marketSymbol.toUpperCase()] || null;
-                    }
-                  } catch (e) {
-                    // Ignore
-                  }
-                  return null;
-                }
-
-                // Create position record
-                await prisma.positions.create({
-                  data: {
-                    deployment_id: deployment.id,
-                    signal_id: discoveredSignal.id,
-                    venue: 'OSTIUM',
-                    token_symbol: ostPosition.market,
-                    side: ostPosition.side.toUpperCase(),
-                    entry_price: ostPosition.entryPrice,
-                    qty: ostPosition.size,
-                    entry_tx_hash: ostPosition.tradeId || 'OST-DISCOVERED-' + Date.now(),
-                    ostium_trade_index: actualTradeIndex, // Store actual index if found
-                    trailing_params: {
-                      enabled: true,
-                      trailingPercent: 1, // 1% trailing stop
-                      highestPrice: null,
-                    },
-                  },
-                });
-
-                console.log(`   ✅ Position added to database`);
-              } catch (createError: any) {
-                // P2002: Unique constraint violation (another worker discovered this position first)
-                if (createError.code === 'P2002') {
-                  console.log(`   ℹ️  Position/signal already exists in DB (another worker got here first)`);
-                  console.log(`   ✅ This is normal - position will be monitored in next cycle`);
-                } else {
-                  // Re-throw unexpected errors
-                  throw createError;
-                }
-              }
-            }
-          } catch (discoverError: any) {
-            console.error(`   ❌ Error processing position ${ostPosition.market}:`, discoverError.message);
-          }
+        console.log(`   Ostium Positions: ${ostiumPositions.length}`);
+        
+        for (const ostPos of ostiumPositions) {
+          const txHashPreview = ostPos.txHash ? ostPos.txHash.slice(0, 16) + '...' : 'N/A';
+          console.log(`      - ${ostPos.market} ${ostPos.side.toUpperCase()} | TX: ${txHashPreview}`);
         }
 
         // Get open positions from DB for this deployment
@@ -350,11 +173,23 @@ export async function monitorOstiumPositions() {
         // Monitor each position
         for (const position of dbPositions) {
           try {
-            // Find matching position on Ostium by tradeId (more precise than market+side)
-            const ostPosition = ostiumPositions.find(
-              p => p.tradeId === position.entry_tx_hash || 
-                   (p.market === position.token_symbol && p.side.toUpperCase() === position.side)
-            );
+            const ostPosition = findMatchForPosition(position, ostiumPositions, usedOstiumKeys);
+            if (ostPosition) {
+              usedOstiumKeys.add(getOstiumKey(ostPosition));
+            }
+            
+            if (ostPosition && ostPosition.tradeIndex !== undefined) {
+              const ostiumTradeIndex = parseInt(ostPosition.tradeIndex as string, 10);
+              const currentDbIndex = position.ostium_trade_index;
+              
+              if (currentDbIndex !== ostiumTradeIndex) {
+                console.log(`   🔄 Syncing trade index: DB=${currentDbIndex} → Ostium=${ostiumTradeIndex}`);
+                await prisma.positions.update({
+                  where: { id: position.id },
+                  data: { ostium_trade_index: ostiumTradeIndex },
+                });
+              }
+            }
 
             // Position closed externally?
             if (!ostPosition) {
@@ -424,6 +259,93 @@ export async function monitorOstiumPositions() {
               console.error(`   ⚠️  Could not fetch current price for ${position.token_symbol}: ${priceError.message}`);
               console.log(`   ⏭️  Skipping trailing stop check (using entry price as fallback)`);
               currentPrice = ostPosition.entryPrice; // Fallback to entry price
+            }
+
+            const needsSL = !ostPosition.stopLossPrice || ostPosition.stopLossPrice === 0;
+            
+            if (ostPosition.tradeIndex !== undefined || needsSL) {
+              // Get signal data for risk model if we need to set protection
+              const signal = await prisma.signals.findUnique({
+                where: { id: position.signal_id },
+                select: { risk_model: true },
+              });
+              
+              const riskModel = signal?.risk_model as any;
+              const stopLossPercent = riskModel?.stopLoss || riskModel?.stop_loss_percent || 0.10; // Default 10%
+              const takeProfitPercent = riskModel?.takeProfit || riskModel?.take_profit_percent || 0.30; // Default 30%
+              const entryPrice = Number(position.entry_price.toString());
+              const isLong = position.side === 'LONG' || position.side === 'BUY';
+              
+              const calculatedTpPrice = isLong ? entryPrice * (1 + takeProfitPercent) : entryPrice * (1 - takeProfitPercent);
+              const needsTP = !ostPosition.takeProfitPrice || Math.abs(ostPosition.takeProfitPrice - calculatedTpPrice) > (entryPrice * 0.01);
+
+              if (needsSL || needsTP) {
+                console.log(`   🎯 Position needs protection - setting ${needsSL ? 'SL' : ''}${needsSL && needsTP ? ' and ' : ''}${needsTP ? 'TP' : ''}...`);
+                
+                try {
+                  const userAgentAddress = await prisma.user_agent_addresses.findUnique({
+                    where: { user_wallet: deployment.user_wallet.toLowerCase() },
+                    select: { ostium_agent_address: true },
+                  });
+                  
+                  if (!userAgentAddress?.ostium_agent_address) {
+                    console.log(`   ⚠️  Agent address not found for user ${deployment.user_wallet}, skipping SL/TP setting`);
+                    throw new Error('Agent address not found'); // Will be caught below, position monitoring continues
+                  }
+                  
+                  const ostiumServiceUrl = process.env.OSTIUM_SERVICE_URL || 'http://localhost:5002';
+                  const tokenSymbol = position.token_symbol.replace('/USD', '').replace('/USDT', '');
+                  
+                  if (needsSL) {
+                    const slResponse = await axios.post(`${ostiumServiceUrl}/set-stop-loss`, {
+                      agentAddress: userAgentAddress.ostium_agent_address,
+                      userAddress: deployment.safe_wallet,
+                      market: tokenSymbol,
+                      tradeIndex: ostPosition.tradeIndex,
+                      stopLossPercent: stopLossPercent,
+                      currentPrice: currentPrice,
+                      pairIndex: ostPosition.pairIndex,
+                      side: position.side.toLowerCase(),
+                      useDelegation: true,
+                    }, { timeout: 60000 });
+                    
+                    if (slResponse.data.success) {
+                      console.log(`   ✅ SL set successfully: ${slResponse.data.message || 'Done'}`);
+                      if (slResponse.data.adjusted) {
+                        console.log(`   ⚠️  SL was adjusted to avoid liquidation`);
+                      }
+                    } else {
+                      console.log(`   ⚠️  SL setting failed: ${slResponse.data.error}`);
+                    }
+                  }
+                  
+                  if (needsTP) {
+                    if (entryPrice > 0) {
+                      const tpResponse = await axios.post(`${ostiumServiceUrl}/set-take-profit`, {
+                        agentAddress: userAgentAddress.ostium_agent_address,
+                        userAddress: deployment.safe_wallet,
+                        market: tokenSymbol,
+                        tradeIndex: ostPosition.tradeIndex,
+                        takeProfitPercent: takeProfitPercent,
+                        entryPrice: entryPrice, // Use entry price for TP calculation
+                        pairIndex: ostPosition.pairIndex,
+                        side: position.side.toLowerCase(),
+                        useDelegation: true,
+                      }, { timeout: 60000 });
+                      
+                      if (tpResponse.data.success) {
+                        console.log(`   ✅ TP set successfully: ${tpResponse.data.message || 'Done'}`);
+                      } else {
+                        console.log(`   ⚠️  TP setting failed: ${tpResponse.data.error}`);
+                      }
+                    } else {
+                      console.log(`   ⚠️  Cannot set TP - entry price is 0 (position may still be pending)`);
+                    }
+                  }
+                } catch (protectionError: any) {
+                  console.error(`   ⚠️  Error setting SL/TP: ${protectionError.message}`);
+                }
+              }
             }
 
             // Calculate unrealized P&L using actual position size from Ostium
