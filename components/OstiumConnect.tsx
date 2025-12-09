@@ -40,24 +40,24 @@ export function OstiumConnect({
   const [usdcApproved, setUsdcApproved] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string>('');
   const [step, setStep] = useState<'connect' | 'agent' | 'delegate' | 'usdc' | 'complete'>('connect');
-  
+
   // Guard refs to prevent duplicate API calls
   const isCheckingRef = useRef(false);
   const isAssigningRef = useRef(false);
   const [hasInitialized, setHasInitialized] = useState(false); // Persists in state, not ref
 
   useEffect(() => {
-    // Only run ONCE when authenticated and on 'connect' step
-    // Don't re-run after flow has started (step changed from 'connect')
+    // If already authenticated when component mounts, skip connect step and start checking setup
     if (authenticated && user?.wallet?.address && step === 'connect' && !hasInitialized && !isCheckingRef.current) {
       setHasInitialized(true);
+      setLoading(true); // Show loader while checking setup
       checkSetupStatus();
     }
   }, [authenticated, user?.wallet?.address, step, hasInitialized]);
 
   const checkSetupStatus = async () => {
     if (!user?.wallet?.address) return;
-    
+
     // Prevent duplicate calls
     if (isCheckingRef.current) {
       console.log('[OstiumConnect] checkSetupStatus already in progress, skipping');
@@ -68,11 +68,11 @@ export function OstiumConnect({
     try {
       console.log('[OstiumConnect] Checking setup status for wallet:', user.wallet.address);
       const setupResponse = await fetch(`/api/user/check-setup-status?userWallet=${user.wallet.address}&agentId=${agentId}`);
-      
+
       if (setupResponse.ok) {
         const setupData = await setupResponse.json();
         console.log('[OstiumConnect] Setup data:', setupData);
-        
+
         /*
          * FLOW LOGIC:
          * - Agent address (O1) is per-WALLET, not per-agent
@@ -82,20 +82,20 @@ export function OstiumConnect({
          *   - USDC was already approved
          * - So for any NEW agent deployment with SAME wallet, skip approval steps!
          */
-        
+
         if (setupData.hasOstiumAddress) {
           // Wallet already has an Ostium agent address assigned
           // This means user has previously completed the approval flow with this wallet
-          
+
           console.log('[OstiumConnect] Wallet has existing Ostium address:', setupData.addresses.ostium);
-          
+
           // Verify approvals are still valid on-chain
           const approvalResponse = await fetch(`/api/ostium/check-approval-status?userWallet=${user.wallet.address}`);
-          
+
           if (approvalResponse.ok) {
             const approvalData = await approvalResponse.json();
             console.log('[OstiumConnect] On-chain approval status:', approvalData);
-            
+
             if (approvalData.hasApproval) {
               // User has valid USDC approval - they've done the flow before
               // Skip ALL approval steps and just create the deployment
@@ -103,7 +103,7 @@ export function OstiumConnect({
               setAgentAddress(setupData.addresses.ostium);
               setDelegateApproved(true);
               setUsdcApproved(true);
-              
+
               // Create deployment for this new agent
               await createDeploymentDirectly(user.wallet.address);
               return;
@@ -114,31 +114,37 @@ export function OstiumConnect({
               // Skip delegate (already done) but need USDC approval
               setDelegateApproved(true); // setDelegate is permanent
               setStep('usdc');
+              setLoading(false);
             }
           } else {
             // Couldn't check approval status - go through full flow to be safe
             console.log('[OstiumConnect] Could not check approval status - showing delegate step');
             setAgentAddress(setupData.addresses.ostium);
             setStep('delegate');
+            setLoading(false);
           }
         } else {
           // No Ostium address for this wallet - FIRST TIME user with this wallet
           // Need to generate new address and go through full approval flow
           console.log('[OstiumConnect] 🆕 First time for this wallet - generating new address');
           setStep('agent');
+          setLoading(false);
           await assignAgent();
         }
       } else {
         console.log('[OstiumConnect] Setup check failed - starting from agent step');
         setStep('agent');
+        setLoading(false);
         await assignAgent();
       }
     } catch (err) {
       console.error('[OstiumConnect] Error checking setup status:', err);
       setStep('agent');
+      setLoading(false);
       await assignAgent();
     } finally {
       isCheckingRef.current = false;
+      setLoading(false);
     }
   };
 
@@ -163,9 +169,10 @@ export function OstiumConnect({
       setStep('complete');
       setDelegateApproved(true);
       setUsdcApproved(true);
-      
+
+      // Call onSuccess immediately to refresh setup status, but don't auto-close
       if (onSuccess) {
-        setTimeout(() => onSuccess(), 1500);
+        onSuccess();
       }
     } catch (err: any) {
       console.error('Error creating deployment:', err);
@@ -182,13 +189,13 @@ export function OstiumConnect({
       return;
     }
     isAssigningRef.current = true;
-    
+
     setLoading(true);
     setError('');
 
     try {
       console.log('[OstiumConnect] Assigning agent for:', { agentId, userWallet: user?.wallet?.address });
-      
+
       const addressResponse = await fetch(`/api/agents/${agentId}/generate-deployment-address`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,7 +212,7 @@ export function OstiumConnect({
 
       const addressData = await addressResponse.json();
       const agentAddr = addressData.address || addressData.addresses?.ostium?.address;
-      
+
       if (!agentAddr) {
         throw new Error('No Ostium agent address returned');
       }
@@ -260,7 +267,7 @@ export function OstiumConnect({
 
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       const network = await ethersProvider.getNetwork();
-      
+
       const ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
       if (network.chainId !== ARBITRUM_SEPOLIA_CHAIN_ID) {
         try {
@@ -275,14 +282,14 @@ export function OstiumConnect({
           throw new Error('Please switch to Arbitrum Sepolia network');
         }
       }
-      
+
       const signer = ethersProvider.getSigner();
       const contract = new ethers.Contract(OSTIUM_TRADING_CONTRACT, OSTIUM_TRADING_ABI, signer);
 
       // Estimate gas with 50% buffer for reliability
       const gasEstimate = await contract.estimateGas.setDelegate(agentAddress);
       const gasLimit = gasEstimate.mul(150).div(100); // 50% buffer
-      
+
       console.log(`[OstiumConnect] Gas estimate: ${gasEstimate.toString()}, with 50% buffer: ${gasLimit.toString()}`);
 
       const tx = await contract.setDelegate(agentAddress, { gasLimit });
@@ -297,7 +304,7 @@ export function OstiumConnect({
 
     } catch (err: any) {
       console.error('[OstiumConnect] Approval error:', err);
-      
+
       if (err.code === 4001) {
         setError('Transaction rejected');
       } else if (err.code === 'CALL_EXCEPTION') {
@@ -327,49 +334,50 @@ export function OstiumConnect({
 
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       await ethersProvider.send('eth_requestAccounts', []);
-      
+
       const network = await ethersProvider.getNetwork();
       const ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
       if (network.chainId !== ARBITRUM_SEPOLIA_CHAIN_ID) {
         throw new Error('Please switch to Arbitrum Sepolia');
       }
-      
+
       const signer = ethersProvider.getSigner();
       const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
 
       const currentAllowanceStorage = await usdcContract.allowance(user.wallet.address, OSTIUM_STORAGE);
       const currentAllowanceTrading = await usdcContract.allowance(user.wallet.address, OSTIUM_TRADING_CONTRACT);
       const allowanceAmount = ethers.utils.parseUnits('1000000', 6);
-      
+
       const storageAllowance = parseFloat(ethers.utils.formatUnits(currentAllowanceStorage, 6));
       const tradingAllowance = parseFloat(ethers.utils.formatUnits(currentAllowanceTrading, 6));
       const requiredAmount = parseFloat(ethers.utils.formatUnits(allowanceAmount, 6));
-      
+
       console.log('[OstiumConnect] USDC Approval Check:');
       console.log('  Storage allowance:', storageAllowance, 'USDC');
       console.log('  Trading allowance:', tradingAllowance, 'USDC');
       console.log('  Required amount:', requiredAmount, 'USDC');
-      
+
       // Use a lower threshold - only skip if user has genuinely high approval
       // This ensures first-time users always go through the approval flow
       const MIN_REQUIRED_APPROVAL = 100; // $100 minimum to skip (not $10)
       const needsStorageApproval = storageAllowance < MIN_REQUIRED_APPROVAL;
       const needsTradingApproval = tradingAllowance < MIN_REQUIRED_APPROVAL;
-      
+
       console.log('  Needs Storage approval:', needsStorageApproval, `(current: ${storageAllowance}, required: ${MIN_REQUIRED_APPROVAL})`);
       console.log('  Needs Trading approval:', needsTradingApproval, `(current: ${tradingAllowance}, required: ${MIN_REQUIRED_APPROVAL})`);
-      
+
       if (!needsStorageApproval && !needsTradingApproval) {
         console.log('[OstiumConnect] USDC already sufficiently approved, skipping to complete');
         setUsdcApproved(true);
         setStep('complete');
-        setTimeout(() => {
-          onSuccess?.();
-          onClose();
-        }, 1500);
+
+        // Call onSuccess but don't auto-close - let user close manually
+        if (onSuccess) {
+          onSuccess();
+        }
         return;
       }
-      
+
       // At least one approval is needed
       console.log('[OstiumConnect] USDC approval needed, proceeding with transaction(s)');
 
@@ -380,11 +388,11 @@ export function OstiumConnect({
           from: user.wallet.address,
           data: approveData,
         });
-        
+
         // 50% gas buffer for reliability
         const gasWithBuffer = gasEstimate.mul(150).div(100);
         console.log(`[OstiumConnect] USDC Storage approval - Gas estimate: ${gasEstimate.toString()}, with 50% buffer: ${gasWithBuffer.toString()}`);
-        
+
         const txHash = await provider.request({
           method: 'eth_sendTransaction',
           params: [{
@@ -394,7 +402,7 @@ export function OstiumConnect({
             gas: gasWithBuffer.toHexString(),
           }],
         });
-        
+
         setTxHash(txHash);
         await ethersProvider.waitForTransaction(txHash);
       }
@@ -406,11 +414,11 @@ export function OstiumConnect({
           from: user.wallet.address,
           data: approveDataTrading,
         });
-        
+
         // 50% gas buffer for reliability
         const gasWithBufferTrading = gasEstimateTrading.mul(150).div(100);
         console.log(`[OstiumConnect] USDC Trading approval - Gas estimate: ${gasEstimateTrading.toString()}, with 50% buffer: ${gasWithBufferTrading.toString()}`);
-        
+
         const txHashTrading = await provider.request({
           method: 'eth_sendTransaction',
           params: [{
@@ -420,22 +428,22 @@ export function OstiumConnect({
             gas: gasWithBufferTrading.toHexString(),
           }],
         });
-        
+
         setTxHash(txHashTrading);
         await ethersProvider.waitForTransaction(txHashTrading);
       }
 
       setUsdcApproved(true);
       setStep('complete');
-      
-      setTimeout(() => {
-        onSuccess?.();
-        onClose();
-      }, 1000);
+
+      // Call onSuccess but don't auto-close - let user close manually
+      if (onSuccess) {
+        onSuccess();
+      }
 
     } catch (err: any) {
       console.error('USDC approval error:', err);
-      
+
       if (err.code === 4001 || err.message?.includes('rejected')) {
         setError('Transaction rejected');
       } else {
@@ -505,24 +513,38 @@ export function OstiumConnect({
           )}
 
           {step === 'connect' ? (
-            <div className="text-center space-y-6 py-4">
-              <div className="w-16 h-16 mx-auto border border-[var(--accent)] flex items-center justify-center">
-                <Wallet className="w-8 h-8 text-[var(--accent)]" />
+            authenticated && user?.wallet?.address ? (
+              // Show loader if wallet is already connected
+              <div className="text-center space-y-4 py-8">
+                <Activity className="w-16 h-16 mx-auto text-[var(--accent)] animate-pulse" />
+                <div>
+                  <h3 className="font-display text-lg mb-2">CHECKING SETUP...</h3>
+                  <p className="text-sm text-[var(--text-muted)]">
+                    Verifying your wallet status
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-display text-lg mb-2">CONNECT WALLET</h3>
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Connect your Arbitrum wallet to whitelist the agent
-                </p>
+            ) : (
+              // Show connect button if not authenticated
+              <div className="text-center space-y-6 py-4">
+                <div className="w-16 h-16 mx-auto border border-[var(--accent)] flex items-center justify-center">
+                  <Wallet className="w-8 h-8 text-[var(--accent)]" />
+                </div>
+                <div>
+                  <h3 className="font-display text-lg mb-2">CONNECT WALLET</h3>
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Connect your Arbitrum wallet to whitelist the agent
+                  </p>
+                </div>
+                <button
+                  onClick={handleConnect}
+                  className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
+                >
+                  <Wallet className="w-5 h-5" />
+                  CONNECT WALLET
+                </button>
               </div>
-              <button
-                onClick={handleConnect}
-                className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
-              >
-                <Wallet className="w-5 h-5" />
-                CONNECT WALLET
-              </button>
-            </div>
+            )
           ) : step === 'agent' ? (
             <div className="text-center space-y-4 py-8">
               <Activity className="w-16 h-16 mx-auto text-[var(--accent)] animate-pulse" />

@@ -32,7 +32,7 @@ export function Header() {
   }, [isWalletModalOpen]);
 
   return (
-    <header className="sticky py-4  top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-sm">
+    <header className="sticky py-4 top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-lg">
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex h-14 items-center justify-between">
           {/* Logo/Brand */}

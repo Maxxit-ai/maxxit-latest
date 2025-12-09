@@ -1,8 +1,3 @@
-/**
- * Multi-Venue Selector Modal
- * Direct action buttons for each venue - user clicks and immediately whitelists
- */
-
 import { useState, useEffect } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { X, Zap, ArrowRight, CheckCircle, Activity } from 'lucide-react';
@@ -45,16 +40,17 @@ export function MultiVenueSelector({
 
     try {
       const response = await fetch(`/api/user/check-setup-status?userWallet=${user.wallet.address}&agentId=${agentId}`);
-      
+
       if (response.ok) {
         const data = await response.json();
-        
+
         const hasHyperliquid = data.hasHyperliquidDeployment || false;
         const hasOstium = data.hasOstiumDeployment || false;
-        
+
         setSetupStatus({ hasHyperliquid, hasOstium });
 
-        if (hasHyperliquid && hasOstium) {
+        // Only check Ostium since Hyperliquid is coming soon
+        if (hasOstium) {
           setTimeout(() => onComplete(), 500);
         } else {
           setLoading(false);
@@ -70,14 +66,15 @@ export function MultiVenueSelector({
 
   const venues = [
     {
-      id: 'HYPERLIQUID',
-      name: 'HYPERLIQUID',
-      description: 'Perpetual futures with agent whitelisting',
-    },
-    {
       id: 'OSTIUM',
       name: 'OSTIUM',
       description: 'Arbitrum perpetuals with low gas',
+    },
+    {
+      id: 'HYPERLIQUID',
+      name: 'HYPERLIQUID',
+      description: 'Coming soon',
+      disabled: true,
     },
     {
       id: 'SPOT',
@@ -164,70 +161,47 @@ export function MultiVenueSelector({
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-        <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-4xl w-full">
           {/* Header */}
-          <div className="border-b border-[var(--border)] p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="data-label mb-2">MULTI-VENUE AGENT</p>
-                <h2 className="font-display text-2xl">{agentName}</h2>
-              </div>
-              <button
-                onClick={onClose}
-                className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
+          <div className="border-b border-[var(--border)] p-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-display text-xl">{agentName}</h2>
+              <p className="text-xs text-[var(--text-muted)] mt-1">Select a venue to deploy</p>
             </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Content */}
-          <div className="p-6 space-y-4">
-            {/* Status banner */}
-            {setupStatus?.hasHyperliquid || setupStatus?.hasOstium ? (
-              <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4">
-                <p className="text-sm text-[var(--accent)]">
-                  {setupStatus.hasHyperliquid ? 'HYPERLIQUID' : 'OSTIUM'} deployed. 
-                  Click the other venue to complete setup.
-                </p>
-              </div>
-            ) : (
-              <div className="border border-[var(--border)] p-4">
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Click each venue to whitelist the agent and start trading.
-                </p>
-              </div>
-            )}
+          <div className="p-4">
+            {/* Venue buttons - horizontal layout */}
+            <div className="grid grid-cols-3 gap-3">
+              {venues.map((venue) => {
+                const isAlreadySetup =
+                  (venue.id === 'HYPERLIQUID' && setupStatus?.hasHyperliquid) ||
+                  (venue.id === 'OSTIUM' && setupStatus?.hasOstium);
 
-            {/* Venue buttons */}
-            {venues.map((venue) => {
-              const isAlreadySetup = 
-                (venue.id === 'HYPERLIQUID' && setupStatus?.hasHyperliquid) ||
-                (venue.id === 'OSTIUM' && setupStatus?.hasOstium);
-              
-              return (
-                <button
-                  key={venue.id}
-                  onClick={() => !venue.disabled && !isAlreadySetup && handleVenueClick(venue.id)}
-                  disabled={venue.disabled || isAlreadySetup}
-                  className={`w-full p-5 border transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isAlreadySetup 
-                      ? 'border-[var(--accent)] bg-[var(--accent)]/5' 
+                return (
+                  <button
+                    key={venue.id}
+                    onClick={() => !venue.disabled && !isAlreadySetup && handleVenueClick(venue.id)}
+                    disabled={venue.disabled || isAlreadySetup}
+                    className={`p-4 border transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed ${isAlreadySetup
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/5'
                       : 'border-[var(--border)] hover:border-[var(--accent)]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center">
-                          <Zap className="w-5 h-5 text-[var(--accent)]" />
-                        </div>
-                        <div>
-                          <h3 className="font-display text-lg">{venue.name}</h3>
-                          <p className="text-xs text-[var(--text-muted)]">{venue.description}</p>
-                        </div>
+                      }`}
+                  >
+                    <div className="space-y-2">
+                      <div className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center mx-auto">
+                        <Zap className="w-4 h-4 text-[var(--accent)]" />
                       </div>
-                      
+                      <h3 className="font-display text-sm">{venue.name}</h3>
+                      <p className="text-xs text-[var(--text-muted)]">{venue.description}</p>
+
                       {!venue.disabled && !isAlreadySetup && (
                         <div className="ml-13 space-y-1 text-xs text-[var(--text-muted)] mt-3">
                           <div className="flex items-center gap-2">
@@ -240,31 +214,28 @@ export function MultiVenueSelector({
                           </div>
                         </div>
                       )}
-                    </div>
 
-                    <div className="flex-shrink-0 ml-4">
                       {venue.disabled ? (
-                        <div className="px-4 py-2 border border-[var(--border)] text-[var(--text-muted)] text-sm">
-                          SOON
+                        <div className="mt-2 px-3 py-1 border border-[var(--border)] text-[var(--text-muted)] text-xs inline-block">
+                          COMING SOON
                         </div>
                       ) : isAlreadySetup ? (
-                        <div className="px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] font-bold text-sm flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4" />
+                        <div className="mt-2 px-3 py-1 bg-[var(--accent)] text-[var(--bg-deep)] font-bold text-xs inline-flex items-center gap-1.5">
+                          <CheckCircle className="w-3 h-3" />
                           ACTIVE
                         </div>
                       ) : (
-                        <div className="px-4 py-2 border border-[var(--accent)] text-[var(--accent)] font-bold text-sm flex items-center gap-2 hover:bg-[var(--accent)]/10 transition-colors">
+                        <div className="mt-2 px-3 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold text-xs inline-flex items-center gap-1.5">
                           SETUP
-                          <ArrowRight className="w-4 h-4" />
+                          <ArrowRight className="w-3 h-3" />
                         </div>
                       )}
                     </div>
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })}
+            </div>
 
-            {/* How it works */}
             <div className="border border-[var(--border)] p-4 mt-6">
               <p className="data-label mb-3">HOW IT WORKS</p>
               <ol className="space-y-2 text-sm text-[var(--text-secondary)]">
@@ -282,16 +253,6 @@ export function MultiVenueSelector({
                 </li>
               </ol>
             </div>
-          </div>
-
-          {/* Footer */}
-          <div className="border-t border-[var(--border)] p-6">
-            <button
-              onClick={onClose}
-              className="w-full py-3 border border-[var(--border)] font-bold hover:border-[var(--text-primary)] transition-colors"
-            >
-              CLOSE
-            </button>
           </div>
         </div>
       </div>
@@ -315,9 +276,16 @@ export function MultiVenueSelector({
         <OstiumConnect
           agentId={agentId}
           agentName={agentName}
-          onClose={() => setOstiumModalOpen(false)}
-          onSuccess={() => {
+          onClose={() => {
             setOstiumModalOpen(false);
+            // Refresh setup status when modal is closed
+            if (user?.wallet?.address) {
+              checkSetupStatus();
+            }
+          }}
+          onSuccess={() => {
+            // Don't close modal here - let user close manually
+            // Just refresh setup status
             if (user?.wallet?.address) {
               checkSetupStatus();
             }

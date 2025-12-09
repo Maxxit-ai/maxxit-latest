@@ -146,7 +146,7 @@ export default function MyDeployments() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-deep)]">
+    <div className="min-h-screen bg-[var(--bg-deep)] border border-[var(--border)]">
       <Header />
 
       <div className="max-w-6xl mx-auto px-6 py-12">
@@ -320,7 +320,7 @@ export default function MyDeployments() {
                   )}
 
                   {/* Telegram Connection */}
-                  <div className="pt-4">
+                  {/* <div className="pt-4">
                     <p className="data-label mb-3">MANUAL TRADING</p>
                     {deployment.telegramLinked ? (
                       <div className="flex items-center gap-2 text-[var(--accent)]">
@@ -338,18 +338,18 @@ export default function MyDeployments() {
                         CONNECT TELEGRAM
                       </button>
                     )}
-                  </div>
+                  </div> */}
 
                   {/* Actions */}
                   <div className="flex gap-2 pt-4">
                     <a
                       href={`/agent/${deployment.agentId}`}
-                      className="flex-1 py-3 border border-[var(--border)] font-bold text-sm hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold text-sm hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
                     >
                       <TrendingUp className="w-4 h-4" />
                       VIEW
                     </a>
-                    <button
+                    {/* <button
                       onClick={() =>
                         handleSetupHyperliquid(
                           deployment.agentId,
@@ -363,7 +363,7 @@ export default function MyDeployments() {
                     </button>
                     <button className="py-3 px-4 border border-[var(--border)] hover:border-[var(--accent)] transition-colors">
                       <Settings className="w-4 h-4" />
-                    </button>
+                    </button> */}
                   </div>
                 </div>
               </div>

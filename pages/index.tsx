@@ -83,7 +83,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen border border-[var(--border)] bg-[var(--bg-deep)] text-[var(--text-primary)] overflow-x-hidden">
+    <div className="min-h-screen border border-[var(--border)] bg-[var(--bg-deep)] text-[var(--text-primary)] ">
       <div className="min-h-svh flex flex-col">
         <Header />
         <HeroSection

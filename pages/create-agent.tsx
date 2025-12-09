@@ -747,9 +747,9 @@ export default function CreateAgent() {
               <p className="text-[var(--text-secondary)]">Deploy to start trading</p>
             </div>
             <div className="space-y-4">
-              <button onClick={handleDeploy} className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2">
+              {/* <button onClick={handleDeploy} className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2">
                 <Rocket className="h-5 w-5" />DEPLOY AGENT
-              </button>
+              </button> */}
               <button onClick={() => router.push('/creator')} className="w-full py-4 border border-[var(--border)] font-bold hover:border-[var(--text-primary)] transition-colors">
                 DEPLOY LATER
               </button>
