@@ -4,10 +4,6 @@ import Head from 'next/head';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import Lenis from 'lenis';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-
-gsap.registerPlugin(ScrollTrigger);
 
 export default function App({ Component, pageProps }: AppProps) {
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -32,30 +28,49 @@ export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      orientation: 'vertical',
-      gestureOrientation: 'vertical',
-      smoothWheel: true,
-      wheelMultiplier: 1,
-      touchMultiplier: 2,
-      infinite: false,
+    let lenis: Lenis | null = null;
+    let rafId: number | null = null;
+
+    // Dynamically import GSAP only on client-side
+    Promise.all([
+      import('gsap'),
+      import('gsap/ScrollTrigger')
+    ]).then(([{ gsap }, { ScrollTrigger }]) => {
+      // Register ScrollTrigger plugin
+      gsap.registerPlugin(ScrollTrigger);
+
+      lenis = new Lenis({
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        orientation: 'vertical',
+        gestureOrientation: 'vertical',
+        smoothWheel: true,
+        wheelMultiplier: 1,
+        touchMultiplier: 2,
+        infinite: false,
+      });
+
+      // Integrate Lenis with GSAP ScrollTrigger
+      function raf(time: number) {
+        lenis?.raf(time);
+        rafId = requestAnimationFrame(raf);
+      }
+
+      rafId = requestAnimationFrame(raf);
+
+      // Update ScrollTrigger when Lenis scrolls
+      lenis.on('scroll', ScrollTrigger.update);
+    }).catch((error) => {
+      console.error('Failed to load GSAP:', error);
     });
 
-    // Integrate Lenis with GSAP ScrollTrigger
-    function raf(time: number) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-
-    requestAnimationFrame(raf);
-
-    // Update ScrollTrigger when Lenis scrolls
-    lenis.on('scroll', ScrollTrigger.update);
-
     return () => {
-      lenis.destroy();
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      if (lenis) {
+        lenis.destroy();
+      }
     };
   }, []);
 

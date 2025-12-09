@@ -1,11 +1,12 @@
 /**
  * News Signal Classifier
  *
- * LLM-based classification for non-crypto market news
+ * LLM-based classification for market news
  * Analyzes news articles and market data to generate trading signals
+ * This is a SHARED module used by all institutes that need LLM classification
  */
 
-import { NormalizedAssetData, NewsArticle } from "./data-providers/types";
+import { NormalizedAssetData, NewsArticle } from "./types";
 
 /**
  * Signal classification result
@@ -376,13 +377,44 @@ Respond ONLY with the JSON object, no other text.`;
     assetData: NormalizedAssetData
   ): SignalClassification {
     try {
-      // Extract JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in response");
+      // Some providers return helper text around JSON. Strip obvious markers and
+      // try multiple extraction strategies to find a valid JSON object.
+      const cleaned = response.replace(/<\|[^>]+?\|>/g, "").trim();
+
+      const candidates: string[] = [];
+
+      // 1) Fenced ```json blocks
+      const fenced = cleaned.match(/```json([\s\S]*?)```/gi);
+      if (fenced) {
+        fenced.forEach((block) => {
+          const inner = block
+            .replace(/```json/gi, "")
+            .replace(/```/g, "")
+            .trim();
+          if (inner) candidates.push(inner);
+        });
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
+      // 2) Any JSON-looking object (non-greedy)
+      const braceMatches = cleaned.match(/\{[\s\S]*?\}/g);
+      if (braceMatches) {
+        candidates.push(...braceMatches);
+      }
+
+      // Try parsing candidates from last to first (most recent/closest to end)
+      let parsed: any | null = null;
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        try {
+          parsed = JSON.parse(candidates[i]);
+          break;
+        } catch {
+          // keep trying earlier candidates
+        }
+      }
+
+      if (!parsed) {
+        throw new Error("No JSON found in response");
+      }
 
       // Extract news headlines and URLs
       const newsHeadlines: string[] = [];

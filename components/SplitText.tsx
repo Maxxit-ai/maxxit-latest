@@ -1,10 +1,15 @@
+'use client';
+
 import React, { useRef, useEffect, useState } from 'react';
+import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { SplitText as GSAPSplitText } from 'gsap/SplitText';
-import { useGSAP } from '@gsap/react';
 
-gsap.registerPlugin(ScrollTrigger, GSAPSplitText, useGSAP);
+// Register plugins only on client-side
+if (typeof window !== 'undefined') {
+  gsap.registerPlugin(ScrollTrigger, GSAPSplitText);
+}
 
 export interface SplitTextProps {
   text: string;
@@ -53,7 +58,7 @@ const SplitText: React.FC<SplitTextProps> = ({
 
   useGSAP(
     () => {
-      if (!ref.current || !text || !fontsLoaded) return;
+      if (!ref.current || !text || !fontsLoaded || typeof window === 'undefined') return;
       const el = ref.current as HTMLElement & {
         _rbsplitInstance?: GSAPSplitText;
       };

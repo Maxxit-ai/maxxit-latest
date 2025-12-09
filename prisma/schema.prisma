@@ -308,16 +308,18 @@ model research_signals {
   institute_id         String              @db.Uuid
   signal_text          String
   source_url           String?
-  extracted_token      String?
-  extracted_side       String?
+  extracted_tokens     String[]            @default([])
+  signal_type          String?
   extracted_leverage   Int?
-  is_valid_signal      Boolean?
-  processed_for_trades Boolean             @default(false)
+  is_signal_candidate  Boolean?
+  confidence_score     Float?
+  processed_for_signals Boolean             @default(false)
   created_at           DateTime            @default(now()) @db.Timestamptz(6)
   research_institutes  research_institutes @relation(fields: [institute_id], references: [id], onDelete: Cascade)
 
   @@index([institute_id, created_at])
-  @@index([processed_for_trades])
+  @@index([is_signal_candidate])
+  @@index([processed_for_signals])
 }
 
 /// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
@@ -404,6 +406,14 @@ model telegram_posts {
   signal_type             String?
   processed_for_signals   Boolean               @default(false)
   created_at              DateTime              @default(now()) @db.Timestamptz(6)
+  
+  // EigenAI Signature Verification Fields
+  llm_signature           String?               // Cryptographic signature from EigenAI
+  llm_raw_output          String?               // Full raw output from LLM (for verification)
+  llm_model_used          String?               // Model ID used (e.g., "gpt-oss-120b-f16")
+  llm_chain_id            Int?                  // Chain ID for signature verification
+  llm_reasoning           String?               // LLM reasoning for classification
+  
   telegram_sources        telegram_sources?     @relation(fields: [source_id], references: [id], onDelete: Cascade)
   telegram_alpha_users    telegram_alpha_users? @relation(fields: [alpha_user_id], references: [id], onDelete: Cascade)
 

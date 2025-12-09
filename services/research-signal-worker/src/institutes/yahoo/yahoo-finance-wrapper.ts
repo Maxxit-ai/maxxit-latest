@@ -1,5 +1,5 @@
 /**
- * Yahoo Finance Wrapper
+ * Yahoo Finance Wrapper for Yahoo Institute
  *
  * Fetches market data from Yahoo Finance API and generates trading signals
  * based on technical indicators (price movements, volume, trends)
@@ -315,3 +315,4 @@ export function canUseYahooFinance(): boolean {
   // Yahoo Finance doesn't require API key, so always available
   return true;
 }
+

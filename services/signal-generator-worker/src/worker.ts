@@ -22,6 +22,25 @@ const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds
 
 let workerInterval: NodeJS.Timeout | null = null;
 
+/**
+ * Static LunarCrush-like data for research signals
+ * This placeholder avoids external calls; will be replaced with real logic later.
+ */
+function getStaticLunarCrushData(
+  token: string,
+  confidence: number | null | undefined
+) {
+  return {
+    success: true,
+    score: 0.5 + (confidence || 0) * 0.25, // simple deterministic score
+    reasoning: `Static placeholder score for ${token}`,
+    breakdown: {
+      sentiment: confidence ?? null,
+      source: "static-placeholder",
+    },
+  };
+}
+
 // Health check server
 const app = express();
 app.get("/health", async (req, res) => {
@@ -92,11 +111,33 @@ async function generateSignals() {
       take: 20, // Process 20 messages per cycle
     });
 
+    // Get unprocessed Research Institute signals
+    const unprocessedResearchSignals = (await prisma.research_signals.findMany({
+      where: {
+        is_signal_candidate: true,
+        processed_for_signals: false,
+        research_institutes: {
+          is_active: true,
+        },
+      },
+      include: {
+        research_institutes: true,
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+      take: 20, // Process 20 signals per cycle
+    })) as any[];
+
     console.log(
-      `📊 Found ${unprocessedTweets.length} Twitter + ${unprocessedTelegram.length} Telegram unprocessed signal candidate(s)\n`
+      `📊 Found ${unprocessedTweets.length} Twitter + ${unprocessedTelegram.length} Telegram + ${unprocessedResearchSignals.length} Research unprocessed signal candidate(s)\n`
     );
 
-    if (unprocessedTweets.length === 0 && unprocessedTelegram.length === 0) {
+    if (
+      unprocessedTweets.length === 0 &&
+      unprocessedTelegram.length === 0 &&
+      unprocessedResearchSignals.length === 0
+    ) {
       console.log("✅ No signals to generate\n");
       return;
     }
@@ -123,19 +164,42 @@ async function generateSignals() {
 
         console.log(`  🤖 ${subscribedAgents.length} agent(s) subscribed`);
 
-        // Generate signal for each subscribed agent
-        for (const agent of subscribedAgents) {
-          try {
-            // Generate signals for each extracted token
-            for (const token of tweet.extracted_tokens) {
-              await generateSignalForAgentAndToken(tweet, agent, token);
-              signalsGenerated++;
+        // Precompute LunarCrush per token (avoid repeating identical calls per agent)
+        for (const token of tweet.extracted_tokens) {
+          let lunarCrushData: any = undefined;
+
+          if (canUseLunarCrush()) {
+            try {
+              lunarCrushData = await getLunarCrushScore(
+                token,
+                tweet.confidence_score || 0.5
+              );
+            } catch (error: any) {
+              console.log(
+                `    ⚠️  LunarCrush scoring failed for ${token}: ${error.message}`
+              );
+              lunarCrushData = null; // Mark as attempted to avoid re-calling inside generate
             }
-          } catch (error: any) {
-            console.log(
-              `  ❌ Error generating signal for agent ${agent.name}:`,
-              error.message
-            );
+          }
+
+          // Generate signal for each subscribed agent using the precomputed data
+          for (const agent of subscribedAgents) {
+            try {
+              const signalCreated = await generateSignalForAgentAndToken(
+                tweet,
+                agent,
+                token,
+                lunarCrushData
+              );
+              if (signalCreated) {
+                signalsGenerated++;
+              }
+            } catch (error: any) {
+              console.log(
+                `  ❌ Error generating signal for agent ${agent.name}:`,
+                error.message
+              );
+            }
           }
         }
 
@@ -185,32 +249,53 @@ async function generateSignals() {
 
         console.log(`  🤖 ${subscribedAgents.length} agent(s) subscribed`);
 
-        // Generate signal for each subscribed agent
-        for (const agent of subscribedAgents) {
-          try {
-            // Generate signals for each extracted token
-            for (const token of message.extracted_tokens) {
-              await generateSignalForAgentAndToken(
-                {
-                  ...message,
-                  tweet_id: message.message_id,
-                  tweet_text: message.message_text,
-                  tweet_created_at: message.message_created_at,
-                  ct_accounts: {
-                    impact_factor:
-                      message.telegram_alpha_users?.impact_factor || 0.5,
-                  },
-                },
-                agent,
-                token
+        // Normalize Telegram message to match expected tweet shape once
+        const normalizedMessage = {
+          ...message,
+          tweet_id: message.message_id,
+          tweet_text: message.message_text,
+          tweet_created_at: message.message_created_at,
+          ct_accounts: {
+            impact_factor: message.telegram_alpha_users?.impact_factor || 0.5,
+          },
+        };
+
+        // Precompute LunarCrush per token (avoid repeating identical calls per agent)
+        for (const token of message.extracted_tokens) {
+          let lunarCrushData: any = undefined;
+
+          if (canUseLunarCrush()) {
+            try {
+              lunarCrushData = await getLunarCrushScore(
+                token,
+                message.confidence_score || 0.5
               );
-              signalsGenerated++;
+            } catch (error: any) {
+              console.log(
+                `    ⚠️  LunarCrush scoring failed for ${token}: ${error.message}`
+              );
+              lunarCrushData = null; // Mark as attempted to avoid re-calling inside generate
             }
-          } catch (error: any) {
-            console.log(
-              `  ❌ Error generating signal for agent ${agent.name}:`,
-              error.message
-            );
+          }
+
+          // Generate signal for each subscribed agent using the precomputed data
+          for (const agent of subscribedAgents) {
+            try {
+              const signalCreated = await generateSignalForAgentAndToken(
+                normalizedMessage,
+                agent,
+                token,
+                lunarCrushData
+              );
+              if (signalCreated) {
+                signalsGenerated++;
+              }
+            } catch (error: any) {
+              console.log(
+                `  ❌ Error generating signal for agent ${agent.name}:`,
+                error.message
+              );
+            }
           }
         }
 
@@ -229,11 +314,92 @@ async function generateSignals() {
       }
     }
 
+    // Process Research Institute signals
+    for (const signal of unprocessedResearchSignals) {
+      try {
+        console.log(`[Research ${signal.id}] Processing...`);
+        console.log(`  Text: ${signal.signal_text.substring(0, 60)}...`);
+        console.log(`  Tokens: ${signal.extracted_tokens.join(", ")}`);
+        console.log(`  Sentiment: ${signal.signal_type || "unknown"}`);
+
+        // Get agents subscribed to this research institute
+        const instituteAgentLinks =
+          await prisma.agent_research_institutes.findMany({
+            where: { institute_id: signal.institute_id },
+            include: { agents: true },
+          });
+
+        const subscribedAgents = instituteAgentLinks
+          .map((link: any) => link.agents)
+          .filter((agent: any) => agent.status === "PUBLIC");
+
+        if (subscribedAgents.length === 0) {
+          console.log(`  ⏭️  No active agents subscribed\n`);
+          await prisma.research_signals.update({
+            where: { id: signal.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        console.log(`  🤖 ${subscribedAgents.length} agent(s) subscribed`);
+
+        // Normalize research signal to match expected tweet shape once
+        const normalizedSignal = {
+          ...signal,
+          tweet_id: signal.id,
+          tweet_text: signal.signal_text,
+          tweet_created_at: signal.created_at,
+          ct_accounts: {
+            impact_factor: 0.5, // Default impact factor placeholder
+          },
+        };
+
+        // Precompute static LunarCrush-like data per token
+        for (const token of signal.extracted_tokens) {
+          const lunarCrushData = getStaticLunarCrushData(
+            token,
+            signal.confidence_score
+          );
+
+          for (const agent of subscribedAgents) {
+            try {
+              const signalCreated = await generateSignalForAgentAndToken(
+                normalizedSignal,
+                agent,
+                token,
+                lunarCrushData
+              );
+              if (signalCreated) {
+                signalsGenerated++;
+              }
+            } catch (error: any) {
+              console.log(
+                `  ❌ Error generating signal for agent ${agent.name}:`,
+                error.message
+              );
+            }
+          }
+        }
+
+        // Mark research signal as processed
+        await prisma.research_signals.update({
+          where: { id: signal.id },
+          data: { processed_for_signals: true },
+        });
+
+        console.log(`  ✅ Research signal processed\n`);
+      } catch (error: any) {
+        console.error(`[Research ${signal.id}] ❌ Error:`, error.message);
+      }
+    }
+
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("📊 SIGNAL GENERATION SUMMARY");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log(`  Twitter Tweets: ${unprocessedTweets.length}`);
     console.log(`  Telegram Messages: ${unprocessedTelegram.length}`);
+    console.log(`  Research Signals: ${unprocessedResearchSignals.length}`);
     console.log(`  Signals Generated: ${signalsGenerated}`);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
   } catch (error: any) {
@@ -244,18 +410,25 @@ async function generateSignals() {
 /**
  * Generate a signal for a specific agent and token
  * Matches monolith flow: LLM classification (already done) + LunarCrush scoring + simple rules
+ * @returns true if signal was created, false if skipped
  */
 async function generateSignalForAgentAndToken(
   tweet: any,
   agent: any,
-  token: string
-) {
+  token: string,
+  lunarCrushData?: {
+    success: boolean;
+    score: number | null;
+    reasoning: string | null;
+    breakdown: any | null;
+  } | null
+): Promise<boolean> {
   try {
     // Stablecoins should NOT be traded (they are base currency)
     const EXCLUDED_TOKENS = ["USDC", "USDT", "DAI", "USDC.E", "BUSD", "FRAX"];
     if (EXCLUDED_TOKENS.includes(token.toUpperCase())) {
       console.log(`    ⏭️  Skipping stablecoin ${token} - base currency only`);
-      return;
+      return false;
     }
 
     // Check if token is available on the target venue
@@ -305,7 +478,7 @@ async function generateSignalForAgentAndToken(
           console.log(
             `       (Multi-venue agents need token on at least one enabled venue)`
           );
-          return;
+          return false;
         }
       }
     } else {
@@ -325,7 +498,7 @@ async function generateSignalForAgentAndToken(
         console.log(
           `       (Only ${agent.venue}-supported tokens will generate signals)`
         );
-        return;
+        return false;
       }
 
       signalVenue = agent.venue; // Use agent's specific venue
@@ -344,21 +517,46 @@ async function generateSignalForAgentAndToken(
     let lunarcrushBreakdown: any = null;
 
     // Get LunarCrush score for dynamic position sizing (0-10%)
-    if (canUseLunarCrush()) {
+    const hasPrecomputedLunar = typeof lunarCrushData !== "undefined";
+    const lunarDataToUse = lunarCrushData;
+
+    if (lunarDataToUse) {
+      if (lunarDataToUse.success && lunarDataToUse.score !== null) {
+        lunarcrushScore = lunarDataToUse.score;
+        lunarcrushReasoning = lunarDataToUse.reasoning;
+        lunarcrushBreakdown = lunarDataToUse.breakdown;
+
+        if (lunarcrushScore > 0) {
+          positionSizePercent = Math.max(
+            0.5,
+            Math.min(10, lunarcrushScore * 10)
+          );
+          console.log(
+            `    📊 LunarCrush: ${token} score=${lunarcrushScore.toFixed(
+              3
+            )}, position=${positionSizePercent.toFixed(2)}%`
+          );
+        } else {
+          positionSizePercent = 0.5;
+          console.log(
+            `    📊 LunarCrush: ${token} score=${lunarcrushScore.toFixed(
+              3
+            )} - CAUTION: minimum position (${positionSizePercent}%)`
+          );
+        }
+      }
+    } else if (!hasPrecomputedLunar && canUseLunarCrush()) {
       try {
         const lcResult = await getLunarCrushScore(
           token,
           tweet.confidence_score || 0.5
         );
-        if (lcResult.success && lcResult.score) {
+        if (lcResult.success && lcResult.score !== null) {
           lunarcrushScore = lcResult.score;
           lunarcrushReasoning = lcResult.reasoning;
           lunarcrushBreakdown = lcResult.breakdown;
 
-          // LunarCrush determines position size (0.5-10%)
-          // Positive score = larger position, negative/zero = minimum position
           if (lunarcrushScore > 0) {
-            // Convert score (0 to 1) to position size (0.5-10%)
             positionSizePercent = Math.max(
               0.5,
               Math.min(10, lunarcrushScore * 10)
@@ -369,7 +567,6 @@ async function generateSignalForAgentAndToken(
               )}, position=${positionSizePercent.toFixed(2)}%`
             );
           } else {
-            // Negative/zero score = use minimum position (0.5%) instead of blocking
             positionSizePercent = 0.5;
             console.log(
               `    📊 LunarCrush: ${token} score=${lunarcrushScore.toFixed(
@@ -383,7 +580,7 @@ async function generateSignalForAgentAndToken(
           `    ⚠️  LunarCrush scoring failed: ${lcError.message} - using default 5%`
         );
       }
-    } else {
+    } else if (!hasPrecomputedLunar) {
       console.log(
         `    ⚠️  LunarCrush not configured - using default 5% position size`
       );
@@ -452,7 +649,7 @@ async function generateSignalForAgentAndToken(
         console.log(
           `    ⏭️  Signal already exists for ${token} (within 6-hour window)`
         );
-        return; // Skip creating duplicate signal
+        return false; // Skip creating duplicate signal
       }
     }
 
@@ -489,12 +686,14 @@ async function generateSignalForAgentAndToken(
           2
         )}% position)`
       );
+      return true; // Signal successfully created
     } catch (createError: any) {
       // P2002: Unique constraint violation (race condition - another worker created it first)
       if (createError.code === "P2002") {
         console.log(
           `    ⏭️  Signal already exists for ${token} (race condition - created by another worker)`
         );
+        return false; // Signal not created due to race condition
       } else {
         // Re-throw unexpected errors
         throw createError;

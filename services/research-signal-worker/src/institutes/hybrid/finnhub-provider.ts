@@ -1,5 +1,5 @@
 /**
- * Finnhub Data Provider
+ * Finnhub Data Provider for Hybrid Institute
  *
  * Fetches market data and news from Finnhub API (Free tier)
  * Rate limit: 60 requests/minute
@@ -16,7 +16,7 @@ import {
   AssetType,
   ProviderConfig,
   NewsSentiment,
-} from "./types";
+} from "../../providers/types";
 import {
   getFinnhubSymbol,
   getFinnhubNewsSymbol,
@@ -425,3 +425,4 @@ export function createFinnhubProvider(): FinnhubProvider | null {
 
   return new FinnhubProvider({ apiKey });
 }
+

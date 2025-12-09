@@ -1,86 +1,25 @@
 /**
- * Data Providers Index
+ * Hybrid Data Provider for Hybrid Institute
  *
- * Factory for creating data provider instances
- * Designed for easy expansion with additional providers
+ * Combines Finnhub (quotes) + MarketAux (news sentiment)
+ * This provider gets the best of both worlds:
+ * - Finnhub: Real-time quotes, price data
+ * - MarketAux: News articles with sentiment scores
  */
 
-export * from "./types";
-export * from "./symbol-mapper";
-export { FinnhubProvider, createFinnhubProvider } from "./finnhub-provider";
-export {
-  MarketAuxProvider,
-  createMarketAuxProvider,
-  getMarketAuxSymbol,
-} from "./marketaux-provider";
-
-import { IDataProvider, NormalizedAssetData, AssetType } from "./types";
-import { createFinnhubProvider, FinnhubProvider } from "./finnhub-provider";
 import {
-  createMarketAuxProvider,
-  MarketAuxProvider,
-} from "./marketaux-provider";
+  IDataProvider,
+  MarketQuote,
+  NewsArticle,
+  NewsSentimentSummary,
+  NormalizedAssetData,
+  AssetType,
+} from "../../providers/types";
+import { FinnhubProvider, createFinnhubProvider } from "./finnhub-provider";
+import { MarketAuxProvider, createMarketAuxProvider } from "./marketaux-provider";
 
 /**
- * Provider types
- */
-export type ProviderType = "finnhub" | "marketaux";
-
-/**
- * Get a data provider by type
- */
-export function getDataProvider(type: ProviderType): IDataProvider | null {
-  switch (type) {
-    case "finnhub":
-      return createFinnhubProvider();
-    case "marketaux":
-      return createMarketAuxProvider();
-    default:
-      console.warn(`[DataProvider] Unknown provider type: ${type}`);
-      return null;
-  }
-}
-
-/**
- * Get the default data provider (Finnhub for quotes)
- */
-export function getDefaultProvider(): IDataProvider | null {
-  return getDataProvider("finnhub");
-}
-
-/**
- * Get the news/sentiment provider (MarketAux)
- */
-export function getNewsProvider(): IDataProvider | null {
-  return getDataProvider("marketaux");
-}
-
-/**
- * Check if any data provider is available
- */
-export function isAnyProviderAvailable(): boolean {
-  const finnhub = createFinnhubProvider();
-  const marketaux = createMarketAuxProvider();
-  return finnhub?.isAvailable() || marketaux?.isAvailable() || false;
-}
-
-/**
- * Check which providers are available
- */
-export function getAvailableProviders(): {
-  finnhub: boolean;
-  marketaux: boolean;
-} {
-  const finnhub = createFinnhubProvider();
-  const marketaux = createMarketAuxProvider();
-  return {
-    finnhub: finnhub?.isAvailable() || false,
-    marketaux: marketaux?.isAvailable() || false,
-  };
-}
-
-/**
- * Hybrid data fetcher that combines Finnhub (quotes) + MarketAux (news sentiment)
+ * Hybrid data provider that combines Finnhub (quotes) + MarketAux (news sentiment)
  */
 export class HybridDataProvider implements IDataProvider {
   name = "Hybrid (Finnhub + MarketAux)";
@@ -102,7 +41,7 @@ export class HybridDataProvider implements IDataProvider {
     );
   }
 
-  async getQuote(symbol: string) {
+  async getQuote(symbol: string): Promise<MarketQuote | null> {
     // Use Finnhub for quotes (it's better for this)
     if (this.finnhub?.isAvailable()) {
       return this.finnhub.getQuote(symbol);
@@ -110,7 +49,7 @@ export class HybridDataProvider implements IDataProvider {
     return null;
   }
 
-  async getNews(symbol: string, from?: Date, to?: Date) {
+  async getNews(symbol: string, from?: Date, to?: Date): Promise<NewsArticle[]> {
     // Prefer MarketAux for news (has sentiment)
     if (this.marketaux?.isAvailable()) {
       return this.marketaux.getNews(symbol, from, to);
@@ -122,7 +61,7 @@ export class HybridDataProvider implements IDataProvider {
     return [];
   }
 
-  async getNewsSentiment(symbol: string) {
+  async getNewsSentiment(symbol: string): Promise<NewsSentimentSummary | null> {
     // Prefer MarketAux for sentiment (primary purpose)
     if (this.marketaux?.isAvailable()) {
       return this.marketaux.getNewsSentiment(symbol);
@@ -175,3 +114,4 @@ export class HybridDataProvider implements IDataProvider {
 export function createHybridProvider(): HybridDataProvider {
   return new HybridDataProvider();
 }
+
