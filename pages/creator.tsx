@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { db } from '../client/src/lib/db';
 import type { Agent, AgentDeployment, Position, BillingEvent } from '@shared/schema';
-import { Bot, Rocket, TrendingUp, DollarSign, Plus, Activity, BarChart3, CheckCircle, Pause } from 'lucide-react';
+import { Bot, Rocket, TrendingUp, DollarSign, Plus, Activity, BarChart3, CheckCircle, Pause, Zap } from 'lucide-react';
 import { Header } from '@components/Header';
 import { usePrivy } from '@privy-io/react-auth';
 import { useToast } from '@/hooks/use-toast';
+import { MultiVenueSelector } from '@components/MultiVenueSelector';
 
 export default function Creator() {
   const { authenticated, user, login } = usePrivy();
@@ -18,83 +19,86 @@ export default function Creator() {
   const [error, setError] = useState<string | null>(null);
   const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
   const [deactivatingAgentId, setDeactivatingAgentId] = useState<string | null>(null);
+  const [deployingAgent, setDeployingAgent] = useState<Agent | null>(null);
+  const [showDeploymentModal, setShowDeploymentModal] = useState(false);
 
-  useEffect(() => {
-    async function fetchDashboardData() {
-      if (!authenticated || !user?.wallet?.address) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        // Fetch agents created by this wallet
-        const agentsData = await db.get('agents', {
-          'creatorWallet': `eq.${user.wallet.address}`,
-          'order': 'apr30d.desc.nullslast',
-          'select': '*',
-        });
-
-        setAgents(agentsData || []);
-
-        // Fetch YOUR deployments (agents you subscribed to) - ALWAYS run this
-        const myDeploymentsPromise = db.get('agent_deployments', {
-          'userWallet': `eq.${user.wallet.address}`,
-          'select': '*',
-        });
-
-        // If we have agents, also fetch deployments BY OTHERS for agents you created
-        let allDeployments = await myDeploymentsPromise;
-        
-        if (agentsData && agentsData.length > 0) {
-          const agentIds = agentsData.map((a: Agent) => a.id);
-          
-          // Fetch deployments by others for these agents (to track subscribers)
-          const othersDeploymentsPromise = db.get('agent_deployments', {
-            'agentId': `in.(${agentIds.join(',')})`,
-            'userWallet': `neq.${user.wallet.address}`, // Exclude your own
-            'select': '*',
-          });
-
-          const othersDeployments = await othersDeploymentsPromise;
-          
-          // Combine: YOUR deployments + deployments by OTHERS for your agents
-          allDeployments = [...(allDeployments || []), ...(othersDeployments || [])];
-        }
-
-        setDeployments(allDeployments || []);
-
-        // Fetch positions and billing events for all deployments
-        if (allDeployments && allDeployments.length > 0) {
-          const deploymentIds = allDeployments.map((d: AgentDeployment) => d.id);
-          
-          // Fetch positions and billing events IN PARALLEL (not sequential)
-          const [positionsData, billingData] = await Promise.all([
-            db.get('positions', {
-              'deploymentId': `in.(${deploymentIds.join(',')})`,
-              'order': 'openedAt.desc',
-              'limit': '10',
-              'select': '*',
-            }),
-            db.get('billing_events', {
-              'deploymentId': `in.(${deploymentIds.join(',')})`,
-              'order': 'occurredAt.desc',
-              'limit': '20',
-              'select': '*',
-            })
-          ]);
-
-          setPositions(positionsData || []);
-          setBillingEvents(billingData || []);
-        }
-
-        setError(null);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load dashboard data');
-      } finally {
-        setLoading(false);
-      }
+  // Extract fetchDashboardData so it can be called after deployment
+  const fetchDashboardData = async () => {
+    if (!authenticated || !user?.wallet?.address) {
+      setLoading(false);
+      return;
     }
 
+    try {
+      // Fetch agents created by this wallet
+      const agentsData = await db.get('agents', {
+        'creatorWallet': `eq.${user.wallet.address}`,
+        'order': 'apr30d.desc.nullslast',
+        'select': '*',
+      });
+
+      setAgents(agentsData || []);
+
+      // Fetch YOUR deployments (agents you subscribed to) - ALWAYS run this
+      const myDeploymentsPromise = db.get('agent_deployments', {
+        'userWallet': `eq.${user.wallet.address}`,
+        'select': '*',
+      });
+
+      // If we have agents, also fetch deployments BY OTHERS for agents you created
+      let allDeployments = await myDeploymentsPromise;
+      
+      if (agentsData && agentsData.length > 0) {
+        const agentIds = agentsData.map((a: Agent) => a.id);
+        
+        // Fetch deployments by others for these agents (to track subscribers)
+        const othersDeploymentsPromise = db.get('agent_deployments', {
+          'agentId': `in.(${agentIds.join(',')})`,
+          'userWallet': `neq.${user.wallet.address}`, // Exclude your own
+          'select': '*',
+        });
+
+        const othersDeployments = await othersDeploymentsPromise;
+        
+        // Combine: YOUR deployments + deployments by OTHERS for your agents
+        allDeployments = [...(allDeployments || []), ...(othersDeployments || [])];
+      }
+
+      setDeployments(allDeployments || []);
+
+      // Fetch positions and billing events for all deployments
+      if (allDeployments && allDeployments.length > 0) {
+        const deploymentIds = allDeployments.map((d: AgentDeployment) => d.id);
+        
+        // Fetch positions and billing events IN PARALLEL (not sequential)
+        const [positionsData, billingData] = await Promise.all([
+          db.get('positions', {
+            'deploymentId': `in.(${deploymentIds.join(',')})`,
+            'order': 'openedAt.desc',
+            'limit': '10',
+            'select': '*',
+          }),
+          db.get('billing_events', {
+            'deploymentId': `in.(${deploymentIds.join(',')})`,
+            'order': 'occurredAt.desc',
+            'limit': '20',
+            'select': '*',
+          })
+        ]);
+
+        setPositions(positionsData || []);
+        setBillingEvents(billingData || []);
+      }
+
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchDashboardData();
   }, [authenticated, user?.wallet?.address]);
 
@@ -149,6 +153,27 @@ export default function Creator() {
       });
     } finally {
       setDeactivatingAgentId(null);
+    }
+  }
+
+  function handleDeployAgent(agent: Agent) {
+    setDeployingAgent(agent);
+    setShowDeploymentModal(true);
+  }
+
+  async function handleDeploymentComplete() {
+    setShowDeploymentModal(false);
+    setDeployingAgent(null);
+    
+    // Show success toast
+    toast({
+      title: 'Deployment Successful',
+      description: 'Your agent has been deployed successfully!',
+    });
+    
+    // Smoothly refresh dashboard data to show new deployment without page reload
+    if (authenticated && user?.wallet?.address) {
+      await fetchDashboardData();
     }
   }
 
@@ -353,7 +378,7 @@ export default function Creator() {
                         <h3 className="font-semibold text-foreground">{agent.name}</h3>
                         <p className="text-sm text-muted-foreground">{agent.venue}</p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className={`px-2 py-1 text-xs rounded-md ${
                           agent.status === 'PUBLIC' ? 'bg-primary/20 text-primary' :
                           agent.status === 'PRIVATE' ? 'bg-yellow-500/20 text-yellow-500' :
@@ -361,6 +386,17 @@ export default function Creator() {
                         }`}>
                           {agent.status}
                         </span>
+                        
+                        {/* Deploy button - available for all agent statuses */}
+                        <button
+                          onClick={() => handleDeployAgent(agent)}
+                          className="flex items-center gap-1 px-3 py-1 bg-[var(--accent)] text-[var(--bg-deep)] text-xs rounded-md hover:bg-[var(--accent-dim)] transition-all font-bold"
+                          data-testid={`button-deploy-${agent.id}`}
+                        >
+                          <Zap className="h-3 w-3" />
+                          Deploy
+                        </button>
+
                         {(agent.status === 'DRAFT' || agent.status === 'PRIVATE') && (
                           <button
                             onClick={() => activateAgent(agent.id)}
@@ -548,6 +584,19 @@ export default function Creator() {
           </div>
         )}
       </div>
+
+      {/* Deployment Modal */}
+      {showDeploymentModal && deployingAgent && (
+        <MultiVenueSelector
+          agentId={deployingAgent.id}
+          agentName={deployingAgent.name}
+          onClose={() => {
+            setShowDeploymentModal(false);
+            setDeployingAgent(null);
+          }}
+          onComplete={handleDeploymentComplete}
+        />
+      )}
     </div>
   );
 }

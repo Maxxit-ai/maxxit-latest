@@ -283,17 +283,39 @@
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
 }
 
 ::-webkit-scrollbar-track {
   background: var(--bg-deep);
+  border-left: 1px solid var(--border);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--text-muted);
+  border: 2px solid var(--bg-deep);
+  border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--accent);
+}
+
+/* Modal specific scrollbar - more visible */
+.modal-scrollable::-webkit-scrollbar {
+  width: 12px;
+}
+
+.modal-scrollable::-webkit-scrollbar-track {
+  background: var(--bg-elevated);
+  border-left: 2px solid var(--accent);
+}
+
+.modal-scrollable::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border: 3px solid var(--bg-elevated);
+}
+
+.modal-scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
 }

@@ -504,11 +504,22 @@ export function OstiumConnect({
     checkSetupStatus();
   };
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div 
+        className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-md w-full max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="border-b border-[var(--border)] p-6">
+        <div className="border-b border-[var(--border)] p-6 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center">
@@ -528,8 +539,20 @@ export function OstiumConnect({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-4">
+        {/* Content - Scrollable */}
+        <div 
+          className="p-6 space-y-4 overflow-y-auto flex-1 modal-scrollable"
+          style={{ overscrollBehavior: 'contain' }}
+          onWheel={(e) => {
+            const target = e.currentTarget;
+            const isAtTop = target.scrollTop === 0;
+            const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
+            
+            if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
+              e.stopPropagation();
+            }
+          }}
+        >
           {error && (
             <div className="flex items-start gap-3 p-4 border border-[var(--danger)] bg-[var(--danger)]/10">
               <AlertCircle className="w-5 h-5 text-[var(--danger)] flex-shrink-0 mt-0.5" />
@@ -632,7 +655,7 @@ export function OstiumConnect({
               <div>
                 <h3 className="font-display text-lg mb-2">ASSIGNING AGENT...</h3>
                 <p className="text-sm text-[var(--text-muted)]">
-                  Getting your agent wallet from the pool
+                  Assigning your agent wallet
                 </p>
               </div>
             </div>

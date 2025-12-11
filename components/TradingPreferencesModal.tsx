@@ -57,6 +57,14 @@ export function TradingPreferencesModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>('');
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   useEffect(() => {
     // Only load from API if not in localOnly mode and no initial preferences provided
     if (!localOnly && !initialPreferences) {
@@ -283,8 +291,11 @@ const SliderRow = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-      <div className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="border-b border-[var(--accent)] p-6 flex items-center justify-between">
+      <div 
+        className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-[var(--accent)] p-6 flex items-center justify-between flex-shrink-0">
           <div>
             <p className="data-label mb-2">AGENT HOW</p>
             <h2 className="font-display text-2xl text-[var(--accent)]">Trading Preferences</h2>
@@ -298,7 +309,19 @@ const SliderRow = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-4 bg-[var(--bg-deep)]">
+        <div 
+          className="p-6 space-y-4 bg-[var(--bg-deep)] overflow-y-auto flex-1 modal-scrollable"
+          style={{ overscrollBehavior: 'contain' }}
+          onWheel={(e) => {
+            const target = e.currentTarget;
+            const isAtTop = target.scrollTop === 0;
+            const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
+            
+            if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
+              e.stopPropagation();
+            }
+          }}
+        >
           {loading ? (
             <div className="text-center py-10 space-y-3">
               <Activity className="h-10 w-10 mx-auto text-[var(--accent)] animate-pulse" />
