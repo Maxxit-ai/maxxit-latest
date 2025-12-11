@@ -13,13 +13,25 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../../lib/prisma';
 
+interface TradingPreferences {
+  risk_tolerance: number;
+  trade_frequency: number;
+  social_sentiment_weight: number;
+  price_momentum_focus: number;
+  market_rank_priority: number;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { agentId, userWallet } = req.body;
+    const { agentId, userWallet, tradingPreferences } = req.body as {
+      agentId: string;
+      userWallet: string;
+      tradingPreferences?: TradingPreferences;
+    };
 
     if (!agentId || !userWallet) {
       return res.status(400).json({
@@ -30,6 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('[Ostium Create Deployment] Creating deployment:', {
       agentId,
       userWallet,
+      hasPreferences: !!tradingPreferences,
     });
 
     // Get agent to check venue
@@ -65,46 +78,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
 
-    // If deployment already exists, just return it (prevent duplicates)
+    // If deployment already exists, update with preferences and return
     if (existingDeployment) {
       // Append Ostium to existing venues if not already there
       const currentVenues = existingDeployment.enabled_venues || [];
-      if (!currentVenues.includes('OSTIUM')) {
-        const updatedDeployment = await prisma.agent_deployments.update({
-          where: { id: existingDeployment.id },
-          data: {
-            enabled_venues: [...currentVenues, 'OSTIUM'],
-            status: 'ACTIVE',
-            sub_active: true,
-            module_enabled: true,
-          },
-        });
-        console.log('[Ostium Create Deployment] Updated existing deployment with OSTIUM:', updatedDeployment.id);
-        
-        return res.status(200).json({
-          success: true,
-          deployment: {
-            id: updatedDeployment.id,
-            agentId: updatedDeployment.agent_id,
-            userWallet: updatedDeployment.user_wallet,
-            agentAddress: userAddress.ostium_agent_address,
-            status: updatedDeployment.status,
-          },
-          message: 'Deployment updated with OSTIUM venue',
-        });
-      }
+      const needsVenueUpdate = !currentVenues.includes('OSTIUM');
       
-      console.log('[Ostium Create Deployment] Returning existing deployment:', existingDeployment.id);
+      const updatedDeployment = await prisma.agent_deployments.update({
+        where: { id: existingDeployment.id },
+        data: {
+          status: 'ACTIVE',
+          sub_active: true,
+          module_enabled: true,
+          ...(needsVenueUpdate && { enabled_venues: [...currentVenues, 'OSTIUM'] }),
+          // Include trading preferences if provided
+          ...(tradingPreferences && {
+            risk_tolerance: tradingPreferences.risk_tolerance,
+            trade_frequency: tradingPreferences.trade_frequency,
+            social_sentiment_weight: tradingPreferences.social_sentiment_weight,
+            price_momentum_focus: tradingPreferences.price_momentum_focus,
+            market_rank_priority: tradingPreferences.market_rank_priority,
+          }),
+        },
+      });
+      
+      console.log('[Ostium Create Deployment] Updated existing deployment:', updatedDeployment.id, 
+        tradingPreferences ? 'with preferences' : 'without preferences');
+      
       return res.status(200).json({
         success: true,
         deployment: {
-          id: existingDeployment.id,
-          agentId: existingDeployment.agent_id,
-          userWallet: existingDeployment.user_wallet,
+          id: updatedDeployment.id,
+          agentId: updatedDeployment.agent_id,
+          userWallet: updatedDeployment.user_wallet,
           agentAddress: userAddress.ostium_agent_address,
-          status: existingDeployment.status,
+          status: updatedDeployment.status,
         },
-        message: 'Deployment already exists',
+        message: 'Deployment updated',
       });
     }
 
@@ -112,6 +122,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let deployment;
     try {
       console.log('[Ostium Create Deployment] Creating new deployment');
+      
       deployment = await prisma.agent_deployments.create({
         data: {
           agent_id: agentId,
@@ -121,8 +132,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           status: 'ACTIVE',
           sub_active: true,
           module_enabled: true,
+          // Include trading preferences if provided
+          ...(tradingPreferences && {
+            risk_tolerance: tradingPreferences.risk_tolerance,
+            trade_frequency: tradingPreferences.trade_frequency,
+            social_sentiment_weight: tradingPreferences.social_sentiment_weight,
+            price_momentum_focus: tradingPreferences.price_momentum_focus,
+            market_rank_priority: tradingPreferences.market_rank_priority,
+          }),
         },
       });
+      
+      if (tradingPreferences) {
+        console.log('[Ostium Create Deployment] Created with trading preferences');
+      }
     } catch (error: any) {
       // Handle race condition - another request may have created it
       if (error.code === 'P2002') {

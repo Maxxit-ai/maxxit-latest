@@ -13,8 +13,10 @@ import AgentsSection from '@components/home/AgentsSection';
 import CTASection from '@components/home/CTASection';
 import FooterSection from '@components/home/FooterSection';
 import { AgentSummary } from '@components/home/types';
+import { usePrivy } from '@privy-io/react-auth';
 
 export default function Home() {
+  const { authenticated, user } = usePrivy();
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,17 +28,81 @@ export default function Home() {
   const [multiVenueSelectorOpen, setMultiVenueSelectorOpen] = useState(false);
   const [multiVenueAgent, setMultiVenueAgent] = useState<{ id: string; name: string } | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  const [userAgentAddresses, setUserAgentAddresses] = useState<{
+    hyperliquid?: string | null;
+    ostium?: string | null;
+  } | null>(null);
+  const [agentDeployments, setAgentDeployments] = useState<Record<string, string[]>>({}); // agentId -> enabled_venues[]
 
   useEffect(() => {
     async function fetchAgents() {
       try {
-        const data = await db.get('agents', {
-          status: 'eq.PUBLIC',
-          order: 'apr30d.desc',
-          limit: '20',
-          select: 'id,name,venue,apr30d,apr90d,aprSi,sharpe30d',
-        });
-        setAgents(data || []);
+        const userWallet = authenticated && user?.wallet?.address ? user.wallet.address.toLowerCase() : null;
+        
+        // Fetch agents, user agent addresses, and deployments in parallel
+        const [agentsData, addressesData, deploymentsData] = await Promise.all([
+          db.get('agents', {
+            status: 'eq.PUBLIC',
+            order: 'apr30d.desc',
+            limit: '20',
+            select: 'id,name,venue,apr30d,apr90d,aprSi,sharpe30d',
+          }),
+          // Only fetch addresses if user is authenticated
+          userWallet
+            ? db.get('user_agent_addresses', {
+                userWallet: `eq.${userWallet}`,
+              }).catch(() => null) // Gracefully handle if no addresses exist
+            : Promise.resolve(null),
+          // Fetch deployments for the user to check enabled_venues per agent
+          userWallet
+            ? db.get('agent_deployments', {
+                userWallet: `eq.${userWallet}`,
+                status: 'eq.ACTIVE',
+              }).catch(() => [])
+            : Promise.resolve([]),
+        ]);
+
+        setAgents(agentsData || []);
+        
+        // Set user agent addresses if available (API converts snake_case to camelCase)
+        if (addressesData && Array.isArray(addressesData) && addressesData.length > 0) {
+          setUserAgentAddresses({
+            hyperliquid: addressesData[0].hyperliquidAgentAddress || null,
+            ostium: addressesData[0].ostiumAgentAddress || null,
+          });
+        } else if (addressesData && !Array.isArray(addressesData)) {
+          // Single object returned
+          setUserAgentAddresses({
+            hyperliquid: addressesData.hyperliquidAgentAddress || null,
+            ostium: addressesData.ostiumAgentAddress || null,
+          });
+        } else {
+          setUserAgentAddresses(null);
+        }
+
+        // Process deployments: map agentId -> enabled_venues[]
+        if (deploymentsData && Array.isArray(deploymentsData)) {
+          const deploymentsMap: Record<string, string[]> = {};
+          deploymentsData.forEach((deployment: any) => {
+            const agentId = deployment.agentId || deployment.agent_id;
+            const enabledVenues = deployment.enabledVenues || deployment.enabled_venues || [];
+            if (agentId) {
+              // Merge venues if multiple deployments exist for same agent
+              if (!deploymentsMap[agentId]) {
+                deploymentsMap[agentId] = [];
+              }
+              enabledVenues.forEach((venue: string) => {
+                if (!deploymentsMap[agentId].includes(venue)) {
+                  deploymentsMap[agentId].push(venue);
+                }
+              });
+            }
+          });
+          setAgentDeployments(deploymentsMap);
+        } else {
+          setAgentDeployments({});
+        }
+        
         setError(null);
       } catch (err: any) {
         setError(err.message || 'Failed to load agents');
@@ -45,7 +111,7 @@ export default function Home() {
       }
     }
     fetchAgents();
-  }, []);
+  }, [authenticated, user?.wallet?.address]);
 
   const scrollToSection = useCallback((targetId: string) => {
     const element = document.getElementById(targetId);
@@ -102,6 +168,8 @@ export default function Home() {
         error={error}
         onCardClick={handleAgentClick}
         onDeployClick={handleDeployClick}
+        userAgentAddresses={userAgentAddresses}
+        agentDeployments={agentDeployments}
       />
       <CTASection />
       <FooterSection />
@@ -136,7 +204,54 @@ export default function Home() {
           onComplete={() => {
             setMultiVenueSelectorOpen(false);
             setMultiVenueAgent(null);
+            // Refresh addresses and deployments after deployment
+            if (authenticated && user?.wallet?.address) {
+              const userWallet = user.wallet.address.toLowerCase();
+              Promise.all([
+                db.get('user_agent_addresses', {
+                  userWallet: `eq.${userWallet}`,
+                }).catch(() => null),
+                db.get('agent_deployments', {
+                  userWallet: `eq.${userWallet}`,
+                  status: 'eq.ACTIVE',
+                }).catch(() => []),
+              ]).then(([addressesData, deploymentsData]) => {
+                // Update addresses
+                if (addressesData && Array.isArray(addressesData) && addressesData.length > 0) {
+                  setUserAgentAddresses({
+                    hyperliquid: addressesData[0].hyperliquidAgentAddress || null,
+                    ostium: addressesData[0].ostiumAgentAddress || null,
+                  });
+                } else if (addressesData && !Array.isArray(addressesData)) {
+                  setUserAgentAddresses({
+                    hyperliquid: addressesData.hyperliquidAgentAddress || null,
+                    ostium: addressesData.ostiumAgentAddress || null,
+                  });
+                }
+
+                // Update deployments
+                if (deploymentsData && Array.isArray(deploymentsData)) {
+                  const deploymentsMap: Record<string, string[]> = {};
+                  deploymentsData.forEach((deployment: any) => {
+                    const agentId = deployment.agentId || deployment.agent_id;
+                    const enabledVenues = deployment.enabledVenues || deployment.enabled_venues || [];
+                    if (agentId) {
+                      if (!deploymentsMap[agentId]) {
+                        deploymentsMap[agentId] = [];
+                      }
+                      enabledVenues.forEach((venue: string) => {
+                        if (!deploymentsMap[agentId].includes(venue)) {
+                          deploymentsMap[agentId].push(venue);
+                        }
+                      });
+                    }
+                  });
+                  setAgentDeployments(deploymentsMap);
+                }
+              });
+            }
           }}
+          userAgentAddresses={userAgentAddresses}
         />
       )}
     </div>

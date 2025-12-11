@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { X, Wallet, CheckCircle, AlertCircle, Zap, Activity, ExternalLink } from 'lucide-react';
 import { ethers } from 'ethers';
-import { TradingPreferencesModal } from './TradingPreferencesModal';
+import { TradingPreferencesModal, TradingPreferences } from './TradingPreferencesModal';
 
 interface OstiumConnectProps {
   agentId: string;
@@ -40,30 +40,27 @@ export function OstiumConnect({
   const [delegateApproved, setDelegateApproved] = useState(false);
   const [usdcApproved, setUsdcApproved] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string>('');
-  const [step, setStep] = useState<'connect' | 'agent' | 'delegate' | 'usdc' | 'complete'>('connect');
-  const [hasPreferences, setHasPreferences] = useState(false);
+  const [step, setStep] = useState<'connect' | 'preferences' | 'agent' | 'delegate' | 'usdc' | 'complete'>('connect');
   const [showPreferencesModal, setShowPreferencesModal] = useState(false);
-
+  
+  // Trading preferences stored locally until all approvals complete
+  const [tradingPreferences, setTradingPreferences] = useState<TradingPreferences | null>(null);
+  const tradingPreferencesRef = useRef<TradingPreferences | null>(null); // ensures latest prefs are used in async flows
+  
   // Guard refs to prevent duplicate API calls
   const isCheckingRef = useRef(false);
   const isAssigningRef = useRef(false);
   const [hasInitialized, setHasInitialized] = useState(false); // Persists in state, not ref
 
   useEffect(() => {
-    // If already authenticated when component mounts, skip connect step and start checking setup
-    if (authenticated && user?.wallet?.address && step === 'connect' && !hasInitialized && !isCheckingRef.current) {
+    // If already authenticated when component mounts, go to preferences step first
+    if (authenticated && user?.wallet?.address && step === 'connect' && !hasInitialized) {
       setHasInitialized(true);
-      setLoading(true); // Show loader while checking setup
-      checkSetupStatus();
-    }
-  }, [authenticated, user?.wallet?.address, step, hasInitialized]);
-
-  // Auto-open preferences when connected and none set
-  useEffect(() => {
-    if (authenticated && user?.wallet?.address && !hasPreferences) {
+      // Always show preferences as first step for new deployments
+      setStep('preferences');
       setShowPreferencesModal(true);
     }
-  }, [authenticated, user?.wallet?.address, hasPreferences]);
+  }, [authenticated, user?.wallet?.address, step, hasInitialized]);
 
   const checkSetupStatus = async () => {
     if (!user?.wallet?.address) return;
@@ -77,7 +74,6 @@ export function OstiumConnect({
 
     try {
       console.log('[OstiumConnect] Checking setup status for wallet:', user.wallet.address);
-      await checkUserPreferences(user.wallet.address);
       const setupResponse = await fetch(`/api/user/check-setup-status?userWallet=${user.wallet.address}&agentId=${agentId}`);
 
       if (setupResponse.ok) {
@@ -115,7 +111,7 @@ export function OstiumConnect({
               setDelegateApproved(true);
               setUsdcApproved(true);
 
-              // Create deployment for this new agent
+              // Create deployment for this new agent with trading preferences
               await createDeploymentDirectly(user.wallet.address);
               return;
             } else {
@@ -158,34 +154,30 @@ export function OstiumConnect({
     }
   };
 
-  const checkUserPreferences = async (wallet: string) => {
-    try {
-      const response = await fetch(`/api/user/trading-preferences?wallet=${wallet}`);
-      if (response.ok) {
-        const data = await response.json();
-        const prefs = data.preferences;
-        const hasCustom =
-          prefs.risk_tolerance !== 50 ||
-          prefs.trade_frequency !== 50 ||
-          prefs.social_sentiment_weight !== 50 ||
-          prefs.price_momentum_focus !== 50 ||
-          prefs.market_rank_priority !== 50;
-        setHasPreferences(hasCustom);
-      }
-    } catch (err) {
-      console.error('[OstiumConnect] Error checking preferences:', err);
-    }
-  };
-
   const createDeploymentDirectly = async (wallet: string) => {
     setLoading(true);
     setError('');
 
     try {
+      const requestBody: Record<string, unknown> = { 
+        agentId, 
+        userWallet: wallet,
+      };
+      
+      // Include trading preferences if available (always use ref to avoid stale state)
+      if (tradingPreferencesRef.current) {
+        requestBody.tradingPreferences = tradingPreferencesRef.current;
+        console.log('[OstiumConnect] Creating deployment directly with preferences:', tradingPreferencesRef.current);
+      } else {
+        console.warn('[OstiumConnect] Creating deployment without preferences - will use defaults');
+      }
+      
+      console.log('[OstiumConnect] Request body:', requestBody);
+      
       const response = await fetch('/api/ostium/create-deployment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId, userWallet: wallet }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -249,13 +241,25 @@ export function OstiumConnect({
       console.log('[OstiumConnect] Agent address assigned:', agentAddr);
       setAgentAddress(agentAddr);
 
+      const deployRequestBody: Record<string, unknown> = {
+        agentId,
+        userWallet: user?.wallet?.address,
+      };
+      
+      // Include trading preferences if available (use ref to avoid stale values)
+      if (tradingPreferencesRef.current) {
+        deployRequestBody.tradingPreferences = tradingPreferencesRef.current;
+        console.log('[OstiumConnect] Including trading preferences in deployment:', tradingPreferencesRef.current);
+      } else {
+        console.warn('[OstiumConnect] No trading preferences found - using defaults');
+      }
+      
+      console.log('[OstiumConnect] Sending deployment request:', deployRequestBody);
+      
       const deployResponse = await fetch('/api/ostium/create-deployment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId,
-          userWallet: user?.wallet?.address,
-        }),
+        body: JSON.stringify(deployRequestBody),
       });
 
       if (!deployResponse.ok) {
@@ -489,10 +493,24 @@ export function OstiumConnect({
     }
   };
 
-  const handlePreferencesSet = async () => {
+  const handlePreferencesSet = (preferences: TradingPreferences) => {
+    console.log('[OstiumConnect] Trading preferences set:', preferences);
+    tradingPreferencesRef.current = preferences;
+    setTradingPreferences(preferences);
     setShowPreferencesModal(false);
-    setHasPreferences(true);
+    
+    // After preferences are set, proceed to check setup status with fresh prefs
+    setLoading(true);
+    checkSetupStatus();
   };
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
 
   return (
     <div
@@ -545,18 +563,25 @@ export function OstiumConnect({
           )}
 
           {/* Step Indicator */}
-          {step !== 'connect' && (
+          {step !== 'connect' && step !== 'preferences' && (
             <div className="flex items-center justify-between text-xs font-bold mb-4">
+              <div className={`flex items-center gap-1 ${tradingPreferences ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+                <span className={`w-6 h-6 flex items-center justify-center border ${tradingPreferences ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]' : 'border-[var(--border)]'}`}>
+                  {tradingPreferences ? '✓' : '1'}
+                </span>
+                PREFS
+              </div>
+              <div className={`flex-1 h-px mx-2 ${tradingPreferences ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'}`} />
               <div className={`flex items-center gap-1 ${delegateApproved ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
                 <span className={`w-6 h-6 flex items-center justify-center border ${delegateApproved ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]' : 'border-[var(--border)]'}`}>
-                  {delegateApproved ? '✓' : '1'}
+                  {delegateApproved ? '✓' : '2'}
                 </span>
                 DELEGATE
               </div>
               <div className={`flex-1 h-px mx-2 ${delegateApproved ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'}`} />
               <div className={`flex items-center gap-1 ${usdcApproved ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
                 <span className={`w-6 h-6 flex items-center justify-center border ${usdcApproved ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]' : 'border-[var(--border)]'}`}>
-                  {usdcApproved ? '✓' : '2'}
+                  {usdcApproved ? '✓' : '3'}
                 </span>
                 USDC
               </div>
@@ -569,9 +594,9 @@ export function OstiumConnect({
               <div className="text-center space-y-4 py-8">
                 <Activity className="w-16 h-16 mx-auto text-[var(--accent)] animate-pulse" />
                 <div>
-                  <h3 className="font-display text-lg mb-2">CHECKING SETUP...</h3>
+                  <h3 className="font-display text-lg mb-2">INITIALIZING...</h3>
                   <p className="text-sm text-[var(--text-muted)]">
-                    Verifying your wallet status
+                    Setting up your deployment
                   </p>
                 </div>
               </div>
@@ -596,13 +621,43 @@ export function OstiumConnect({
                 </button>
               </div>
             )
+          ) : step === 'preferences' ? (
+            <div className="text-center space-y-4 py-8">
+              {loading ? (
+                <>
+                  <Activity className="w-16 h-16 mx-auto text-[var(--accent)] animate-pulse" />
+                  <div>
+                    <h3 className="font-display text-lg mb-2">CHECKING SETUP...</h3>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      Verifying your wallet status
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-16 h-16 mx-auto text-[var(--accent)]" />
+                  <div>
+                    <h3 className="font-display text-lg mb-2">SET YOUR PREFERENCES</h3>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      Configure how the agent will trade for you
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowPreferencesModal(true)}
+                    className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
+                  >
+                    SET PREFERENCES
+                  </button>
+                </>
+              )}
+            </div>
           ) : step === 'agent' ? (
             <div className="text-center space-y-4 py-8">
               <Activity className="w-16 h-16 mx-auto text-[var(--accent)] animate-pulse" />
               <div>
                 <h3 className="font-display text-lg mb-2">ASSIGNING AGENT...</h3>
                 <p className="text-sm text-[var(--text-muted)]">
-                  Getting your agent wallet from the pool
+                  Assigning your agent wallet
                 </p>
               </div>
             </div>
@@ -761,8 +816,26 @@ export function OstiumConnect({
       {showPreferencesModal && (
         <TradingPreferencesModal
           userWallet={user?.wallet?.address || ''}
-          onClose={() => setShowPreferencesModal(false)}
-          onSave={handlePreferencesSet}
+          onClose={() => {
+            // If user closes without saving (Cancel or X button), use default preferences
+            console.log('[OstiumConnect] Preferences modal closed via X/Cancel button');
+            if (!tradingPreferences && !tradingPreferencesRef.current) {
+              console.log('[OstiumConnect] No preferences set yet - using defaults and proceeding');
+              handlePreferencesSet({
+                risk_tolerance: 50,
+                trade_frequency: 50,
+                social_sentiment_weight: 50,
+                price_momentum_focus: 50,
+                market_rank_priority: 50,
+              });
+            } else {
+              console.log('[OstiumConnect] Preferences already set - just closing modal');
+              setShowPreferencesModal(false);
+            }
+          }}
+          localOnly={true}
+          onSaveLocal={handlePreferencesSet}
+          initialPreferences={tradingPreferences || undefined}
         />
       )}
     </div>

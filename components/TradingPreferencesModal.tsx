@@ -7,32 +7,70 @@
 
 import { useState, useEffect } from 'react';
 import { X, Activity } from 'lucide-react';
+import * as Slider from '@radix-ui/react-slider';
+
+export interface TradingPreferences {
+  risk_tolerance: number;
+  trade_frequency: number;
+  social_sentiment_weight: number;
+  price_momentum_focus: number;
+  market_rank_priority: number;
+}
 
 interface TradingPreferencesModalProps {
   userWallet: string;
   onClose: () => void;
   onSave?: () => void;
+  /**
+   * If true, preferences are returned via onSaveLocal instead of being saved to API.
+   * Used when we want to collect preferences but save them later (e.g., after approvals)
+   */
+  localOnly?: boolean;
+  /**
+   * Callback when localOnly is true - returns preferences without saving to API
+   */
+  onSaveLocal?: (preferences: TradingPreferences) => void;
+  /**
+   * Initial preferences to pre-populate the form
+   */
+  initialPreferences?: TradingPreferences;
 }
 
 export function TradingPreferencesModal({
   userWallet,
   onClose,
   onSave,
+  localOnly = false,
+  onSaveLocal,
+  initialPreferences,
 }: TradingPreferencesModalProps) {
-  const [preferences, setPreferences] = useState({
-    risk_tolerance: 50,
-    trade_frequency: 50,
-    social_sentiment_weight: 50,
-    price_momentum_focus: 50,
-    market_rank_priority: 50,
-  });
-  const [loading, setLoading] = useState(true);
+  const [preferences, setPreferences] = useState<TradingPreferences>(
+    initialPreferences || {
+      risk_tolerance: 50,
+      trade_frequency: 50,
+      social_sentiment_weight: 50,
+      price_momentum_focus: 50,
+      market_rank_priority: 50,
+    }
+  );
+  const [loading, setLoading] = useState(!localOnly && !initialPreferences);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>('');
 
+  // Prevent body scroll when modal is open
   useEffect(() => {
-    loadPreferences();
-  }, [userWallet]);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
+  useEffect(() => {
+    // Only load from API if not in localOnly mode and no initial preferences provided
+    if (!localOnly && !initialPreferences) {
+      loadPreferences();
+    }
+  }, [userWallet, localOnly, initialPreferences]);
 
   const loadPreferences = async () => {
     try {
@@ -51,10 +89,33 @@ export function TradingPreferencesModal({
   };
 
   const handleSave = async () => {
+    // Force blur on any focused input to commit pending changes
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    // Small delay to ensure blur event completes
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     setSaving(true);
     setError('');
 
     try {
+      // If localOnly mode, just return preferences via callback without saving to API
+      if (localOnly) {
+        console.log('[TradingPreferencesModal] Saving preferences:', preferences);
+        if (onSaveLocal) {
+          onSaveLocal(preferences);
+          // Don't call onClose() here - onSaveLocal will handle closing the modal
+          // Calling onClose() causes the fallback handler to trigger and reset to defaults
+        } else {
+          // Only close if there's no callback (shouldn't happen)
+          onClose();
+        }
+        return;
+      }
+
+      // Otherwise, save to API as usual
       const response = await fetch('/api/user/trading-preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,41 +181,117 @@ export function TradingPreferencesModal({
     right: string;
     badge: string;
     description: string;
-  }) => (
-    <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-4 space-y-3 rounded">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-foreground">{title}</h3>
-          <p className="text-xs text-[var(--text-secondary)]">{helper}</p>
+  }) => {
+    const [inputValue, setInputValue] = useState(value.toString());
+    const [isInputFocused, setIsInputFocused] = useState(false);
+
+    // Only sync input with slider value when input is not focused
+    useEffect(() => {
+      if (!isInputFocused) {
+        setInputValue(value.toString());
+      }
+    }, [value, isInputFocused]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      // Allow empty string or valid numbers
+      if (val === '' || /^\d+$/.test(val)) {
+        setInputValue(val);
+      }
+    };
+
+    const handleInputFocus = () => {
+      setIsInputFocused(true);
+    };
+
+    const handleInputBlur = () => {
+      setIsInputFocused(false);
+
+      // Validate and correct on blur
+      const num = parseInt(inputValue);
+      if (isNaN(num) || num < 0 || inputValue === '') {
+        onChange(0);
+        setInputValue('0');
+      } else if (num > 100) {
+        onChange(100);
+        setInputValue('100');
+      } else {
+        onChange(num);
+        setInputValue(num.toString());
+      }
+    };
+
+    return (
+      <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-5 space-y-4 rounded-lg">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <h3 className="text-base font-bold text-[var(--text-primary)]">{title}</h3>
+            <p className="text-xs text-[var(--text-secondary)] mt-1">{helper}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[var(--accent)] font-bold uppercase px-2 py-1 bg-[var(--accent)]/10 rounded">
+              {badge}
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={inputValue}
+              onChange={handleInputChange}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleInputBlur();
+                  e.currentTarget.blur();
+                }
+              }}
+              className="w-16 px-2 py-1.5 text-center border-2 border-[var(--accent)]/60 bg-black text-[var(--accent)] font-mono font-bold text-sm rounded hover:border-[var(--accent)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+              placeholder="0-100"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[var(--accent)] font-semibold">{badge}</span>
-          <span className="px-3 py-1 border border-[var(--accent)]/60 text-sm font-mono text-[var(--accent)]">
-            {value}
-          </span>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-gray-400 px-1 font-medium">
+            <span>{left}</span>
+            <span>{right}</span>
+          </div>
+
+          <Slider.Root
+            className="relative flex items-center select-none touch-none w-full h-8 group cursor-pointer"
+            value={[value]}
+            onValueChange={(vals) => onChange(vals[0])}
+            max={100}
+            min={0}
+            step={1}
+          >
+            <Slider.Track className="bg-gray-400 relative grow rounded-full h-3 cursor-pointer hover:bg-gray-600 transition-colors">
+              <Slider.Range className="absolute bg-gradient-to-r from-[var(--accent)]/70 to-[var(--accent)] h-full rounded-full" />
+            </Slider.Track>
+            <Slider.Thumb
+              className="block w-7 h-7 bg-[var(--accent)] border-3 border-black rounded-full hover:scale-125 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 transition-all duration-150 cursor-grab active:cursor-grabbing active:scale-110 shadow-xl"
+              aria-label={title}
+            />
+          </Slider.Root>
+
+          <div className="flex justify-between text-xs text-gray-500 px-1 font-mono">
+            <span>0</span>
+            <span>25</span>
+            <span>50</span>
+            <span>75</span>
+            <span>100</span>
+          </div>
         </div>
+
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{description}</p>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-[var(--text-muted)] w-20">{left}</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={value}
-          onChange={(e) => onChange(parseInt(e.target.value))}
-          onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value))}
-          className="pref-slider flex-1 h-2 bg-[var(--border)]/70 rounded-full appearance-none cursor-pointer accent-[var(--accent)]"
-        />
-        <span className="text-xs text-[var(--text-muted)] w-20 text-right">{right}</span>
-      </div>
-      <p className="text-xs text-[var(--text-secondary)]">{description}</p>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
       <div
-        className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[90vh] flex flex-col"
         onWheel={(e) => {
           const el = e.currentTarget;
           const isScrollable = el.scrollHeight > el.clientHeight;
@@ -180,13 +317,14 @@ export function TradingPreferencesModal({
         </div>
 
         <div
-          className="p-6 space-y-4 bg-[var(--bg-deep)] flex-1 overflow-y-auto custom-scrollbar"
+          className="p-6 space-y-4 bg-[var(--bg-deep)] overflow-y-auto flex-1 modal-scrollable"
+          style={{ overscrollBehavior: 'contain' }}
           onWheel={(e) => {
-            const el = e.currentTarget;
-            const isScrollable = el.scrollHeight > el.clientHeight;
-            const isAtTop = el.scrollTop === 0;
-            const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-            if (isScrollable && !(isAtTop && e.deltaY < 0) && !(isAtBottom && e.deltaY > 0)) {
+            const target = e.currentTarget;
+            const isAtTop = target.scrollTop === 0;
+            const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
+
+            if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
               e.stopPropagation();
             }
           }}
@@ -310,49 +448,13 @@ export function TradingPreferencesModal({
                   disabled={saving}
                   className="flex-1 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50"
                 >
-                  {saving ? 'Saving...' : 'Save Preferences'}
+                  {saving ? 'Saving...' : localOnly ? 'Continue' : 'Save Preferences'}
                 </button>
               </div>
             </>
           )}
         </div>
       </div>
-      <style jsx>{`
-        .pref-slider {
-          -webkit-appearance: none;
-          appearance: none;
-          height: 10px;
-        }
-        .pref-slider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          height: 18px;
-          width: 18px;
-          border-radius: 50%;
-          background: var(--accent);
-          border: 2px solid var(--bg-deep);
-          cursor: pointer;
-          margin-top: -4px;
-        }
-        .pref-slider::-moz-range-thumb {
-          height: 18px;
-          width: 18px;
-          border-radius: 50%;
-          background: var(--accent);
-          border: 2px solid var(--bg-deep);
-          cursor: pointer;
-        }
-        .pref-slider::-webkit-slider-runnable-track {
-          height: 10px;
-          border-radius: 9999px;
-          background: var(--border);
-        }
-        .pref-slider::-moz-range-track {
-          height: 10px;
-          border-radius: 9999px;
-          background: var(--border);
-        }
-      `}</style>
     </div>
   );
 }

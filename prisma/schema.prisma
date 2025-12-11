@@ -79,6 +79,11 @@ model agent_deployments {
   module_enabled                  Boolean             @default(false)
   module_address                  String?
   enabled_venues                  String[]            @default(["HYPERLIQUID"])
+  risk_tolerance                  Int                 @default(50)
+  trade_frequency                 Int                 @default(50)
+  social_sentiment_weight         Int                 @default(50)
+  price_momentum_focus            Int                 @default(50)
+  market_rank_priority            Int                 @default(50)
   agents                          agents              @relation(fields: [agent_id], references: [id], onDelete: Cascade)
   billing_events                  billing_events[]
   pnl_snapshots                   pnl_snapshots[]

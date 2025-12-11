@@ -148,12 +148,30 @@ export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDr
     }
   };
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 bg-black/70 z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 z-50">
       <div
-        className="fixed right-0 top-0 h-full w-full max-w-xl bg-[var(--bg-deep)] border-l border-[var(--border)] overflow-y-auto"
+        className="fixed right-0 top-0 h-full w-full max-w-xl bg-[var(--bg-deep)] border-l border-[var(--border)] overflow-y-auto modal-scrollable"
         onClick={(e) => e.stopPropagation()}
         data-testid={`drawer-agent-${agentId}`}
+        style={{ overscrollBehavior: 'contain' }}
+        onWheel={(e) => {
+          const target = e.currentTarget;
+          const isAtTop = target.scrollTop === 0;
+          const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
+          
+          if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
+            e.stopPropagation();
+          }
+        }}
       >
         {/* Header */}
         <div className="sticky top-0 bg-[var(--bg-deep)] border-b border-[var(--border)] p-6 z-10">

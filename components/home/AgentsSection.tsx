@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { AgentSummary } from './types';
 import { useState } from 'react';
-import { ArrowRight, Zap } from 'lucide-react';
+import { ArrowRight, Zap, Wallet, Copy, Check, CheckCircle } from 'lucide-react';
 
 interface AgentsSectionProps {
   agents: AgentSummary[];
@@ -9,11 +9,28 @@ interface AgentsSectionProps {
   error: string | null;
   onCardClick: (agent: AgentSummary) => void;
   onDeployClick: (agent: AgentSummary) => void;
+  userAgentAddresses?: {
+    hyperliquid?: string | null;
+    ostium?: string | null;
+  } | null;
+  agentDeployments?: Record<string, string[]>; // agentId -> enabled_venues[]
 }
 
-const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick }: AgentsSectionProps) => {
+const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {} }: AgentsSectionProps) => {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
+  const handleCopyAddress = (address: string, type: 'hyperliquid' | 'ostium') => {
+    navigator.clipboard.writeText(address);
+    setCopiedAddress(`${type}-${address}`);
+    setTimeout(() => setCopiedAddress(null), 2000);
+  };
+
+  const formatAddress = (address: string) => {
+    if (!address) return '';
+    return `${address.slice(0, 8)}...${address.slice(-6)}`;
+  };
 
   return (
     <section id="agents" className="py-24 border-t-2 border-[var(--border)] bg-[var(--bg-deep)]">
@@ -183,7 +200,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick }: A
       `}</style>
 
       <div className="max-w-7xl mx-auto px-6">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 pb-8 border-b-2 border-[var(--border)]">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 pb-8 border-b-2 border-[var(--border)]">
           <div>
             <p className="data-label mb-4">DEPLOY NOW</p>
             <h2 className="font-display text-4xl md:text-5xl">
@@ -207,6 +224,68 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick }: A
             </Link>
           </div>
         </div>
+
+        {/* Agent Addresses Display - Single Location */}
+        {userAgentAddresses && (userAgentAddresses.hyperliquid || userAgentAddresses.ostium) && (
+          <div className="mb-8 p-4 border border-[var(--accent)]/40 bg-[var(--accent)]/5">
+            <p className="data-label mb-3">YOUR AGENT WALLETS</p>
+            <div className="grid md:grid-cols-2 gap-3">
+              {userAgentAddresses.hyperliquid && (
+                <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-8 h-8 border-2 border-[var(--accent)]/60 flex items-center justify-center flex-shrink-0">
+                      <Wallet className="w-4 h-4 text-[var(--accent)]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-[var(--accent)] uppercase">HYPERLIQUID</p>
+                      <p className="text-xs font-mono text-[var(--text-primary)] truncate" title={userAgentAddresses.hyperliquid}>
+                        {formatAddress(userAgentAddresses.hyperliquid)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleCopyAddress(userAgentAddresses.hyperliquid!, 'hyperliquid')}
+                    className="p-2 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors flex-shrink-0 border border-[var(--border)] hover:border-[var(--accent)]/50"
+                    title="Copy full address"
+                  >
+                    {copiedAddress === `hyperliquid-${userAgentAddresses.hyperliquid}` ? (
+                      <Check className="w-4 h-4 text-[var(--accent)]" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {userAgentAddresses.ostium && (
+                <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-8 h-8 border-2 border-[var(--accent)]/60 flex items-center justify-center flex-shrink-0">
+                      <Wallet className="w-4 h-4 text-[var(--accent)]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-[var(--accent)] uppercase">OSTIUM</p>
+                      <p className="text-xs font-mono text-[var(--text-primary)] truncate" title={userAgentAddresses.ostium}>
+                        {formatAddress(userAgentAddresses.ostium)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleCopyAddress(userAgentAddresses.ostium!, 'ostium')}
+                    className="p-2 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors flex-shrink-0 border border-[var(--border)] hover:border-[var(--accent)]/50"
+                    title="Copy full address"
+                  >
+                    {copiedAddress === `ostium-${userAgentAddresses.ostium}` ? (
+                      <Check className="w-4 h-4 text-[var(--accent)]" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -290,6 +369,28 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick }: A
                       <span className="font-mono font-bold text-accent">{agent.sharpe30d.toFixed(2)}</span>
                     </div>
                   )}
+
+                  {/* Venue Deployment Status - Always shown to maintain card height */}
+                  <div className="mt-4 pt-4 border-t border-[var(--border)]/50">
+                    <p className="text-xs text-[var(--text-muted)] font-bold uppercase mb-2">Active Venues</p>
+                    <div className="flex flex-wrap gap-2 mb-[1rem]">
+                      {agentDeployments[agent.id] && agentDeployments[agent.id].length > 0 ? (
+                        agentDeployments[agent.id].map((venue) => (
+                          <div
+                            key={venue}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[var(--accent)]/10 border border-[var(--accent)]/40 text-[var(--accent)] text-xs font-bold"
+                          >
+                            <CheckCircle className="w-3 h-3" />
+                            <span>{venue}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[var(--bg-elevated)] border border-[var(--border)]/50 text-[var(--text-muted)] text-xs font-bold">
+                          <span>NONE</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="pt-4 border-t border-[var(--border)]">

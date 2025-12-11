@@ -18,6 +18,7 @@ const tableModelMap: Record<string, any> = {
   'venue_status': prisma.venues_status,
   'token_registry': prisma.token_registry,
   'audit_logs': prisma.audit_logs,
+  'user_agent_addresses': prisma.user_agent_addresses,
 };
 
 // Convert snake_case to camelCase (handles letters and numbers)

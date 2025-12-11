@@ -115,6 +115,14 @@ export function HyperliquidConnect({
     }
   }, [step, hasPreferences]);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   const connectWallet = async () => {
     if (!window.ethereum) {
       setError('MetaMask not found. Please install MetaMask.');
@@ -258,9 +266,12 @@ export function HyperliquidConnect({
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-        <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div 
+          className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-lg w-full max-h-[90vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header */}
-          <div className="border-b border-[var(--border)] p-6">
+          <div className="border-b border-[var(--border)] p-6 flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center">
@@ -282,8 +293,20 @@ export function HyperliquidConnect({
             </div>
           </div>
 
-          {/* Content */}
-          <div className="p-6 space-y-6">
+          {/* Content - Scrollable */}
+          <div 
+            className="p-6 space-y-6 overflow-y-auto flex-1 modal-scrollable"
+            style={{ overscrollBehavior: 'contain' }}
+            onWheel={(e) => {
+              const target = e.currentTarget;
+              const isAtTop = target.scrollTop === 0;
+              const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
+              
+              if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
+                e.stopPropagation();
+              }
+            }}
+          >
             {/* Error */}
             {error && (
               <div className="flex items-start gap-3 p-4 border border-[var(--danger)] bg-[var(--danger)]/10">
