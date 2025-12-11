@@ -43,7 +43,7 @@ export function OstiumConnect({
   const [step, setStep] = useState<'connect' | 'agent' | 'delegate' | 'usdc' | 'complete'>('connect');
   const [hasPreferences, setHasPreferences] = useState(false);
   const [showPreferencesModal, setShowPreferencesModal] = useState(false);
-  
+
   // Guard refs to prevent duplicate API calls
   const isCheckingRef = useRef(false);
   const isAssigningRef = useRef(false);
@@ -495,10 +495,16 @@ export function OstiumConnect({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onWheelCapture={(e) => {
+        // Keep scroll inside the modal stack; don't bubble to page
+        e.stopPropagation();
+      }}
+    >
+      <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden overscroll-contain">
         {/* Header */}
-        <div className="border-b border-[var(--border)] p-6">
+        <div className="border-b border-[var(--border)] p-6 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center">
@@ -519,7 +525,18 @@ export function OstiumConnect({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4">
+        <div
+          className="p-6 space-y-4 flex-1 overflow-y-auto custom-scrollbar min-h-0"
+          onWheelCapture={(e) => {
+            const el = e.currentTarget;
+            const isScrollable = el.scrollHeight > el.clientHeight;
+            const isAtTop = el.scrollTop === 0;
+            const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+            if (isScrollable && !(isAtTop && e.deltaY < 0) && !(isAtBottom && e.deltaY > 0)) {
+              e.stopPropagation();
+            }
+          }}
+        >
           {error && (
             <div className="flex items-start gap-3 p-4 border border-[var(--danger)] bg-[var(--danger)]/10">
               <AlertCircle className="w-5 h-5 text-[var(--danger)] flex-shrink-0 mt-0.5" />

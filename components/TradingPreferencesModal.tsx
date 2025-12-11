@@ -71,7 +71,6 @@ export function TradingPreferencesModal({
       if (onSave) {
         onSave();
       }
-      onClose();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -103,59 +102,70 @@ export function TradingPreferencesModal({
     return 'Top Only';
   };
 
-const SliderRow = ({
-  title,
-  helper,
-  value,
-  onChange,
-  left,
-  right,
-  badge,
-  description,
-}: {
-  title: string;
-  helper: string;
-  value: number;
-  onChange: (val: number) => void;
-  left: string;
-  right: string;
-  badge: string;
-  description: string;
-}) => (
-  <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-4 space-y-3 rounded">
-    <div className="flex items-center justify-between">
-      <div>
-        <h3 className="text-base font-semibold text-foreground">{title}</h3>
-        <p className="text-xs text-[var(--text-secondary)]">{helper}</p>
+  const SliderRow = ({
+    title,
+    helper,
+    value,
+    onChange,
+    left,
+    right,
+    badge,
+    description,
+  }: {
+    title: string;
+    helper: string;
+    value: number;
+    onChange: (val: number) => void;
+    left: string;
+    right: string;
+    badge: string;
+    description: string;
+  }) => (
+    <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-4 space-y-3 rounded">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+          <p className="text-xs text-[var(--text-secondary)]">{helper}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--accent)] font-semibold">{badge}</span>
+          <span className="px-3 py-1 border border-[var(--accent)]/60 text-sm font-mono text-[var(--accent)]">
+            {value}
+          </span>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-[var(--accent)] font-semibold">{badge}</span>
-        <span className="px-3 py-1 border border-[var(--accent)]/60 text-sm font-mono text-[var(--accent)]">
-          {value}
-        </span>
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-[var(--text-muted)] w-20">{left}</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={value}
+          onChange={(e) => onChange(parseInt(e.target.value))}
+          onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value))}
+          className="pref-slider flex-1 h-2 bg-[var(--border)]/70 rounded-full appearance-none cursor-pointer accent-[var(--accent)]"
+        />
+        <span className="text-xs text-[var(--text-muted)] w-20 text-right">{right}</span>
       </div>
+      <p className="text-xs text-[var(--text-secondary)]">{description}</p>
     </div>
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-[var(--text-muted)] w-20">{left}</span>
-      <input
-        type="range"
-        min="0"
-        max="100"
-        value={value}
-        onChange={(e) => onChange(parseInt(e.target.value))}
-        onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value))}
-        className="pref-slider flex-1 h-2 bg-[var(--border)]/70 rounded-full appearance-none cursor-pointer accent-[var(--accent)]"
-      />
-      <span className="text-xs text-[var(--text-muted)] w-20 text-right">{right}</span>
-    </div>
-    <p className="text-xs text-[var(--text-secondary)]">{description}</p>
-  </div>
-);
+  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-      <div className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="border-b border-[var(--accent)] p-6 flex items-center justify-between">
+      <div
+        className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+        onWheel={(e) => {
+          const el = e.currentTarget;
+          const isScrollable = el.scrollHeight > el.clientHeight;
+          const isAtTop = el.scrollTop === 0;
+          const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+          if (isScrollable && !(isAtTop && e.deltaY < 0) && !(isAtBottom && e.deltaY > 0)) {
+            e.stopPropagation();
+          }
+        }}
+      >
+        <div className="border-b border-[var(--accent)] p-6 flex items-center justify-between flex-shrink-0">
           <div>
             <p className="data-label mb-2">AGENT HOW</p>
             <h2 className="font-display text-2xl text-[var(--accent)]">Trading Preferences</h2>
@@ -169,7 +179,18 @@ const SliderRow = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-4 bg-[var(--bg-deep)]">
+        <div
+          className="p-6 space-y-4 bg-[var(--bg-deep)] flex-1 overflow-y-auto custom-scrollbar"
+          onWheel={(e) => {
+            const el = e.currentTarget;
+            const isScrollable = el.scrollHeight > el.clientHeight;
+            const isAtTop = el.scrollTop === 0;
+            const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+            if (isScrollable && !(isAtTop && e.deltaY < 0) && !(isAtBottom && e.deltaY > 0)) {
+              e.stopPropagation();
+            }
+          }}
+        >
           {loading ? (
             <div className="text-center py-10 space-y-3">
               <Activity className="h-10 w-10 mx-auto text-[var(--accent)] animate-pulse" />
@@ -189,8 +210,8 @@ const SliderRow = ({
                   preferences.risk_tolerance < 33
                     ? 'Smaller positions (0.5-3% of balance)'
                     : preferences.risk_tolerance < 67
-                    ? 'Moderate positions (2-7% of balance)'
-                    : 'Larger positions (5-10% of balance)'
+                      ? 'Moderate positions (2-7% of balance)'
+                      : 'Larger positions (5-10% of balance)'
                 }
               />
 
@@ -206,8 +227,8 @@ const SliderRow = ({
                   preferences.trade_frequency < 33
                     ? 'Only high-confidence signals (>60%)'
                     : preferences.trade_frequency < 67
-                    ? 'Moderate confidence (>40%)'
-                    : 'Most signals, including lower confidence'
+                      ? 'Moderate confidence (>40%)'
+                      : 'Most signals, including lower confidence'
                 }
               />
 
@@ -223,8 +244,8 @@ const SliderRow = ({
                   preferences.social_sentiment_weight < 33
                     ? 'Minimal impact on sizing'
                     : preferences.social_sentiment_weight < 67
-                    ? 'Balanced consideration of social signals'
-                    : 'Strong weight on social buzz'
+                      ? 'Balanced consideration of social signals'
+                      : 'Strong weight on social buzz'
                 }
               />
 
@@ -240,8 +261,8 @@ const SliderRow = ({
                   preferences.price_momentum_focus < 33
                     ? 'Prefer buying dips / fading rallies'
                     : preferences.price_momentum_focus < 67
-                    ? 'Balanced approach to price action'
-                    : 'Follow strong trends and momentum'
+                      ? 'Balanced approach to price action'
+                      : 'Follow strong trends and momentum'
                 }
               />
 
@@ -257,8 +278,8 @@ const SliderRow = ({
                   preferences.market_rank_priority < 33
                     ? 'Trade any token regardless of market cap'
                     : preferences.market_rank_priority < 67
-                    ? 'Slight preference for established tokens'
-                    : 'Strong preference for top-ranked, liquid tokens'
+                      ? 'Slight preference for established tokens'
+                      : 'Strong preference for top-ranked, liquid tokens'
                 }
               />
 
