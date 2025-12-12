@@ -513,11 +513,14 @@ export function OstiumConnect({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div 
-        className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-md w-full max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onWheelCapture={(e) => {
+        // Keep scroll inside the modal stack; don't bubble to page
+        e.stopPropagation();
+      }}
+    >
+      <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden overscroll-contain">
         {/* Header */}
         <div className="border-b border-[var(--border)] p-6 flex-shrink-0">
           <div className="flex items-center justify-between">
@@ -539,16 +542,15 @@ export function OstiumConnect({
           </div>
         </div>
 
-        {/* Content - Scrollable */}
-        <div 
-          className="p-6 space-y-4 overflow-y-auto flex-1 modal-scrollable"
-          style={{ overscrollBehavior: 'contain' }}
-          onWheel={(e) => {
-            const target = e.currentTarget;
-            const isAtTop = target.scrollTop === 0;
-            const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
-            
-            if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
+        {/* Content */}
+        <div
+          className="p-6 space-y-4 flex-1 overflow-y-auto custom-scrollbar min-h-0"
+          onWheelCapture={(e) => {
+            const el = e.currentTarget;
+            const isScrollable = el.scrollHeight > el.clientHeight;
+            const isAtTop = el.scrollTop === 0;
+            const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+            if (isScrollable && !(isAtTop && e.deltaY < 0) && !(isAtBottom && e.deltaY > 0)) {
               e.stopPropagation();
             }
           }}
