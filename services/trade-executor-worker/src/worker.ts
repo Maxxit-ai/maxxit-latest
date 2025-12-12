@@ -181,8 +181,8 @@ async function executeSignal(signalId: string, deploymentId: string) {
       return;
     }
 
-    // Execute trade via external service
-    const { executeTrade } = await import('./lib/trade-executor');
+    // Execute trade via LLM-enabled executor
+    const { executeTrade } = await import('./lib/trade-executor-llm');
     const result = await executeTrade(signal, deployment);
 
     if (result.success) {

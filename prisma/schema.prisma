@@ -350,6 +350,10 @@ model signals {
   lunarcrush_breakdown         Json?
   lunarcrush_reasoning         String?
   lunarcrush_score             Float?
+  llm_decision                 String?
+  llm_should_trade             Boolean?
+  llm_fund_allocation          Float?
+  llm_leverage                Float?
   routing_history              Json?
   agent_routing_history        agent_routing_history[]
   impact_factor_history        impact_factor_history[]
