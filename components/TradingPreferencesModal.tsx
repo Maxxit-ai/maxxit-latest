@@ -132,7 +132,6 @@ export function TradingPreferencesModal({
       if (onSave) {
         onSave();
       }
-      onClose();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -164,136 +163,144 @@ export function TradingPreferencesModal({
     return 'Top Only';
   };
 
-const SliderRow = ({
-  title,
-  helper,
-  value,
-  onChange,
-  left,
-  right,
-  badge,
-  description,
-}: {
-  title: string;
-  helper: string;
-  value: number;
-  onChange: (val: number) => void;
-  left: string;
-  right: string;
-  badge: string;
-  description: string;
-}) => {
-  const [inputValue, setInputValue] = useState(value.toString());
-  const [isInputFocused, setIsInputFocused] = useState(false);
+  const SliderRow = ({
+    title,
+    helper,
+    value,
+    onChange,
+    left,
+    right,
+    badge,
+    description,
+  }: {
+    title: string;
+    helper: string;
+    value: number;
+    onChange: (val: number) => void;
+    left: string;
+    right: string;
+    badge: string;
+    description: string;
+  }) => {
+    const [inputValue, setInputValue] = useState(value.toString());
+    const [isInputFocused, setIsInputFocused] = useState(false);
 
-  // Only sync input with slider value when input is not focused
-  useEffect(() => {
-    if (!isInputFocused) {
-      setInputValue(value.toString());
-    }
-  }, [value, isInputFocused]);
+    // Only sync input with slider value when input is not focused
+    useEffect(() => {
+      if (!isInputFocused) {
+        setInputValue(value.toString());
+      }
+    }, [value, isInputFocused]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    // Allow empty string or valid numbers
-    if (val === '' || /^\d+$/.test(val)) {
-      setInputValue(val);
-    }
-  };
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      // Allow empty string or valid numbers
+      if (val === '' || /^\d+$/.test(val)) {
+        setInputValue(val);
+      }
+    };
 
-  const handleInputFocus = () => {
-    setIsInputFocused(true);
-  };
+    const handleInputFocus = () => {
+      setIsInputFocused(true);
+    };
 
-  const handleInputBlur = () => {
-    setIsInputFocused(false);
-    
-    // Validate and correct on blur
-    const num = parseInt(inputValue);
-    if (isNaN(num) || num < 0 || inputValue === '') {
-      onChange(0);
-      setInputValue('0');
-    } else if (num > 100) {
-      onChange(100);
-      setInputValue('100');
-    } else {
-      onChange(num);
-      setInputValue(num.toString());
-    }
-  };
+    const handleInputBlur = () => {
+      setIsInputFocused(false);
 
-  return (
-    <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-5 space-y-4 rounded-lg">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <h3 className="text-base font-bold text-[var(--text-primary)]">{title}</h3>
-          <p className="text-xs text-[var(--text-secondary)] mt-1">{helper}</p>
+      // Validate and correct on blur
+      const num = parseInt(inputValue);
+      if (isNaN(num) || num < 0 || inputValue === '') {
+        onChange(0);
+        setInputValue('0');
+      } else if (num > 100) {
+        onChange(100);
+        setInputValue('100');
+      } else {
+        onChange(num);
+        setInputValue(num.toString());
+      }
+    };
+
+    return (
+      <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-5 space-y-4 rounded-lg">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <h3 className="text-base font-bold text-[var(--text-primary)]">{title}</h3>
+            <p className="text-xs text-[var(--text-secondary)] mt-1">{helper}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[var(--accent)] font-bold uppercase px-2 py-1 bg-[var(--accent)]/10 rounded">
+              {badge}
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={inputValue}
+              onChange={handleInputChange}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleInputBlur();
+                  e.currentTarget.blur();
+                }
+              }}
+              className="w-16 px-2 py-1.5 text-center border-2 border-[var(--accent)]/60 bg-black text-[var(--accent)] font-mono font-bold text-sm rounded hover:border-[var(--accent)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+              placeholder="0-100"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-[var(--accent)] font-bold uppercase px-2 py-1 bg-[var(--accent)]/10 rounded">
-            {badge}
-          </span>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={inputValue}
-            onChange={handleInputChange}
-            onFocus={handleInputFocus}
-            onBlur={handleInputBlur}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleInputBlur();
-                e.currentTarget.blur();
-              }
-            }}
-            className="w-16 px-2 py-1.5 text-center border-2 border-[var(--accent)]/60 bg-black text-[var(--accent)] font-mono font-bold text-sm rounded hover:border-[var(--accent)] focus:border-[var(--accent)] focus:outline-none transition-colors"
-            placeholder="0-100"
-          />
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-gray-400 px-1 font-medium">
+            <span>{left}</span>
+            <span>{right}</span>
+          </div>
+
+          <Slider.Root
+            className="relative flex items-center select-none touch-none w-full h-8 group cursor-pointer"
+            value={[value]}
+            onValueChange={(vals) => onChange(vals[0])}
+            max={100}
+            min={0}
+            step={1}
+          >
+            <Slider.Track className="bg-gray-400 relative grow rounded-full h-3 cursor-pointer hover:bg-gray-600 transition-colors">
+              <Slider.Range className="absolute bg-gradient-to-r from-[var(--accent)]/70 to-[var(--accent)] h-full rounded-full" />
+            </Slider.Track>
+            <Slider.Thumb
+              className="block w-7 h-7 bg-[var(--accent)] border-3 border-black rounded-full hover:scale-125 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 transition-all duration-150 cursor-grab active:cursor-grabbing active:scale-110 shadow-xl"
+              aria-label={title}
+            />
+          </Slider.Root>
+
+          <div className="flex justify-between text-xs text-gray-500 px-1 font-mono">
+            <span>0</span>
+            <span>25</span>
+            <span>50</span>
+            <span>75</span>
+            <span>100</span>
+          </div>
         </div>
+
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{description}</p>
       </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs text-gray-400 px-1 font-medium">
-          <span>{left}</span>
-          <span>{right}</span>
-        </div>
-        
-        <Slider.Root
-          className="relative flex items-center select-none touch-none w-full h-8 group cursor-pointer"
-          value={[value]}
-          onValueChange={(vals) => onChange(vals[0])}
-          max={100}
-          min={0}
-          step={1}
-        >
-          <Slider.Track className="bg-gray-400 relative grow rounded-full h-3 cursor-pointer hover:bg-gray-600 transition-colors">
-            <Slider.Range className="absolute bg-gradient-to-r from-[var(--accent)]/70 to-[var(--accent)] h-full rounded-full" />
-          </Slider.Track>
-          <Slider.Thumb
-            className="block w-7 h-7 bg-[var(--accent)] border-3 border-black rounded-full hover:scale-125 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 transition-all duration-150 cursor-grab active:cursor-grabbing active:scale-110 shadow-xl"
-            aria-label={title}
-          />
-        </Slider.Root>
-
-        <div className="flex justify-between text-xs text-gray-500 px-1 font-mono">
-          <span>0</span>
-          <span>25</span>
-          <span>50</span>
-          <span>75</span>
-          <span>100</span>
-        </div>
-      </div>
-
-      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{description}</p>
-    </div>
-  );
-};
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-      <div 
+      <div
         className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => {
+          const el = e.currentTarget;
+          const isScrollable = el.scrollHeight > el.clientHeight;
+          const isAtTop = el.scrollTop === 0;
+          const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+          if (isScrollable && !(isAtTop && e.deltaY < 0) && !(isAtBottom && e.deltaY > 0)) {
+            e.stopPropagation();
+          }
+        }}
       >
         <div className="border-b border-[var(--accent)] p-6 flex items-center justify-between flex-shrink-0">
           <div>
@@ -309,14 +316,14 @@ const SliderRow = ({
           </button>
         </div>
 
-        <div 
+        <div
           className="p-6 space-y-4 bg-[var(--bg-deep)] overflow-y-auto flex-1 modal-scrollable"
           style={{ overscrollBehavior: 'contain' }}
           onWheel={(e) => {
             const target = e.currentTarget;
             const isAtTop = target.scrollTop === 0;
             const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
-            
+
             if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
               e.stopPropagation();
             }
@@ -341,8 +348,8 @@ const SliderRow = ({
                   preferences.risk_tolerance < 33
                     ? 'Smaller positions (0.5-3% of balance)'
                     : preferences.risk_tolerance < 67
-                    ? 'Moderate positions (2-7% of balance)'
-                    : 'Larger positions (5-10% of balance)'
+                      ? 'Moderate positions (2-7% of balance)'
+                      : 'Larger positions (5-10% of balance)'
                 }
               />
 
@@ -358,8 +365,8 @@ const SliderRow = ({
                   preferences.trade_frequency < 33
                     ? 'Only high-confidence signals (>60%)'
                     : preferences.trade_frequency < 67
-                    ? 'Moderate confidence (>40%)'
-                    : 'Most signals, including lower confidence'
+                      ? 'Moderate confidence (>40%)'
+                      : 'Most signals, including lower confidence'
                 }
               />
 
@@ -375,8 +382,8 @@ const SliderRow = ({
                   preferences.social_sentiment_weight < 33
                     ? 'Minimal impact on sizing'
                     : preferences.social_sentiment_weight < 67
-                    ? 'Balanced consideration of social signals'
-                    : 'Strong weight on social buzz'
+                      ? 'Balanced consideration of social signals'
+                      : 'Strong weight on social buzz'
                 }
               />
 
@@ -392,8 +399,8 @@ const SliderRow = ({
                   preferences.price_momentum_focus < 33
                     ? 'Prefer buying dips / fading rallies'
                     : preferences.price_momentum_focus < 67
-                    ? 'Balanced approach to price action'
-                    : 'Follow strong trends and momentum'
+                      ? 'Balanced approach to price action'
+                      : 'Follow strong trends and momentum'
                 }
               />
 
@@ -409,8 +416,8 @@ const SliderRow = ({
                   preferences.market_rank_priority < 33
                     ? 'Trade any token regardless of market cap'
                     : preferences.market_rank_priority < 67
-                    ? 'Slight preference for established tokens'
-                    : 'Strong preference for top-ranked, liquid tokens'
+                      ? 'Slight preference for established tokens'
+                      : 'Strong preference for top-ranked, liquid tokens'
                 }
               />
 
