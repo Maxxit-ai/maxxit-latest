@@ -110,35 +110,40 @@ async function generateAllSignals() {
 
         console.log(`[SignalGenerator] 🪙 Tokens: ${extractedTokens.join(", ")}`);
 
-        // Generate signal for each agent and token combination
+        // Generate signal for each deployment, agent, and token combination
+        // Each deployment has its own trading preferences, so we generate separate signals
         for (const agent of agents) {
-          for (const token of extractedTokens) {
-            try {
-              const success = await generateSignalForAgentAndToken(
-                post,
-                agent,
-                token
-              );
-              
-              if (success) {
-                console.log(
-                  `[SignalGenerator] ✅ Signal created for ${agent.name}: ${token}`
+          for (const deployment of agent.agent_deployments) {
+            for (const token of extractedTokens) {
+              try {
+                const success = await generateSignalForAgentAndToken(
+                  post,
+                  agent,
+                  deployment,
+                  token
+                );
+                
+                if (success) {
+                  console.log(
+                    `[SignalGenerator] ✅ Signal created for ${agent.name} (deployment ${deployment.id.substring(0, 8)}): ${token}`
+                  );
+                }
+              } catch (error: any) {
+                console.error(
+                  `[SignalGenerator] ❌ Failed to generate signal for ${agent.name} (deployment ${deployment.id.substring(0, 8)}): ${token}: ${error.message}`
                 );
               }
-
-              await prisma.telegram_posts.update({
-                where: { id: post.id },
-                data: {
-                  processed_for_signals: true,
-                },
-              });
-            } catch (error: any) {
-              console.error(
-                `[SignalGenerator] ❌ Failed to generate signal for ${agent.name}: ${token}: ${error.message}`
-              );
             }
           }
         }
+
+        // Mark post as processed after attempting to generate signals for all deployments
+        await prisma.telegram_posts.update({
+          where: { id: post.id },
+          data: {
+            processed_for_signals: true,
+          },
+        });
       } catch (error: any) {
         console.error(
           `[SignalGenerator] ❌ Error processing post ${post.id}:`,
@@ -154,12 +159,13 @@ async function generateAllSignals() {
 }
 
 /**
- * Generate a signal for a specific agent and token using LLM decision making
+ * Generate a signal for a specific agent deployment and token using LLM decision making
  * @returns true if signal was created, false if skipped
  */
 async function generateSignalForAgentAndToken(
   post: any,
   agent: any,
+  deployment: any,
   token: string
 ) {
   try {
@@ -249,17 +255,14 @@ async function generateSignalForAgentAndToken(
     // Determine side from post sentiment (already classified by LLM)
     const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
 
-    const deployment = agent.agent_deployments[0];
     // Get trading preferences from the specific agent deployment (preferences are per deployment)
-    const userTradingPreferences = deployment
-      ? {
-          risk_tolerance: deployment.risk_tolerance,
-          trade_frequency: deployment.trade_frequency,
-          social_sentiment_weight: deployment.social_sentiment_weight,
-          price_momentum_focus: deployment.price_momentum_focus,
-          market_rank_priority: deployment.market_rank_priority,
-        }
-      : undefined;
+    const userTradingPreferences = {
+      risk_tolerance: deployment.risk_tolerance,
+      trade_frequency: deployment.trade_frequency,
+      social_sentiment_weight: deployment.social_sentiment_weight,
+      price_momentum_focus: deployment.price_momentum_focus,
+      market_rank_priority: deployment.market_rank_priority,
+    };
 
     // Get user's balance for the venue
     let userBalance = 0;
@@ -376,7 +379,7 @@ async function generateSignalForAgentAndToken(
       message: post.message_text,
       confidenceScore: post.confidence_score || 0.5,
       lunarcrushData,
-      userTradingPreferences: userTradingPreferences || undefined,
+      userTradingPreferences: userTradingPreferences,
       userBalance,
       venue: signalVenue,
       token,
@@ -401,48 +404,58 @@ async function generateSignalForAgentAndToken(
       return false;
     }
 
-    // Check for existing signal in current 6-hour bucket to avoid Prisma error logging
+    // Check for existing signal in current 6-hour bucket for this specific deployment
+    // Since signals are now per-deployment, we check if a position already exists for this deployment
     const now = new Date();
     const bucket6hStart = new Date(
       Math.floor(now.getTime() / (6 * 60 * 60 * 1000)) * 6 * 60 * 60 * 1000
     );
 
-    const existingSignal = await prisma.signals.findFirst({
+    // Check if there's already a position for this deployment-signal combination
+    // We look for signals created in the 6-hour window and check if this deployment already has a position
+    const existingPosition = await prisma.positions.findFirst({
       where: {
-        agent_id: agent.id,
-        token_symbol: token.toUpperCase(),
-        created_at: {
-          gte: bucket6hStart,
+        deployment_id: deployment.id,
+        signals: {
+          agent_id: agent.id,
+          token_symbol: token.toUpperCase(),
+          created_at: {
+            gte: bucket6hStart,
+          },
         },
       },
       include: {
-        positions: {
-          select: {
-            status: true,
-            entry_price: true,
-            qty: true,
+        signals: {
+          include: {
+            positions: {
+              where: {
+                deployment_id: deployment.id,
+              },
+              select: {
+                status: true,
+                entry_price: true,
+                qty: true,
+              },
+              take: 1,
+            },
           },
-          take: 1,
         },
       },
     });
 
-    if (existingSignal) {
+    const existingSignal = existingPosition?.signals;
+
+    if (existingSignal && existingPosition) {
       // Check if existing signal's position actually succeeded
-      const hasPosition = existingSignal.positions.length > 0;
+      const position = existingPosition;
+      // Convert Prisma Decimal to number for comparison
+      const entryPrice = position.entry_price
+        ? Number(position.entry_price.toString())
+        : 0;
+      const qty = position.qty ? Number(position.qty.toString()) : 0;
 
-      let positionFailed = false;
-      if (hasPosition) {
-        const position = existingSignal.positions[0];
-        // Convert Prisma Decimal to number for comparison
-        const entryPrice = position.entry_price
-          ? Number(position.entry_price.toString())
-          : 0;
-        const qty = position.qty ? Number(position.qty.toString()) : 0;
-
-        positionFailed =
-          position.status === "CLOSED" && entryPrice === 0 && qty === 0;
-      }
+      const positionFailed =
+        position.status === "CLOSED" && entryPrice === 0 && qty === 0;
 
       if (positionFailed) {
         console.log(
@@ -452,7 +465,7 @@ async function generateSignalForAgentAndToken(
           `    ✅ Allowing new signal to be created (previous execution failed)`
         );
         // Continue to create new signal - don't return
-      } else if (!hasPosition && existingSignal.skipped_reason) {
+      } else if (existingSignal.skipped_reason) {
         console.log(
           `    ⚠️  Existing signal for ${token} was skipped: ${existingSignal.skipped_reason}`
         );
@@ -462,7 +475,7 @@ async function generateSignalForAgentAndToken(
         // Continue to create new signal - don't return
       } else {
         console.log(
-          `    ⏭️  Signal already exists for ${token} (within 6-hour window)`
+          `    ⏭️  Signal already exists for ${token} for this deployment (within 6-hour window)`
         );
         return false; // Skip creating duplicate signal
       }
