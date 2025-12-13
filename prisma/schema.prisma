@@ -88,6 +88,7 @@ model agent_deployments {
   billing_events                  billing_events[]
   pnl_snapshots                   pnl_snapshots[]
   positions                       positions[]
+  signals                         signals[]
   telegram_trades                 telegram_trades[]
   telegram_users                  telegram_users[]
 
@@ -328,9 +329,11 @@ model research_signals {
 }
 
 /// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+/// Expression index: signals_agent_token_deployment_bucket_6h_idx on (agent_id, token_symbol, deployment_id, bucket_6h_utc(created_at))
 model signals {
   id                           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   agent_id                     String                  @db.Uuid
+  deployment_id                String?                 @db.Uuid
   token_symbol                 String
   venue                        venue_t
   side                         String
@@ -359,9 +362,11 @@ model signals {
   impact_factor_history        impact_factor_history[]
   positions                    positions[]
   agents                       agents                  @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  agent_deployments            agent_deployments?      @relation(fields: [deployment_id], references: [id], onDelete: Cascade)
   venue_routing_history        venue_routing_history[]
 
   @@index([agent_id, created_at])
+  @@index([deployment_id])
   @@index([lunarcrush_score])
 }
 

@@ -404,67 +404,67 @@ async function generateSignalForAgentAndToken(
       return false;
     }
 
-    // Check for existing signal in current 6-hour bucket for this specific deployment
-    // Since signals are now per-deployment, we check if a position already exists for this deployment
+    // This allows each deployment to have separate signals with different LLM decisions
     const now = new Date();
     const bucket6hStart = new Date(
       Math.floor(now.getTime() / (6 * 60 * 60 * 1000)) * 6 * 60 * 60 * 1000
     );
 
-    // Check if there's already a position for this deployment-signal combination
-    // We look for signals created in the 6-hour window and check if this deployment already has a position
-    const existingPosition = await prisma.positions.findFirst({
+    // Check if a signal already exists for this deployment/agent/token in the 6-hour window
+    const existingSignal = await prisma.signals.findFirst({
       where: {
+        agent_id: agent.id,
         deployment_id: deployment.id,
-        signals: {
-          agent_id: agent.id,
-          token_symbol: token.toUpperCase(),
-          created_at: {
-            gte: bucket6hStart,
-          },
+        token_symbol: token.toUpperCase(),
+        created_at: {
+          gte: bucket6hStart,
         },
       },
       include: {
-        signals: {
-          include: {
-            positions: {
-              where: {
-                deployment_id: deployment.id,
-              },
-              select: {
-                status: true,
-                entry_price: true,
-                qty: true,
-              },
-              take: 1,
-            },
+        positions: {
+          where: {
+            deployment_id: deployment.id,
           },
+          select: {
+            status: true,
+            entry_price: true,
+            qty: true,
+          },
+          take: 1,
         },
       },
     });
 
-    const existingSignal = existingPosition?.signals;
+    if (existingSignal) {
+      // Signal already exists for this deployment/agent/token in the 6-hour window
+      const existingPosition = existingSignal.positions[0];
 
-    if (existingSignal && existingPosition) {
-      // Check if existing signal's position actually succeeded
-      const position = existingPosition;
-      // Convert Prisma Decimal to number for comparison
-      const entryPrice = position.entry_price
-        ? Number(position.entry_price.toString())
-        : 0;
-      const qty = position.qty ? Number(position.qty.toString()) : 0;
+      if (existingPosition) {
+        // Check if existing position actually succeeded
+        const entryPrice = existingPosition.entry_price
+          ? Number(existingPosition.entry_price.toString())
+          : 0;
+        const qty = existingPosition.qty
+          ? Number(existingPosition.qty.toString())
+          : 0;
 
-      const positionFailed =
-        position.status === "CLOSED" && entryPrice === 0 && qty === 0;
+        const positionFailed =
+          existingPosition.status === "CLOSED" && entryPrice === 0 && qty === 0;
 
-      if (positionFailed) {
-        console.log(
-          `    ⚠️  Existing signal for ${token} failed (position closed with 0 values)`
-        );
-        console.log(
-          `    ✅ Allowing new signal to be created (previous execution failed)`
-        );
-        // Continue to create new signal - don't return
+        if (positionFailed) {
+          console.log(
+            `    ⚠️  Existing signal for ${token} failed (position closed with 0 values)`
+          );
+          console.log(
+            `    ✅ Allowing new signal to be created (previous execution failed)`
+          );
+          // Continue to create new signal - don't return
+        } else {
+          console.log(
+            `    ⏭️  Signal already exists for ${token} for this deployment (within 6-hour window)`
+          );
+          return false; // Skip - signal and position already exist
+        }
       } else if (existingSignal.skipped_reason) {
         console.log(
           `    ⚠️  Existing signal for ${token} was skipped: ${existingSignal.skipped_reason}`
@@ -475,17 +475,18 @@ async function generateSignalForAgentAndToken(
         // Continue to create new signal - don't return
       } else {
         console.log(
-          `    ⏭️  Signal already exists for ${token} for this deployment (within 6-hour window)`
+          `    ⏭️  Signal exists but no position yet for ${token} - trade executor will process`
         );
-        return false; // Skip creating duplicate signal
+        return false; // Signal exists, trade executor will handle position creation
       }
     }
 
-    // Create signal with LLM decision
+    // Create signal with LLM decision (per deployment)
     try {
       const signal = await prisma.signals.create({
         data: {
           agent_id: agent.id,
+          deployment_id: deployment.id,
           token_symbol: token,
           venue: signalVenue, // MULTI agents → first available venue (Agent Where will re-route if needed)
           side: side,
@@ -500,7 +501,7 @@ async function generateSignalForAgentAndToken(
             leverage: signalVenue === "OSTIUM" ? tradeDecision.leverage : 3, // Use LLM leverage for Ostium, default for Hyperliquid
           },
           source_tweets: [post.message_id],
-          llm_decision: tradeDecision.reason, // Store LLM reasoning
+          llm_decision: tradeDecision.reason,
           llm_should_trade: tradeDecision.shouldTrade,
           llm_fund_allocation: tradeDecision.fundAllocation,
           llm_leverage: tradeDecision.leverage,
@@ -508,7 +509,7 @@ async function generateSignalForAgentAndToken(
       });
 
       console.log(
-        `    ✅ Signal created: ${side} ${token} on ${signalVenue} (${tradeDecision.fundAllocation.toFixed(2)}% position)`
+        `    ✅ Signal created for deployment ${deployment.id.substring(0, 8)}: ${side} ${token} on ${signalVenue} (${tradeDecision.fundAllocation.toFixed(2)}% position)`
       );
       if (signalVenue === "OSTIUM") {
         console.log(
@@ -517,10 +518,10 @@ async function generateSignalForAgentAndToken(
       }
       return true; // Signal successfully created
     } catch (createError: any) {
-      // P2002: Unique constraint violation (race condition - another worker created it first)
+      // P2002: Unique constraint violation (rare race condition)
       if (createError.code === "P2002") {
         console.log(
-          `    ⏭️  Signal already exists for ${token} (race condition - created by another worker)`
+          `    ⏭️  Signal already exists for ${token} (race condition - created by concurrent process)`
         );
         return false; // Signal not created due to race condition
       } else {
