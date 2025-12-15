@@ -6,6 +6,12 @@ import { HyperliquidSetupButton } from "@components/HyperliquidSetupButton";
 import { OstiumSetupButton } from "@components/OstiumSetupButton";
 import { HyperliquidAgentModal } from "@components/HyperliquidAgentModal";
 import { usePrivy } from "@privy-io/react-auth";
+import AgentsSection from "@components/home/AgentsSection";
+import { AgentDrawer } from "@components/AgentDrawer";
+import { HyperliquidConnect } from "@components/HyperliquidConnect";
+import { MultiVenueSelector } from "@components/MultiVenueSelector";
+import { db } from "../client/src/lib/db";
+import { AgentSummary } from "@components/home/types";
 import {
   Wallet,
   Activity,
@@ -37,7 +43,7 @@ interface Deployment {
 export default function MyDeployments() {
   const { authenticated, user, login } = usePrivy();
   const [deployments, setDeployments] = useState<Deployment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [deploymentsLoading, setDeploymentsLoading] = useState(true);
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
   const [hyperliquidModalOpen, setHyperliquidModalOpen] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string>("");
@@ -46,12 +52,37 @@ export default function MyDeployments() {
   const [botUsername, setBotUsername] = useState<string>("");
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<"deployments" | "agents">(
+    "deployments"
+  );
+
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(null);
+  const [hyperliquidAgentId, setHyperliquidAgentId] = useState<string>("");
+  const [hyperliquidAgentName, setHyperliquidAgentName] = useState<string>("");
+  const [hyperliquidAgentVenue, setHyperliquidAgentVenue] =
+    useState<string>("");
+  const [hyperliquidConnectOpen, setHyperliquidConnectOpen] = useState(false);
+  const [multiVenueSelectorOpen, setMultiVenueSelectorOpen] = useState(false);
+  const [multiVenueAgent, setMultiVenueAgent] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [userAgentAddresses, setUserAgentAddresses] = useState<{
+    hyperliquid?: string | null;
+    ostium?: string | null;
+  } | null>(null);
+  const [agentDeployments, setAgentDeployments] = useState<
+    Record<string, string[]>
+  >({});
 
   useEffect(() => {
     if (authenticated && user?.wallet?.address) {
       fetchDeployments();
     } else {
-      setLoading(false);
+      setDeploymentsLoading(false);
     }
   }, [authenticated, user?.wallet?.address]);
 
@@ -71,9 +102,96 @@ export default function MyDeployments() {
       console.error("Failed to fetch deployments:", error);
       setDeployments([]);
     } finally {
-      setLoading(false);
+      setDeploymentsLoading(false);
     }
   };
+
+  const fetchAgents = async () => {
+    try {
+      setAgentsLoading(true);
+      const userWallet =
+        authenticated && user?.wallet?.address
+          ? user.wallet.address.toLowerCase()
+          : null;
+
+      const [agentsData, addressesData, deploymentsData] = await Promise.all([
+        db.get("agents", {
+          status: "eq.PUBLIC",
+          order: "apr30d.desc",
+          limit: "20",
+          select: "id,name,venue,apr30d,apr90d,aprSi,sharpe30d",
+        }),
+        userWallet
+          ? db
+            .get("user_agent_addresses", {
+              userWallet: `eq.${userWallet}`,
+            })
+            .catch(() => null)
+          : Promise.resolve(null),
+        userWallet
+          ? db
+            .get("agent_deployments", {
+              userWallet: `eq.${userWallet}`,
+              status: "eq.ACTIVE",
+            })
+            .catch(() => [])
+          : Promise.resolve([]),
+      ]);
+
+      setAgents(agentsData || []);
+
+      if (addressesData && Array.isArray(addressesData) && addressesData.length) {
+        setUserAgentAddresses({
+          hyperliquid: addressesData[0].hyperliquidAgentAddress || null,
+          ostium: addressesData[0].ostiumAgentAddress || null,
+        });
+      } else if (addressesData && !Array.isArray(addressesData)) {
+        setUserAgentAddresses({
+          hyperliquid: addressesData.hyperliquidAgentAddress || null,
+          ostium: addressesData.ostiumAgentAddress || null,
+        });
+      } else {
+        setUserAgentAddresses(null);
+      }
+
+      if (deploymentsData && Array.isArray(deploymentsData)) {
+        const deploymentsMap: Record<string, string[]> = {};
+        deploymentsData.forEach((deployment: any) => {
+          const agentId = deployment.agentId || deployment.agent_id;
+          const enabledVenues =
+            deployment.enabledVenues || deployment.enabled_venues || [];
+
+          if (agentId) {
+            if (!deploymentsMap[agentId]) {
+              deploymentsMap[agentId] = [];
+            }
+
+            enabledVenues.forEach((venue: string) => {
+              if (!deploymentsMap[agentId].includes(venue)) {
+                deploymentsMap[agentId].push(venue);
+              }
+            });
+          }
+        });
+
+        setAgentDeployments(deploymentsMap);
+      } else {
+        setAgentDeployments({});
+      }
+
+      setAgentsError(null);
+    } catch (error: any) {
+      setAgentsError(error.message || "Failed to load agents");
+    } finally {
+      setAgentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "agents") {
+      fetchAgents();
+    }
+  }, [activeTab, authenticated, user?.wallet?.address]);
 
   const handleConnectTelegram = (deploymentId: string) => {
     setSelectedDeploymentId(deploymentId);
@@ -122,6 +240,27 @@ export default function MyDeployments() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleAgentCardClick = (agent: AgentSummary) => {
+    if (agent.venue === "MULTI") {
+      setMultiVenueAgent({ id: agent.id, name: agent.name });
+      setMultiVenueSelectorOpen(true);
+    } else {
+      setSelectedAgent(agent);
+    }
+  };
+
+  const handleDeployClick = (agent: AgentSummary) => {
+    if (agent.venue === "MULTI") {
+      setMultiVenueAgent({ id: agent.id, name: agent.name });
+      setMultiVenueSelectorOpen(true);
+      return;
+    }
+    setHyperliquidAgentId(agent.id);
+    setHyperliquidAgentName(agent.name);
+    setHyperliquidAgentVenue(agent.venue);
+    setHyperliquidConnectOpen(true);
+  };
+
   const handleSetupHyperliquid = (agentId: string, agentName: string) => {
     setSelectedDeploymentId(agentId);
     setSelectedAgentName(agentName);
@@ -134,7 +273,7 @@ export default function MyDeployments() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (loading) {
+  if (deploymentsLoading) {
     return (
       <div className="min-h-screen bg-[var(--bg-deep)]">
         <Header />
@@ -154,15 +293,49 @@ export default function MyDeployments() {
         <div className="mb-12">
           <p className="data-label mb-2">DASHBOARD</p>
           <h1 className="font-display text-4xl md:text-5xl mb-4">
-            MY DEPLOYMENTS
+            {activeTab === "deployments" ? "MY DEPLOYMENTS" : "LIVE AGENTS"}
           </h1>
           <p className="text-[var(--text-secondary)] max-w-xl">
-            Manage your agent subscriptions and connect Telegram for manual
-            trading
+            {activeTab === "deployments"
+              ? "Manage your agent subscriptions and connect Telegram for manual trading"
+              : "Browse live agents and deploy directly from your dashboard"}
           </p>
         </div>
 
-        {!authenticated ? (
+        <div className="flex gap-3 mb-10">
+          <button
+            onClick={() => setActiveTab("deployments")}
+            className={`px-5 py-2 text-sm font-bold border ${activeTab === "deployments"
+              ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
+              : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
+              }`}
+          >
+            MY DEPLOYMENTS
+          </button>
+          <button
+            onClick={() => setActiveTab("agents")}
+            className={`px-5 py-2 text-sm font-bold border ${activeTab === "agents"
+              ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
+              : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
+              }`}
+          >
+            LIVE AGENTS
+          </button>
+        </div>
+
+        {activeTab === "agents" ? (
+          <div className="border border-[var(--border)] bg-[var(--bg-surface)]">
+            <AgentsSection
+              agents={agents}
+              loading={agentsLoading}
+              error={agentsError}
+              onCardClick={handleAgentCardClick}
+              onDeployClick={handleDeployClick}
+              userAgentAddresses={userAgentAddresses}
+              agentDeployments={agentDeployments}
+            />
+          </div>
+        ) : !authenticated ? (
           <div className="border border-[var(--border)] bg-[var(--bg-surface)]">
             <div className="flex flex-col items-center justify-center py-16 px-4">
               <div className="w-16 h-16 border border-[var(--accent)] flex items-center justify-center mb-6">
@@ -215,11 +388,10 @@ export default function MyDeployments() {
                       </h3>
                     </div>
                     <span
-                      className={`text-xs px-2 py-1 font-bold ${
-                        deployment.status === "ACTIVE"
-                          ? "bg-[var(--accent)] text-[var(--bg-deep)]"
-                          : "border border-[var(--border)] text-[var(--text-muted)]"
-                      }`}
+                      className={`text-xs px-2 py-1 font-bold ${deployment.status === "ACTIVE"
+                        ? "bg-[var(--accent)] text-[var(--bg-deep)]"
+                        : "border border-[var(--border)] text-[var(--text-muted)]"
+                        }`}
                     >
                       {deployment.status}
                     </span>
@@ -235,7 +407,7 @@ export default function MyDeployments() {
                   <div className="flex justify-between items-center py-3 border-b border-[var(--border)]">
                     <span className="text-[var(--text-muted)] text-sm flex items-center gap-2">
                       <Wallet className="w-4 h-4" />
-                      Safe Wallet
+                      Wallet
                     </span>
                     <span className="font-mono text-sm">
                       {deployment.safeWallet.slice(0, 6)}...
@@ -281,11 +453,11 @@ export default function MyDeployments() {
                           {deployment.enabledVenues?.includes(
                             "HYPERLIQUID"
                           ) && (
-                            <HyperliquidSetupButton
-                              safeAddress={deployment.safeWallet}
-                              onSetupComplete={() => fetchDeployments()}
-                            />
-                          )}
+                              <HyperliquidSetupButton
+                                safeAddress={deployment.safeWallet}
+                                onSetupComplete={() => fetchDeployments()}
+                              />
+                            )}
                           {deployment.enabledVenues?.includes("OSTIUM") && (
                             <OstiumSetupButton
                               agentId={deployment.agentId}
@@ -371,6 +543,46 @@ export default function MyDeployments() {
           </div>
         )}
       </div>
+
+      {selectedAgent && (
+        <AgentDrawer
+          agentId={selectedAgent.id}
+          agentName={selectedAgent.name}
+          agentVenue={selectedAgent.venue}
+          onClose={() => setSelectedAgent(null)}
+        />
+      )}
+
+      {hyperliquidConnectOpen && (
+        <HyperliquidConnect
+          agentId={hyperliquidAgentId}
+          agentName={hyperliquidAgentName}
+          agentVenue={hyperliquidAgentVenue || "HYPERLIQUID"}
+          onClose={() => setHyperliquidConnectOpen(false)}
+          onSuccess={() => {
+            fetchAgents();
+            fetchDeployments();
+          }}
+        />
+      )}
+
+      {multiVenueSelectorOpen && multiVenueAgent && (
+        <MultiVenueSelector
+          agentId={multiVenueAgent.id}
+          agentName={multiVenueAgent.name}
+          onClose={() => {
+            setMultiVenueSelectorOpen(false);
+            setMultiVenueAgent(null);
+          }}
+          onComplete={() => {
+            setMultiVenueSelectorOpen(false);
+            setMultiVenueAgent(null);
+            fetchAgents();
+            fetchDeployments();
+          }}
+          userAgentAddresses={userAgentAddresses}
+        />
+      )}
 
       {/* Telegram Modal */}
       {telegramModalOpen && (

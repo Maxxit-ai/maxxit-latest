@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Home, Wallet, User, Plus, TrendingUp, Menu } from 'lucide-react';
 import { Bot, BarChart3, FileText, Copy, Check, LogOut, X } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
+import Image from 'next/image';
 
 export function Header() {
   const { ready, authenticated, user, login, logout } = usePrivy();
@@ -95,12 +96,13 @@ export function Header() {
         <div className="flex h-14 items-center justify-between">
           {/* Logo/Brand */}
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center">
+            {/* <div className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center">
               <span className="text-accent font-bold">M</span>
             </div>
             <span className="font-display text-xl tracking-wide" data-testid="text-header-brand">
               MAXXIT
-            </span>
+            </span> */}
+            <Image src="/logo.png" alt="Maxxit" width={100} height={100} />
           </Link>
 
           {/* Navigation */}

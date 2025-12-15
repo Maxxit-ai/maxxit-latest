@@ -38,7 +38,7 @@ export default function Home() {
     async function fetchAgents() {
       try {
         const userWallet = authenticated && user?.wallet?.address ? user.wallet.address.toLowerCase() : null;
-        
+
         // Fetch agents, user agent addresses, and deployments in parallel
         const [agentsData, addressesData, deploymentsData] = await Promise.all([
           db.get('agents', {
@@ -50,20 +50,20 @@ export default function Home() {
           // Only fetch addresses if user is authenticated
           userWallet
             ? db.get('user_agent_addresses', {
-                userWallet: `eq.${userWallet}`,
-              }).catch(() => null) // Gracefully handle if no addresses exist
+              userWallet: `eq.${userWallet}`,
+            }).catch(() => null) // Gracefully handle if no addresses exist
             : Promise.resolve(null),
           // Fetch deployments for the user to check enabled_venues per agent
           userWallet
             ? db.get('agent_deployments', {
-                userWallet: `eq.${userWallet}`,
-                status: 'eq.ACTIVE',
-              }).catch(() => [])
+              userWallet: `eq.${userWallet}`,
+              status: 'eq.ACTIVE',
+            }).catch(() => [])
             : Promise.resolve([]),
         ]);
 
         setAgents(agentsData || []);
-        
+
         // Set user agent addresses if available (API converts snake_case to camelCase)
         if (addressesData && Array.isArray(addressesData) && addressesData.length > 0) {
           setUserAgentAddresses({
@@ -102,7 +102,7 @@ export default function Home() {
         } else {
           setAgentDeployments({});
         }
-        
+
         setError(null);
       } catch (err: any) {
         setError(err.message || 'Failed to load agents');
@@ -157,103 +157,104 @@ export default function Home() {
           onLearnMoreScroll={() => scrollToSection('architecture')}
         />
       </div>
-
-      <ArchitectureSection activeAgent={activeAgent} onHover={setActiveAgent} />
-      <CreateAgentSection />
-      <EconomySection />
-      <StatsSection />
-      <AgentsSection
-        agents={agents}
-        loading={loading}
-        error={error}
-        onCardClick={handleAgentClick}
-        onDeployClick={handleDeployClick}
-        userAgentAddresses={userAgentAddresses}
-        agentDeployments={agentDeployments}
-      />
-      <CTASection />
-      <FooterSection />
-
-      {selectedAgent && (
-        <AgentDrawer
-          agentId={selectedAgent.id}
-          agentName={selectedAgent.name}
-          agentVenue={selectedAgent.venue}
-          onClose={() => setSelectedAgent(null)}
-        />
-      )}
-
-      {hyperliquidModalOpen && (
-        <HyperliquidConnect
-          agentId={hyperliquidAgentId}
-          agentName={hyperliquidAgentName}
-          agentVenue={hyperliquidAgentVenue || 'HYPERLIQUID'}
-          onClose={() => setHyperliquidModalOpen(false)}
-          onSuccess={() => console.log('Setup complete')}
-        />
-      )}
-
-      {multiVenueSelectorOpen && multiVenueAgent && (
-        <MultiVenueSelector
-          agentId={multiVenueAgent.id}
-          agentName={multiVenueAgent.name}
-          onClose={() => {
-            setMultiVenueSelectorOpen(false);
-            setMultiVenueAgent(null);
-          }}
-          onComplete={() => {
-            setMultiVenueSelectorOpen(false);
-            setMultiVenueAgent(null);
-            // Refresh addresses and deployments after deployment
-            if (authenticated && user?.wallet?.address) {
-              const userWallet = user.wallet.address.toLowerCase();
-              Promise.all([
-                db.get('user_agent_addresses', {
-                  userWallet: `eq.${userWallet}`,
-                }).catch(() => null),
-                db.get('agent_deployments', {
-                  userWallet: `eq.${userWallet}`,
-                  status: 'eq.ACTIVE',
-                }).catch(() => []),
-              ]).then(([addressesData, deploymentsData]) => {
-                // Update addresses
-                if (addressesData && Array.isArray(addressesData) && addressesData.length > 0) {
-                  setUserAgentAddresses({
-                    hyperliquid: addressesData[0].hyperliquidAgentAddress || null,
-                    ostium: addressesData[0].ostiumAgentAddress || null,
-                  });
-                } else if (addressesData && !Array.isArray(addressesData)) {
-                  setUserAgentAddresses({
-                    hyperliquid: addressesData.hyperliquidAgentAddress || null,
-                    ostium: addressesData.ostiumAgentAddress || null,
-                  });
-                }
-
-                // Update deployments
-                if (deploymentsData && Array.isArray(deploymentsData)) {
-                  const deploymentsMap: Record<string, string[]> = {};
-                  deploymentsData.forEach((deployment: any) => {
-                    const agentId = deployment.agentId || deployment.agent_id;
-                    const enabledVenues = deployment.enabledVenues || deployment.enabled_venues || [];
-                    if (agentId) {
-                      if (!deploymentsMap[agentId]) {
-                        deploymentsMap[agentId] = [];
-                      }
-                      enabledVenues.forEach((venue: string) => {
-                        if (!deploymentsMap[agentId].includes(venue)) {
-                          deploymentsMap[agentId].push(venue);
-                        }
-                      });
-                    }
-                  });
-                  setAgentDeployments(deploymentsMap);
-                }
-              });
-            }
-          }}
+      <div className="min-h-svh">
+        <ArchitectureSection activeAgent={activeAgent} onHover={setActiveAgent} />
+        <CreateAgentSection />
+        <EconomySection />
+        <StatsSection />
+        <AgentsSection
+          agents={agents}
+          loading={loading}
+          error={error}
+          onCardClick={handleAgentClick}
+          onDeployClick={handleDeployClick}
           userAgentAddresses={userAgentAddresses}
+          agentDeployments={agentDeployments}
         />
-      )}
+        <CTASection />
+        <FooterSection />
+
+        {selectedAgent && (
+          <AgentDrawer
+            agentId={selectedAgent.id}
+            agentName={selectedAgent.name}
+            agentVenue={selectedAgent.venue}
+            onClose={() => setSelectedAgent(null)}
+          />
+        )}
+
+        {hyperliquidModalOpen && (
+          <HyperliquidConnect
+            agentId={hyperliquidAgentId}
+            agentName={hyperliquidAgentName}
+            agentVenue={hyperliquidAgentVenue || 'HYPERLIQUID'}
+            onClose={() => setHyperliquidModalOpen(false)}
+            onSuccess={() => console.log('Setup complete')}
+          />
+        )}
+
+        {multiVenueSelectorOpen && multiVenueAgent && (
+          <MultiVenueSelector
+            agentId={multiVenueAgent.id}
+            agentName={multiVenueAgent.name}
+            onClose={() => {
+              setMultiVenueSelectorOpen(false);
+              setMultiVenueAgent(null);
+            }}
+            onComplete={() => {
+              setMultiVenueSelectorOpen(false);
+              setMultiVenueAgent(null);
+              // Refresh addresses and deployments after deployment
+              if (authenticated && user?.wallet?.address) {
+                const userWallet = user.wallet.address.toLowerCase();
+                Promise.all([
+                  db.get('user_agent_addresses', {
+                    userWallet: `eq.${userWallet}`,
+                  }).catch(() => null),
+                  db.get('agent_deployments', {
+                    userWallet: `eq.${userWallet}`,
+                    status: 'eq.ACTIVE',
+                  }).catch(() => []),
+                ]).then(([addressesData, deploymentsData]) => {
+                  // Update addresses
+                  if (addressesData && Array.isArray(addressesData) && addressesData.length > 0) {
+                    setUserAgentAddresses({
+                      hyperliquid: addressesData[0].hyperliquidAgentAddress || null,
+                      ostium: addressesData[0].ostiumAgentAddress || null,
+                    });
+                  } else if (addressesData && !Array.isArray(addressesData)) {
+                    setUserAgentAddresses({
+                      hyperliquid: addressesData.hyperliquidAgentAddress || null,
+                      ostium: addressesData.ostiumAgentAddress || null,
+                    });
+                  }
+
+                  // Update deployments
+                  if (deploymentsData && Array.isArray(deploymentsData)) {
+                    const deploymentsMap: Record<string, string[]> = {};
+                    deploymentsData.forEach((deployment: any) => {
+                      const agentId = deployment.agentId || deployment.agent_id;
+                      const enabledVenues = deployment.enabledVenues || deployment.enabled_venues || [];
+                      if (agentId) {
+                        if (!deploymentsMap[agentId]) {
+                          deploymentsMap[agentId] = [];
+                        }
+                        enabledVenues.forEach((venue: string) => {
+                          if (!deploymentsMap[agentId].includes(venue)) {
+                            deploymentsMap[agentId].push(venue);
+                          }
+                        });
+                      }
+                    });
+                    setAgentDeployments(deploymentsMap);
+                  }
+                });
+              }
+            }}
+            userAgentAddresses={userAgentAddresses}
+          />
+        )}
+      </div>
     </div>
   );
 }
