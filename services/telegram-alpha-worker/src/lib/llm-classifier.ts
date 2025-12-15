@@ -1,6 +1,6 @@
 /**
  * LLM-based Tweet Classification Service
- * Supports EigenAI APIs
+ * Supports EigenAI and OpenAI APIs
  */
 
 interface ClassificationResult {
@@ -17,7 +17,7 @@ interface ClassificationResult {
   fullPrompt?: string; // EXACT full prompt sent to EigenAI (for signature verification)
 }
 
-type LLMProvider = "eigenai";
+type LLMProvider = "eigenai" | "openai";
 
 interface LLMConfig {
   provider: LLMProvider;
@@ -26,6 +26,7 @@ interface LLMConfig {
 }
 
 const DEFAULT_EIGENAI_BASE_URL = "https://eigenai.eigencloud.xyz/v1";
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 
 /**
  * Tweet Classifier using LLM
@@ -39,6 +40,7 @@ export class LLMTweetClassifier {
   private apiKey: string;
   private model: string;
   private eigenAIBaseUrl: string;
+  private openAIBaseUrl: string;
 
   constructor(config: LLMConfig) {
     this.provider = config.provider;
@@ -46,8 +48,11 @@ export class LLMTweetClassifier {
     this.eigenAIBaseUrl = (
       process.env.EIGENAI_BASE_URL || DEFAULT_EIGENAI_BASE_URL
     ).replace(/\/$/, "");
+    this.openAIBaseUrl = (
+      process.env.OPENAI_BASE_URL || DEFAULT_OPENAI_BASE_URL
+    ).replace(/\/$/, "");
 
-    // Default models
+    // Default models based on provider
     if (config.model) {
       this.model = config.model;
     } else {
@@ -59,25 +64,19 @@ export class LLMTweetClassifier {
    * Classify a tweet and extract trading signals
    */
   async classifyTweet(tweetText: string): Promise<ClassificationResult> {
-    try {
-      let response: string;
-      let signature: string | undefined;
-      let rawOutput: string | undefined;
-      let model: string | undefined;
-      let chainId: number | undefined;
-      // For EigenAI, fetch market data and build enhanced prompt
-      const tokenSymbol = this.extractTokenSymbol(tweetText);
-      console.log("[LLMClassifier] Extracted token:", tokenSymbol);
+    // Extract token and fetch market data once (used for both providers)
+    const tokenSymbol = this.extractTokenSymbol(tweetText);
+    console.log("[LLMClassifier] Extracted token:", tokenSymbol);
 
-      const marketData = tokenSymbol
-        ? await this.fetchLunarCrushData(tokenSymbol)
-        : null;
+    const marketData = tokenSymbol
+      ? await this.fetchLunarCrushData(tokenSymbol)
+      : null;
 
-      console.log("marketData", marketData);
-      console.log(
-        "[LLMClassifier] Fetched market data:",
-        marketData ? "YES" : "NO"
-      );
+    console.log("marketData", marketData);
+    console.log(
+      "[LLMClassifier] Fetched market data:",
+      marketData ? "YES" : "NO"
+    );
 
       const { prompt, marketContext } = this.buildPromptWithMarketData(
         tweetText,
@@ -88,13 +87,80 @@ export class LLMTweetClassifier {
       // According to EigenAI docs: "All content fields from messages array, concatenated"
       const fullPrompt = EIGENAI_SYSTEM_MESSAGE + prompt;
 
-      const eigenResponse = await this.callEigenAI(prompt);
-      console.log("eigenResponse", eigenResponse);
-      response = eigenResponse.content;
-      signature = eigenResponse.signature;
-      rawOutput = eigenResponse.rawOutput;
-      model = eigenResponse.model;
-      chainId = eigenResponse.chainId;
+    // Try primary provider first
+    try {
+      return await this.attemptClassification(prompt, tweetText, this.provider);
+    } catch (primaryError: any) {
+      // If EigenAI fails, automatically fallback to OpenAI
+      if (this.provider === "eigenai") {
+        const openAIKey = process.env.OPENAI_API_KEY;
+        if (openAIKey) {
+          console.warn(
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          );
+          console.warn("⚠️  EigenAI failed, falling back to OpenAI");
+          console.warn(
+            `   EigenAI Error: ${primaryError.message}`
+          );
+          console.warn(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+          );
+
+          try {
+            return await this.attemptClassification(prompt, tweetText, "openai");
+          } catch (fallbackError: any) {
+            this.logError("openai", fallbackError);
+            throw fallbackError;
+          }
+        } else {
+          this.logError("eigenai", primaryError);
+          throw primaryError;
+        }
+      } else {
+        this.logError(this.provider, primaryError);
+        throw primaryError;
+      }
+    }
+  }
+
+  /**
+   * Attempt classification with a specific provider
+   */
+  private async attemptClassification(
+    prompt: string,
+    tweetText: string,
+    provider: LLMProvider
+  ): Promise<ClassificationResult> {
+    let response: string;
+    let signature: string | undefined;
+    let rawOutput: string | undefined;
+    let model: string | undefined;
+    let chainId: number | undefined;
+
+    let apiResponse: {
+      content: string;
+      signature?: string;
+      rawOutput?: string;
+      model?: string;
+      chainId?: number;
+    };
+
+    if (provider === "openai") {
+      const openAIKey = process.env.OPENAI_API_KEY;
+      if (!openAIKey) {
+        throw new Error("OpenAI API key not configured");
+      }
+      apiResponse = await this.callOpenAI(prompt);
+    } else {
+      apiResponse = await this.callEigenAI(prompt);
+    }
+
+    console.log(`${provider}Response`, apiResponse);
+    response = apiResponse.content;
+    signature = apiResponse.signature;
+    rawOutput = apiResponse.rawOutput;
+    model = apiResponse.model;
+    chainId = apiResponse.chainId;
 
       const result = this.parseResponse(response, tweetText);
       if (marketContext) {
@@ -104,48 +170,45 @@ export class LLMTweetClassifier {
         result.fullPrompt = fullPrompt;
       }
 
-      // Include signature and verification data if available (for EigenAI responses)
-      if (signature) {
-        result.signature = signature;
-      }
-      if (rawOutput) {
-        result.rawOutput = rawOutput;
-      }
-      if (model) {
-        result.model = model;
-      }
-      if (chainId !== undefined) {
-        result.chainId = chainId;
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error(
-        "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      );
-      console.error("❌ LLM CLASSIFIER FAILED - MESSAGE WILL STAY NULL!");
-      console.error(
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      );
-      console.error(`Provider: ${this.provider.toUpperCase()}`);
-      console.error(`Error: ${error.message}`);
-      if (error.message.includes("401")) {
-        console.error("❌ LIKELY CAUSE: API KEY INVALID OR CREDITS EXHAUSTED");
-        console.error(
-          "   → Check your API key in Railway environment variables"
-        );
-        console.error("   → Verify your API credits at the provider dashboard");
-      }
-      console.error("⚠️  Message will remain NULL (not classified)");
-      console.error("⚠️  FIX YOUR API KEY TO RESUME SIGNAL DETECTION!");
-      console.error(
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-      );
-
-      // Throw error - worker will keep message as NULL for retry
-      // No regex fallback - messages stay NULL until LLM works
-      throw error;
+    // Include signature and verification data if available (for EigenAI responses)
+    if (signature) {
+      result.signature = signature;
     }
+    if (rawOutput) {
+      result.rawOutput = rawOutput;
+    }
+    if (model) {
+      result.model = model;
+    }
+    if (chainId !== undefined) {
+      result.chainId = chainId;
+    }
+
+    return result;
+  }
+
+  private logError(provider: string, error: any): void {
+    console.error(
+      "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    );
+    console.error("❌ LLM CLASSIFIER FAILED - MESSAGE WILL STAY NULL!");
+    console.error(
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    );
+    console.error(`Provider: ${provider.toUpperCase()}`);
+    console.error(`Error: ${error.message}`);
+    if (error.message.includes("401")) {
+      console.error("❌ LIKELY CAUSE: API KEY INVALID OR CREDITS EXHAUSTED");
+      console.error(
+        "   → Check your API key in Railway environment variables"
+      );
+      console.error("   → Verify your API credits at the provider dashboard");
+    }
+    console.error("⚠️  Message will remain NULL (not classified)");
+    console.error("⚠️  FIX YOUR API KEY TO RESUME SIGNAL DETECTION!");
+    console.error(
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    );
   }
 
   /**
@@ -292,6 +355,7 @@ export class LLMTweetClassifier {
       const vol = marketData.volume_24h ?? 0;
       const volM = (vol / 1e6).toFixed(1);
 
+
       marketContext = `
 ${marketData.symbol}: Price=$${marketData.price?.toFixed(2)}, MCap=$${(
         marketData.market_cap / 1e9
@@ -351,6 +415,8 @@ JSON only:
         temperature: 0.1,
       }),
     });
+
+    console.log("[EigenAI] Response:", response);
 
     if (!response.ok) {
       const error = await response.text();
@@ -481,7 +547,7 @@ export function createLLMClassifier(): LLMTweetClassifier | null {
     );
   }
 
-  const fallbackOrder: LLMProvider[] = ["eigenai"];
+  const fallbackOrder: LLMProvider[] = ["eigenai", "openai"];
   for (const provider of fallbackOrder) {
     const instance = instantiate(provider);
     if (instance) {
@@ -490,7 +556,7 @@ export function createLLMClassifier(): LLMTweetClassifier | null {
   }
 
   console.warn(
-    "[LLM Classifier] No API key found. Set EIGENAI_API_KEY environment variable."
+    "[LLM Classifier] No API key found. Set EIGENAI_API_KEY or OPENAI_API_KEY environment variable."
   );
   return null;
 }
@@ -509,7 +575,7 @@ export async function classifyTweet(
     console.error(
       "[LLM Classifier] ❌ NO LLM API KEY - Message will stay NULL!"
     );
-    console.error("   Set EIGENAI_API_KEY");
+    console.error("   Set EIGENAI_API_KEY or OPENAI_API_KEY");
     throw error;
   }
 

@@ -11,7 +11,7 @@ interface OstiumApprovalProps {
 }
 
 // Ostium Trading Contract on Arbitrum Sepolia
-const OSTIUM_TRADING_CONTRACT = '0x2A9B9c988393f46a2537B0ff11E98c2C15a95afe';
+const OSTIUM_TRADING_CONTRACT = '0x6D0bA1f9996DBD8885827e1b2e8f6593e7702411';
 const OSTIUM_TRADING_ABI = [
   'function setDelegate(address delegate) external',
   'function delegations(address delegator) view returns (address)',

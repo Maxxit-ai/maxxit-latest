@@ -53,9 +53,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-OSTIUM_TESTNET = os.getenv('OSTIUM_TESTNET', 'true').lower() == 'true'
-OSTIUM_RPC_URL = os.getenv('OSTIUM_RPC_URL', 'https://sepolia-rollup.arbitrum.io/rpc')
-OSTIUM_RPC_BACKUP = os.getenv('OSTIUM_RPC_BACKUP', 'https://arbitrum-sepolia-rpc.publicnode.com')  # Backup RPC
+# Flag is explicit: set OSTIUM_TESTNET=true only when using the testnet RPC.
+OSTIUM_TESTNET = os.getenv('OSTIUM_TESTNET', 'false').lower() == 'true'
+OSTIUM_RPC_URL = os.getenv('OSTIUM_RPC_URL', 'https://arb1.arbitrum.io/rpc')
+OSTIUM_RPC_BACKUP = os.getenv('OSTIUM_RPC_BACKUP', 'https://arb1.arbitrum.io/rpc')  # Backup RPC
 PORT = int(os.getenv('OSTIUM_SERVICE_PORT', '5002'))
 
 logger.info(f"🚀 Ostium Service Starting...")
@@ -142,7 +143,7 @@ def get_available_markets(refresh=False):
     
     try:
         # Fetch from database API
-        api_url = os.getenv('NEXTJS_API_URL', 'http://localhost:3000')
+        api_url = os.getenv('NEXTJS_API_URL', 'http://localhost:5000')
         response = requests.get(f"{api_url}/api/venue-markets/available?venue=OSTIUM", timeout=10)
         
         if response.status_code == 200:

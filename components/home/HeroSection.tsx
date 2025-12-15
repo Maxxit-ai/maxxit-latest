@@ -1,9 +1,15 @@
 import Link from 'next/link';
-import { useState, useEffect, useRef } from 'react';
-import LightPillar from './LightPillar';
+import { useState, useEffect, useRef, memo, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import SplitText from '../SplitText';
 import Image from 'next/image';
 import BrushstrokeBackground from './BrushstrokeBackground';
+
+// Lazy load LightPillar to reduce initial bundle size
+const LightPillar = dynamic(() => import('./LightPillar'), {
+  ssr: false,
+  loading: () => null,
+});
 
 interface HeroSectionProps {
   onDeployScroll: () => void;
@@ -16,62 +22,66 @@ interface AnimatedNumberProps {
   suffix?: string;
 }
 
-const AnimatedNumber = ({ value, duration = 2000, suffix = '' }: AnimatedNumberProps) => {
+const AnimatedNumber = memo(({ value, duration = 2000, suffix = '' }: AnimatedNumberProps) => {
   const [displayValue, setDisplayValue] = useState<number | string>(typeof value === 'number' ? 0 : value);
-  const [hasAnimated, setHasAnimated] = useState(false);
+  const hasAnimatedRef = useRef(false);
   const elementRef = useRef<HTMLSpanElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && !hasAnimated) {
-            setHasAnimated(true);
+        const entry = entries[0];
+        if (entry.isIntersecting && !hasAnimatedRef.current) {
+          hasAnimatedRef.current = true;
 
-            if (typeof value === 'number') {
-              const startValue = 0;
-              const endValue = value;
-              const startTime = Date.now();
+          if (typeof value === 'number') {
+            const startValue = 0;
+            const endValue = value;
+            const startTime = performance.now();
 
-              const animate = () => {
-                const now = Date.now();
-                const elapsed = now - startTime;
-                const progress = Math.min(elapsed / duration, 1);
+            const animate = (currentTime: number) => {
+              const elapsed = currentTime - startTime;
+              const progress = Math.min(elapsed / duration, 1);
 
-                // Easing function (ease-out)
-                const easeOut = 1 - Math.pow(1 - progress, 3);
-                const currentValue = Math.floor(startValue + (endValue - startValue) * easeOut);
+              // Easing function (ease-out)
+              const easeOut = 1 - Math.pow(1 - progress, 3);
+              const currentValue = Math.floor(startValue + (endValue - startValue) * easeOut);
 
-                setDisplayValue(currentValue);
+              setDisplayValue(currentValue);
 
-                if (progress < 1) {
-                  requestAnimationFrame(animate);
-                } else {
-                  setDisplayValue(endValue);
-                }
-              };
+              if (progress < 1) {
+                rafRef.current = requestAnimationFrame(animate);
+              } else {
+                setDisplayValue(endValue);
+                rafRef.current = null;
+              }
+            };
 
-              requestAnimationFrame(animate);
-            } else {
-              // For string values like "24/7"
-              setDisplayValue(value);
-            }
+            rafRef.current = requestAnimationFrame(animate);
+          } else {
+            // For string values like "24/7"
+            setDisplayValue(value);
           }
-        });
+        }
       },
-      { threshold: 0.5 }
+      { threshold: 0.3, rootMargin: '50px' }
     );
 
-    if (elementRef.current) {
-      observer.observe(elementRef.current);
+    const currentElement = elementRef.current;
+    if (currentElement) {
+      observer.observe(currentElement);
     }
 
     return () => {
-      if (elementRef.current) {
-        observer.unobserve(elementRef.current);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      if (currentElement) {
+        observer.unobserve(currentElement);
       }
     };
-  }, [value, duration, hasAnimated]);
+  }, [value, duration]);
 
   return (
     <span ref={elementRef} className="inline-block">
@@ -79,9 +89,21 @@ const AnimatedNumber = ({ value, duration = 2000, suffix = '' }: AnimatedNumberP
       {suffix}
     </span>
   );
-};
+});
 
-const HeroSection = ({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) => {
+AnimatedNumber.displayName = 'AnimatedNumber';
+
+const HeroSection = memo(({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) => {
+  const handleDeployClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    onDeployScroll();
+  }, [onDeployScroll]);
+
+  const handleLearnMoreClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    onLearnMoreScroll();
+  }, [onLearnMoreScroll]);
+
   return (
     <section className="py-16 relative flex-1 flex items-center overflow-hidden bg-black">
       <div className="absolute inset-0 w-full flex-1">
@@ -105,7 +127,7 @@ const HeroSection = ({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) =>
           THE DECENTRALIZED TRADING ECONOMY
         </p>
 
-        <h1 className="font-display text-5xl md:text-6xl lg:text-8xl leading-[0.9] ">
+        <h1 className="text-5xl md:text-6xl lg:text-8xl ">
           <SplitText
             text="TRADE LIKE AN"
             tag="span"
@@ -134,7 +156,6 @@ const HeroSection = ({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) =>
             rootMargin="0px"
             textAlign="center"
           />
-          {/* <span className="cursor-blink text-[var(--text-primary)] delay-75"></span> */}
         </h1>
 
         <p className="max-w-4xl mx-auto mb-10 text-base md:text-lg text-[var(--text-secondary)] leading-relaxed">
@@ -145,20 +166,14 @@ const HeroSection = ({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) =>
 
         <div className="flex flex-wrap justify-center gap-4 mb-16">
           <button
-            onClick={(e) => {
-              e.preventDefault();
-              onDeployScroll();
-            }}
+            onClick={handleDeployClick}
             className="group px-8 py-4 bg-accent text-[var(--bg-deep)] font-bold text-lg hover:bg-[var(--accent-dim)] transition-all"
           >
             DEPLOY AN AGENT
             <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">→</span>
           </button>
           <button
-            onClick={(e) => {
-              e.preventDefault();
-              onLearnMoreScroll();
-            }}
+            onClick={handleLearnMoreClick}
             className="px-8 py-4 border border-[var(--border)] font-bold text-lg hover:border-accent hover:text-accent transition-all"
           >
             LEARN MORE
@@ -185,6 +200,9 @@ const HeroSection = ({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) =>
                   alt="Eigen AI"
                   width={100}
                   height={100}
+                  priority
+                  loading="eager"
+                  quality={85}
                 />
               </div>
             </BrushstrokeBackground>
@@ -214,7 +232,9 @@ const HeroSection = ({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) =>
       </div>
     </section>
   );
-};
+});
+
+HeroSection.displayName = 'HeroSection';
 
 export default HeroSection;
 

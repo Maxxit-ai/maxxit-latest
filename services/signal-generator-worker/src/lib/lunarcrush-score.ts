@@ -104,6 +104,79 @@ export class LunarCrushScorer {
   }
 
   /**
+   * Fetch raw metrics from LunarCrush API v4 without any modifications
+   * Returns data exactly as received from the API with descriptions
+   */
+  async fetchRawMetrics(symbol: string): Promise<{
+    data: Record<string, any>;
+    descriptions: Record<string, string>;
+  }> {
+    const response = await axios.get(`${this.baseUrl}/public/coins/list/v1`, {
+      params: {
+        key: this.apiKey
+      }
+    });
+
+    if (!response.data?.data) {
+      throw new Error(`No data returned from LunarCrush API`);
+    }
+
+    // Find the specific coin by symbol
+    const asset = response.data.data.find((coin: any) => 
+      coin.symbol && coin.symbol.toUpperCase() === symbol.toUpperCase()
+    );
+
+    if (!asset) {
+      throw new Error(`No data found for ${symbol}`);
+    }
+
+    // Extract raw data fields (as-is from API)
+    const rawData: Record<string, any> = {
+      galaxy_score: asset.galaxy_score ?? null,
+      alt_rank: asset.alt_rank ?? null,
+      social_volume_24h: asset.social_volume_24h ?? null,
+      sentiment: asset.sentiment ?? null,
+      percent_change_24h: asset.percent_change_24h ?? null,
+      volatility: asset.volatility ?? null,
+      correlation_rank: asset.correlation_rank ?? null,
+      price: asset.price ?? null,
+      volume_24h: asset.volume_24h ?? null,
+      market_cap: asset.market_cap ?? null,
+      market_cap_rank: asset.market_cap_rank ?? null,
+      social_dominance: asset.social_dominance ?? null,
+      market_dominance: asset.market_dominance ?? null,
+      interactions_24h: asset.interactions_24h ?? null,
+      galaxy_score_previous: asset.galaxy_score_previous ?? null,
+      alt_rank_previous: asset.alt_rank_previous ?? null,
+    };
+
+    // Field descriptions based on LunarCrush API documentation
+    const descriptions: Record<string, string> = {
+      galaxy_score: "A proprietary score (0-100) based on technical indicators of price, average social sentiment, relative social activity, and how closely social indicators correlate with price and volume. Higher scores indicate stronger overall performance.",
+      alt_rank: "A proprietary rank based on how an asset is performing relative to all other assets supported. Lower rank numbers indicate better performance (rank 1 is best).",
+      social_volume_24h: "Total number of posts with interactions on this topic in the last 24 hours. Higher values indicate more social media activity.",
+      sentiment: "Percentage of posts (weighted by interactions) that are positive. Range: 0-100. 100% means all posts are positive, 50% is neutral (half positive, half negative), and 0% is all negative posts.",
+      percent_change_24h: "Percent change in price since 24 hours ago. Positive values indicate price increase, negative values indicate price decrease.",
+      volatility: "Volatility calculated as the standard deviation of the price. Higher values indicate more price volatility.",
+      correlation_rank: "Rank indicating how closely social indicators correlate with price movements. Lower rank indicates stronger correlation.",
+      price: "Current price in USD.",
+      volume_24h: "Trading volume in USD for 24 hours up to this data point. Higher volume indicates more market activity.",
+      market_cap: "Total dollar market value of all circulating supply. Represents the total market capitalization of the asset.",
+      market_cap_rank: "The rank of the asset by market cap with additional filtering to remove outliers and bad market data. Rank 1 has the highest market cap.",
+      social_dominance: "The percent of the total social volume that this topic represents. Higher values indicate this asset dominates social media discussions.",
+      market_dominance: "The percent of the total market cap that this asset represents. Higher values indicate this asset dominates the cryptocurrency market.",
+      interactions_24h: "Number of social media interactions (likes, comments, shares, etc.) in the last 24 hours. Higher values indicate more engagement.",
+      galaxy_score_previous: "The galaxy score from the previous 24 hours. Compare with current galaxy_score to see if the score is improving or declining.",
+      alt_rank_previous: "The alt rank from the previous 24 hours. Compare with current alt_rank to see if the ranking is improving or declining.",
+    };
+
+    return {
+      data: rawData,
+      descriptions
+    };
+  }
+
+  /**
    * Fetch metrics from LunarCrush API v4
    */
   protected async fetchMetrics(symbol: string): Promise<LunarCrushMetrics> {

@@ -10,10 +10,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { ethers } from 'ethers';
 
-const USDC_ADDRESS = '0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548'; // Arbitrum Sepolia
-const TRADING_CONTRACT = '0x2A9B9c988393f46a2537B0ff11E98c2C15a95afe'; // Ostium Trading
-const STORAGE_CONTRACT = '0x0b9F5243B29938668c9Cfbd7557A389EC7Ef88b8'; // Ostium Storage (SDK checks this!)
-const RPC_URL = 'https://sepolia-rollup.arbitrum.io/rpc';
+const USDC_ADDRESS = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'; // Arbitrum Sepolia
+const TRADING_CONTRACT = '0x6D0bA1f9996DBD8885827e1b2e8f6593e7702411'; // Ostium Trading
+const STORAGE_CONTRACT = '0xccd5891083a8acd2074690f65d3024e7d13d66e7'; // Ostium Storage (SDK checks this!)
+const RPC_URL = 'https://arb1.arbitrum.io/rpc';
 
 const USDC_ABI = [
   'function allowance(address owner, address spender) view returns (uint256)',

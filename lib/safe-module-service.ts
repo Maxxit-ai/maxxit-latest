@@ -120,9 +120,7 @@ export class SafeModuleService {
 
     // Setup provider
     const rpcUrls: { [chainId: number]: string } = {
-      11155111: config.rpcUrl || process.env.SEPOLIA_RPC || 'https://ethereum-sepolia.publicnode.com',
       42161: config.rpcUrl || process.env.ARBITRUM_RPC || process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
-      421614: config.rpcUrl || process.env.ARBITRUM_SEPOLIA_RPC || 'https://sepolia-rollup.arbitrum.io/rpc',
     };
 
     this.provider = new ethers.providers.JsonRpcProvider(rpcUrls[config.chainId]);

@@ -15,12 +15,12 @@ from ostium_python_sdk import OstiumSDK
 async def fetch_all_ostium_markets():
     """Fetch all markets from Ostium SDK"""
     dummy_key = '0x' + '1' * 64
-    network = 'testnet' if os.getenv('OSTIUM_TESTNET', 'true').lower() == 'true' else 'mainnet'
+    network = 'testnet' if os.getenv('OSTIUM_TESTNET', 'false').lower() == 'true' else 'mainnet'
     
     sdk = OstiumSDK(
         network=network,
         private_key=dummy_key,
-        rpc_url=os.getenv('OSTIUM_RPC_URL', 'https://sepolia-rollup.arbitrum.io/rpc')
+        rpc_url=os.getenv('OSTIUM_RPC_URL', 'https://arb1.arbitrum.io/rpc')
     )
     
     try:

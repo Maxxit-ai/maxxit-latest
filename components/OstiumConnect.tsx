@@ -15,16 +15,16 @@ interface OstiumConnectProps {
   onSuccess?: () => void;
 }
 
-const OSTIUM_TRADING_CONTRACT = '0x2A9B9c988393f46a2537B0ff11E98c2C15a95afe';
+const OSTIUM_TRADING_CONTRACT = '0x6D0bA1f9996DBD8885827e1b2e8f6593e7702411';
 const OSTIUM_TRADING_ABI = ['function setDelegate(address delegate) external'];
 
-const USDC_TOKEN = '0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548';
+const USDC_TOKEN = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 const USDC_ABI = [
   'function approve(address spender, uint256 amount) public returns (bool)',
   'function allowance(address owner, address spender) view returns (uint256)',
 ];
 
-const OSTIUM_STORAGE = '0x0b9F5243B29938668c9Cfbd7557A389EC7Ef88b8';
+const OSTIUM_STORAGE = '0xccd5891083a8acd2074690f65d3024e7d13d66e7';
 
 export function OstiumConnect({
   agentId,
@@ -301,18 +301,18 @@ export function OstiumConnect({
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       const network = await ethersProvider.getNetwork();
 
-      const ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
-      if (network.chainId !== ARBITRUM_SEPOLIA_CHAIN_ID) {
+      const ARBITRUM_CHAIN_ID = 42161;
+      if (network.chainId !== ARBITRUM_CHAIN_ID) {
         try {
           await provider.request({
             method: 'wallet_switchEthereumChain',
-            params: [{ chainId: `0x${ARBITRUM_SEPOLIA_CHAIN_ID.toString(16)}` }],
+            params: [{ chainId: `0x${ARBITRUM_CHAIN_ID.toString(16)}` }],
           });
         } catch (switchError: any) {
           if (switchError.code === 4902) {
-            throw new Error('Please add Arbitrum Sepolia to your wallet');
+            throw new Error('Please add Arbitrum to your wallet');
           }
-          throw new Error('Please switch to Arbitrum Sepolia network');
+          throw new Error('Please switch to Arbitrum network');
         }
       }
 
@@ -369,9 +369,9 @@ export function OstiumConnect({
       await ethersProvider.send('eth_requestAccounts', []);
 
       const network = await ethersProvider.getNetwork();
-      const ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
-      if (network.chainId !== ARBITRUM_SEPOLIA_CHAIN_ID) {
-        throw new Error('Please switch to Arbitrum Sepolia');
+      const ARBITRUM_CHAIN_ID = 42161;
+      if (network.chainId !== ARBITRUM_CHAIN_ID) {
+        throw new Error('Please switch to Arbitrum');
       }
 
       const signer = ethersProvider.getSigner();

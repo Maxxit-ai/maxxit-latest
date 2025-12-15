@@ -263,15 +263,8 @@ export async function monitorOstiumPositions() {
             const needsSL = !ostPosition.stopLossPrice || ostPosition.stopLossPrice === 0;
             
             if (ostPosition.tradeIndex !== undefined || needsSL) {
-              // Get signal data for risk model if we need to set protection
-              const signal = await prisma.signals.findUnique({
-                where: { id: position.signal_id },
-                select: { risk_model: true },
-              });
-              
-              const riskModel = signal?.risk_model as any;
-              const stopLossPercent = riskModel?.stopLoss || riskModel?.stop_loss_percent || 0.10; // Default 10%
-              const takeProfitPercent = riskModel?.takeProfit || riskModel?.take_profit_percent || 0.30; // Default 30%
+              const stopLossPercent = 0.10; // Default 10%
+              const takeProfitPercent = 0.30; // Default 30%
               const entryPrice = Number(position.entry_price.toString());
               const isLong = position.side === 'LONG' || position.side === 'BUY';
               
