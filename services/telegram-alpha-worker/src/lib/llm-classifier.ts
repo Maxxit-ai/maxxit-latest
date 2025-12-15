@@ -1,6 +1,6 @@
 /**
  * LLM-based Tweet Classification Service
- * Supports EigenAI APIs
+ * Supports EigenAI and OpenAI APIs
  */
 
 interface ClassificationResult {
@@ -15,7 +15,7 @@ interface ClassificationResult {
   chainId?: number; // Chain ID (for EigenAI signature verification)
 }
 
-type LLMProvider = "eigenai";
+type LLMProvider = "eigenai" | "openai";
 
 interface LLMConfig {
   provider: LLMProvider;
@@ -24,6 +24,7 @@ interface LLMConfig {
 }
 
 const DEFAULT_EIGENAI_BASE_URL = "https://eigenai.eigencloud.xyz/v1";
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 
 /**
  * Tweet Classifier using LLM
@@ -33,6 +34,7 @@ export class LLMTweetClassifier {
   private apiKey: string;
   private model: string;
   private eigenAIBaseUrl: string;
+  private openAIBaseUrl: string;
 
   constructor(config: LLMConfig) {
     this.provider = config.provider;
@@ -40,12 +42,16 @@ export class LLMTweetClassifier {
     this.eigenAIBaseUrl = (
       process.env.EIGENAI_BASE_URL || DEFAULT_EIGENAI_BASE_URL
     ).replace(/\/$/, "");
+    this.openAIBaseUrl = (
+      process.env.OPENAI_BASE_URL || DEFAULT_OPENAI_BASE_URL
+    ).replace(/\/$/, "");
 
-    // Default models
+    // Default models based on provider
     if (config.model) {
       this.model = config.model;
     } else {
-      this.model = "gpt-oss-120b-f16";
+      this.model =
+        config.provider === "openai" ? "gpt-4o-mini" : "gpt-oss-120b-f16";
     }
   }
 
@@ -53,80 +59,138 @@ export class LLMTweetClassifier {
    * Classify a tweet and extract trading signals
    */
   async classifyTweet(tweetText: string): Promise<ClassificationResult> {
+    // Extract token and fetch market data once (used for both providers)
+    const tokenSymbol = this.extractTokenSymbol(tweetText);
+    console.log("[LLMClassifier] Extracted token:", tokenSymbol);
+
+    const marketData = tokenSymbol
+      ? await this.fetchLunarCrushData(tokenSymbol)
+      : null;
+
+    console.log("marketData", marketData);
+    console.log(
+      "[LLMClassifier] Fetched market data:",
+      marketData ? "YES" : "NO"
+    );
+
+    const prompt = this.buildPromptWithMarketData(tweetText, marketData);
+
+    // Try primary provider first
     try {
-      let response: string;
-      let signature: string | undefined;
-      let rawOutput: string | undefined;
-      let model: string | undefined;
-      let chainId: number | undefined;
-      // For EigenAI, fetch market data and build enhanced prompt
-      const tokenSymbol = this.extractTokenSymbol(tweetText);
-      console.log("[LLMClassifier] Extracted token:", tokenSymbol);
+      return await this.attemptClassification(prompt, tweetText, this.provider);
+    } catch (primaryError: any) {
+      // If EigenAI fails, automatically fallback to OpenAI
+      if (this.provider === "eigenai") {
+        const openAIKey = process.env.OPENAI_API_KEY;
+        if (openAIKey) {
+          console.warn(
+            "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          );
+          console.warn("⚠️  EigenAI failed, falling back to OpenAI");
+          console.warn(
+            `   EigenAI Error: ${primaryError.message}`
+          );
+          console.warn(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+          );
 
-      const marketData = tokenSymbol
-        ? await this.fetchLunarCrushData(tokenSymbol)
-        : null;
-
-      console.log("marketData", marketData);
-      console.log(
-        "[LLMClassifier] Fetched market data:",
-        marketData ? "YES" : "NO"
-      );
-
-      const prompt = this.buildPromptWithMarketData(tweetText, marketData);
-
-      const eigenResponse = await this.callEigenAI(prompt);
-      console.log("eigenResponse", eigenResponse);
-      response = eigenResponse.content;
-      signature = eigenResponse.signature;
-      rawOutput = eigenResponse.rawOutput;
-      model = eigenResponse.model;
-      chainId = eigenResponse.chainId;
-
-      const result = this.parseResponse(response, tweetText);
-
-      // Include signature and verification data if available (for EigenAI responses)
-      if (signature) {
-        result.signature = signature;
+          try {
+            return await this.attemptClassification(prompt, tweetText, "openai");
+          } catch (fallbackError: any) {
+            this.logError("openai", fallbackError);
+            throw fallbackError;
+          }
+        } else {
+          this.logError("eigenai", primaryError);
+          throw primaryError;
+        }
+      } else {
+        this.logError(this.provider, primaryError);
+        throw primaryError;
       }
-      if (rawOutput) {
-        result.rawOutput = rawOutput;
-      }
-      if (model) {
-        result.model = model;
-      }
-      if (chainId !== undefined) {
-        result.chainId = chainId;
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error(
-        "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      );
-      console.error("❌ LLM CLASSIFIER FAILED - MESSAGE WILL STAY NULL!");
-      console.error(
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      );
-      console.error(`Provider: ${this.provider.toUpperCase()}`);
-      console.error(`Error: ${error.message}`);
-      if (error.message.includes("401")) {
-        console.error("❌ LIKELY CAUSE: API KEY INVALID OR CREDITS EXHAUSTED");
-        console.error(
-          "   → Check your API key in Railway environment variables"
-        );
-        console.error("   → Verify your API credits at the provider dashboard");
-      }
-      console.error("⚠️  Message will remain NULL (not classified)");
-      console.error("⚠️  FIX YOUR API KEY TO RESUME SIGNAL DETECTION!");
-      console.error(
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-      );
-
-      // Throw error - worker will keep message as NULL for retry
-      // No regex fallback - messages stay NULL until LLM works
-      throw error;
     }
+  }
+
+  /**
+   * Attempt classification with a specific provider
+   */
+  private async attemptClassification(
+    prompt: string,
+    tweetText: string,
+    provider: LLMProvider
+  ): Promise<ClassificationResult> {
+    let response: string;
+    let signature: string | undefined;
+    let rawOutput: string | undefined;
+    let model: string | undefined;
+    let chainId: number | undefined;
+
+    let apiResponse: {
+      content: string;
+      signature?: string;
+      rawOutput?: string;
+      model?: string;
+      chainId?: number;
+    };
+
+    if (provider === "openai") {
+      const openAIKey = process.env.OPENAI_API_KEY;
+      if (!openAIKey) {
+        throw new Error("OpenAI API key not configured");
+      }
+      apiResponse = await this.callOpenAI(prompt);
+    } else {
+      apiResponse = await this.callEigenAI(prompt);
+    }
+
+    console.log(`${provider}Response`, apiResponse);
+    response = apiResponse.content;
+    signature = apiResponse.signature;
+    rawOutput = apiResponse.rawOutput;
+    model = apiResponse.model;
+    chainId = apiResponse.chainId;
+
+    const result = this.parseResponse(response, tweetText);
+
+    // Include signature and verification data if available (for EigenAI responses)
+    if (signature) {
+      result.signature = signature;
+    }
+    if (rawOutput) {
+      result.rawOutput = rawOutput;
+    }
+    if (model) {
+      result.model = model;
+    }
+    if (chainId !== undefined) {
+      result.chainId = chainId;
+    }
+
+    return result;
+  }
+
+  private logError(provider: string, error: any): void {
+    console.error(
+      "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    );
+    console.error("❌ LLM CLASSIFIER FAILED - MESSAGE WILL STAY NULL!");
+    console.error(
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    );
+    console.error(`Provider: ${provider.toUpperCase()}`);
+    console.error(`Error: ${error.message}`);
+    if (error.message.includes("401")) {
+      console.error("❌ LIKELY CAUSE: API KEY INVALID OR CREDITS EXHAUSTED");
+      console.error(
+        "   → Check your API key in Railway environment variables"
+      );
+      console.error("   → Verify your API credits at the provider dashboard");
+    }
+    console.error("⚠️  Message will remain NULL (not classified)");
+    console.error("⚠️  FIX YOUR API KEY TO RESUME SIGNAL DETECTION!");
+    console.error(
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    );
   }
 
   /**
@@ -367,9 +431,11 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
         temperature: 0.1,
         max_tokens: 1500,
         seed: 42,
-        response_format: { type: "json_object" },
+        // response_format: { type: "json_object" },
       }),
     });
+
+    console.log("[EigenAI] Response:", response);
 
     if (!response.ok) {
       const error = await response.text();
@@ -377,13 +443,41 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
     }
 
     const data = (await response.json()) as any;
+    console.log("[EigenAI] Data:", data);
 
     if (!data.signature) {
       console.warn("[EigenAI] ⚠️  Signature field missing from API response");
       console.warn("[EigenAI] Response keys:", Object.keys(data));
     }
 
-    const rawOutput = data.choices[0].message.content;
+    // Validate response structure
+    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      throw new Error("EigenAI API response missing 'choices' array");
+    }
+
+    if (!data.choices[0] || !data.choices[0].message) {
+      throw new Error("EigenAI API response missing 'message' in choices[0]");
+    }
+
+    const message = data.choices[0].message;
+
+    // Check if response contains tool_calls instead of content
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      throw new Error(
+        `EigenAI API returned tool_calls instead of content. The model tried to call function: ${message.tool_calls[0]?.function?.name || "unknown"}. This will trigger OpenAI fallback.`
+      );
+    }
+
+    // Get content from message
+    const rawOutput = message.content;
+
+    if (!rawOutput || typeof rawOutput !== "string") {
+      throw new Error(
+        `EigenAI API response missing or invalid 'content' field. Got: ${typeof rawOutput}. Finish reason: ${data.choices[0].finish_reason}`
+      );
+    }
+
+    console.log("[EigenAI] Raw message:", rawOutput);
 
     // Extract content from <|channel|>final<|message|> tag
     const finalChannelMatch = rawOutput.match(
@@ -399,6 +493,76 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
       rawOutput: rawOutput,
       model: data.model,
       chainId: 1,
+    };
+  }
+
+  /**
+   * Call OpenAI API
+   * Returns content and metadata
+   */
+  private async callOpenAI(prompt: string): Promise<{
+    content: string;
+    signature?: string;
+    rawOutput?: string;
+    model?: string;
+    chainId?: number;
+  }> {
+    const openAIKey = this.provider === "openai" ? this.apiKey : (process.env.OPENAI_API_KEY || this.apiKey);
+    const openAIModel = this.provider === "openai" ? this.model : (process.env.OPENAI_MODEL || "gpt-4o-mini");
+
+    const response = await fetch(`${this.openAIBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openAIKey}`,
+      },
+      body: JSON.stringify({
+        model: openAIModel,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a crypto trading signal analyst. Output ONLY valid JSON. No explanations, no reasoning text outside JSON, ONLY the JSON object. Start with { and end with }.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        temperature: 0.1,
+        max_tokens: 1500,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OpenAI API error: ${response.status} ${error}`);
+    }
+
+    const data = (await response.json()) as any;
+
+    // Validate response structure
+    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      throw new Error("OpenAI API response missing 'choices' array");
+    }
+
+    if (!data.choices[0] || !data.choices[0].message) {
+      throw new Error("OpenAI API response missing 'message' in choices[0]");
+    }
+
+    const rawOutput = data.choices[0].message.content;
+
+    if (!rawOutput || typeof rawOutput !== "string") {
+      throw new Error(
+        `OpenAI API response missing or invalid 'content' field. Got: ${typeof rawOutput}`
+      );
+    }
+
+    return {
+      content: rawOutput,
+      rawOutput: rawOutput,
+      model: data.model,
     };
   }
 
@@ -463,6 +627,17 @@ export function createLLMClassifier(): LLMTweetClassifier | null {
       });
     }
 
+    if (provider === "openai") {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) return null;
+      console.log("[LLM Classifier] Using OpenAI");
+      return new LLMTweetClassifier({
+        provider: "openai",
+        apiKey,
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      });
+    }
+
     return null;
   };
 
@@ -476,7 +651,7 @@ export function createLLMClassifier(): LLMTweetClassifier | null {
     );
   }
 
-  const fallbackOrder: LLMProvider[] = ["eigenai"];
+  const fallbackOrder: LLMProvider[] = ["eigenai", "openai"];
   for (const provider of fallbackOrder) {
     const instance = instantiate(provider);
     if (instance) {
@@ -485,7 +660,7 @@ export function createLLMClassifier(): LLMTweetClassifier | null {
   }
 
   console.warn(
-    "[LLM Classifier] No API key found. Set EIGENAI_API_KEY environment variable."
+    "[LLM Classifier] No API key found. Set EIGENAI_API_KEY or OPENAI_API_KEY environment variable."
   );
   return null;
 }
@@ -504,7 +679,7 @@ export async function classifyTweet(
     console.error(
       "[LLM Classifier] ❌ NO LLM API KEY - Message will stay NULL!"
     );
-    console.error("   Set EIGENAI_API_KEY");
+    console.error("   Set EIGENAI_API_KEY or OPENAI_API_KEY");
     throw error;
   }
 
