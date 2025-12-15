@@ -37,6 +37,8 @@ interface Trade {
   hasSignatureData: boolean;
   signatureData: {
     messageText: string;
+    marketContext: string | null;
+    llmFullPrompt: string | null;
     llmSignature: string;
     llmRawOutput: string;
     llmModelUsed: string;
@@ -115,6 +117,8 @@ export default function YourTrades() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tweetText: trade.signatureData.messageText,
+          marketContext: trade.signatureData.marketContext,
+          llm_full_prompt: trade.signatureData.llmFullPrompt,
           llm_signature: trade.signatureData.llmSignature,
           llm_raw_output: trade.signatureData.llmRawOutput,
           llm_model_used: trade.signatureData.llmModelUsed,

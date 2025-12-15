@@ -13,6 +13,8 @@ interface ClassificationResult {
   rawOutput?: string; // Full raw output from LLM API (for EigenAI signature verification)
   model?: string; // Model used (for EigenAI signature verification)
   chainId?: number; // Chain ID (for EigenAI signature verification)
+  marketContext?: string; // Market data context used in the prompt
+  fullPrompt?: string; // EXACT full prompt sent to EigenAI (for signature verification)
 }
 
 type LLMProvider = "eigenai";
@@ -28,6 +30,10 @@ const DEFAULT_EIGENAI_BASE_URL = "https://eigenai.eigencloud.xyz/v1";
 /**
  * Tweet Classifier using LLM
  */
+// CRITICAL: System message used for EigenAI signature verification
+// This MUST match exactly what's sent to EigenAI API for signature to verify
+const EIGENAI_SYSTEM_MESSAGE = "Output ONLY valid JSON. No text, no explanations, no <think> tags. Start response with { and end with }. ONLY JSON.";
+
 export class LLMTweetClassifier {
   private provider: LLMProvider;
   private apiKey: string;
@@ -45,7 +51,7 @@ export class LLMTweetClassifier {
     if (config.model) {
       this.model = config.model;
     } else {
-      this.model = "gpt-oss-120b-f16";
+      this.model = "qwen3-32b-128k-bf16";
     }
   }
 
@@ -73,7 +79,14 @@ export class LLMTweetClassifier {
         marketData ? "YES" : "NO"
       );
 
-      const prompt = this.buildPromptWithMarketData(tweetText, marketData);
+      const { prompt, marketContext } = this.buildPromptWithMarketData(
+        tweetText,
+        marketData
+      );
+
+      // Construct the EXACT full prompt sent to EigenAI (system + user)
+      // According to EigenAI docs: "All content fields from messages array, concatenated"
+      const fullPrompt = EIGENAI_SYSTEM_MESSAGE + prompt;
 
       const eigenResponse = await this.callEigenAI(prompt);
       console.log("eigenResponse", eigenResponse);
@@ -84,6 +97,12 @@ export class LLMTweetClassifier {
       chainId = eigenResponse.chainId;
 
       const result = this.parseResponse(response, tweetText);
+      if (marketContext) {
+        result.marketContext = marketContext;
+      }
+      if (fullPrompt) {
+        result.fullPrompt = fullPrompt;
+      }
 
       // Include signature and verification data if available (for EigenAI responses)
       if (signature) {
@@ -255,79 +274,45 @@ export class LLMTweetClassifier {
   /**
    * Build enhanced prompt with market data for EigenAI
    */
-  /**
-   * Build enhanced prompt with market data for EigenAI
-   */
-  private buildPromptWithMarketData(tweetText: string, marketData: any | null): string {
-    let marketContext = 'NO MARKET DATA AVAILABLE';
-    
+  private buildPromptWithMarketData(
+    tweetText: string,
+    marketData: any | null
+  ): { prompt: string; marketContext: string } {
+    let marketContext = "NO MARKET DATA AVAILABLE";
+
     if (marketData) {
-      console.log('[LLMClassifier] Market data for prompt:', JSON.stringify(marketData, null, 2));
-      
+      console.log(
+        "[LLMClassifier] Market data for prompt:",
+        JSON.stringify(marketData, null, 2)
+      );
+
       const pct24h = marketData.percent_change_24h ?? 0;
       const pct7d = marketData.percent_change_7d ?? 0;
       const pct30d = marketData.percent_change_30d ?? 0;
       const vol = marketData.volume_24h ?? 0;
       const volM = (vol / 1e6).toFixed(1);
-      
+
       marketContext = `
-${marketData.symbol}: Price=$${marketData.price?.toFixed(2)}, MCap=$${(marketData.market_cap / 1e9).toFixed(1)}B
-24h=${pct24h.toFixed(2)}% | 7d=${pct7d.toFixed(2)}% | 30d=${pct30d.toFixed(2)}% | Vol=${volM}M
-GalaxyScore=${marketData.galaxy_score} | AltRank=${marketData.alt_rank} | Volatility=${marketData.volatility?.toFixed(4)}`;
+${marketData.symbol}: Price=$${marketData.price?.toFixed(2)}, MCap=$${(
+        marketData.market_cap / 1e9
+      ).toFixed(1)}B
+24h=${pct24h.toFixed(2)}% | 7d=${pct7d.toFixed(2)}% | 30d=${pct30d.toFixed(
+        2
+      )}% | Vol=${volM}M
+GalaxyScore=${marketData.galaxy_score} | AltRank=${
+        marketData.alt_rank
+      } | Volatility=${marketData.volatility?.toFixed(4)}`;
     }
 
-    return `Expert elite crypto risk analyst. PRIMARY GOAL: Protect users from losses while identifying real elite opportunities.
+    const prompt = `Tweet: "${tweetText}"
+Market: ${marketContext}
 
-SIGNAL: "${tweetText}"
-MARKET: ${marketContext}
+Score tweet 0.0-1.0 for trade confidence. Lower if: negative momentum, high vol, vague tweet, poor altrank, low liquidity.
 
-DATA MEANING:
-• Price/MCap: Size & liquidity (larger = safer exits)
-• 24h/7d/30d %: Momentum (consistent = stronger, mixed = uncertain)
-• Vol: Liquidity (>50M good, <10M risky, 0 = red flag)
-• GalaxyScore: Strength 0-100 (>70 strong, 50-70 moderate, <50 weak)
-• AltRank: Performance (1-100 excellent, 100-500 average, >500 weak)
-• Volatility: Stability (<0.02 stable, 0.02-0.05 normal, >0.05 risky)
+JSON only:
+{"isSignalCandidate":true/false,"extractedTokens":["TOKEN"],"sentiment":"bullish"/"bearish"/"neutral","confidence":0.XX,"reasoning":"Brief analysis"}`;
 
-ANALYZE Hy, volume, contradictions)
-4. Opportunity strength (gOLISTICALLY:
-1. Signal clarity (specific targets vs vague sentiment)
-2. Market momentum alignment with signal direction
-3. Risk factors (volatilitalaxy score, alt rank, liquidity)
-
-KEY SCENARIOS:
-• BULLISH signal + positive momentum + vol>50M = STRONG (0.7-1.0)
-• BULLISH signal + negative momentum = CONTRADICTION - reduce heavily (0.1-0.3)
-• BEARISH signal + negative momentum + vol>50M = STRONG (0.7-1.0)
-• BEARISH signal + positive momentum = CONTRADICTION - reduce heavily (0.1-0.3)
-• Mixed momentum or low volume = MODERATE risk (0.3-0.6)
-• High volatility >0.05 or AltRank >1000 = PENALIZE (reduce 15-30%)
-• Zero/null data = CONSERVATIVE (max 0.4)
-
-CONFIDENCE BANDS:
-0.8-1.0: Exceptional (clear + aligned + low risk)
-0.6-0.8: Strong (good signal + supportive market)
-0.4-0.6: Moderate (decent OR mixed signals)
-0.2-0.4: Weak (poor signal OR contradicts market)
-0.0-0.2: Very High Risk (reject - will lose money)
-
-LOSS PREVENTION RULES:
-1. Market data > hype (momentum contradicts = low confidence)
-2. Volume critical (low volume = trapped = danger)
-3. Volatility kills (high = unpredictable = lower score)
-4. Contradictions fatal (bullish tweet + bearish market = 0.1-0.3)
-5. Conservative better (miss opportunity > cause loss)
-
-JSON OUTPUT:
-{
-  "isSignalCandidate": boolean,
-  "extractedTokens": ["SYMBOL"],
-  "sentiment": "bullish"|"bearish"|"neutral",
-  "confidence": 0.XX,
-  "reasoning": "Direction: [LONG/SHORT] on TOKEN. Signal clarity: [clear/vague]. Market momentum: [24h/7d/30d analysis]. Alignment: [supports/contradicts signal]. Key risks: [volume/volatility/rank issues]. Strength factors: [galaxy/liquidity/stability]. Confidence X.XX: [why this protects user from losses]."
-}
-
-CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outside JSON.`;
+    return { prompt, marketContext };
   }
 
   /**
@@ -356,8 +341,7 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
         messages: [
           {
             role: "system",
-            content:
-              "You are a crypto trading signal analyst. Output ONLY valid JSON. No explanations, no reasoning text outside JSON, ONLY the JSON object. Start with { and end with }.",
+            content: EIGENAI_SYSTEM_MESSAGE,
           },
           {
             role: "user",
@@ -365,9 +349,6 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
           },
         ],
         temperature: 0.1,
-        max_tokens: 1500,
-        seed: 42,
-        response_format: { type: "json_object" },
       }),
     });
 
@@ -377,18 +358,27 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
     }
 
     const data = (await response.json()) as any;
+    console.log(
+      "[EigenAI] Full API response:",
+      JSON.stringify(data, null, 2)
+    );
 
     if (!data.signature) {
       console.warn("[EigenAI] ⚠️  Signature field missing from API response");
       console.warn("[EigenAI] Response keys:", Object.keys(data));
     }
 
-    const rawOutput = data.choices[0].message.content;
+    const rawOutput = data?.choices?.[0]?.message?.content || "";
+    if (!rawOutput) {
+      throw new Error("EigenAI response missing message content");
+    }
 
-    // Extract content from <|channel|>final<|message|> tag
-    const finalChannelMatch = rawOutput.match(
-      /<\|channel\|>final<\|message\|>([\s\S]*?)(?:<\|end\|>|$)/
-    );
+    // Extract content from <|channel|>final<|message|> tag safely
+    const finalChannelMatch =
+      rawOutput &&
+      rawOutput.match(
+        /<\|channel\|>final<\|message\|>([\s\S]*?)(?:<\|end\|>|$)/
+      );
     const extractedContent = finalChannelMatch
       ? finalChannelMatch[1].trim()
       : rawOutput;
@@ -398,7 +388,7 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
       signature: data.signature,
       rawOutput: rawOutput,
       model: data.model,
-      chainId: 1,
+      chainId: data.chain_id || 1, // Use chain_id from response, fallback to 1
     };
   }
 
@@ -410,10 +400,25 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
     originalTweet: string
   ): ClassificationResult {
     try {
+      // Strip <think> tags if present
+      let cleanResponse = response.replace(/<\/?think>/g, "").trim();
+      
       // Extract JSON from response (in case there's extra text)
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        throw new Error("No JSON found in response");
+        console.warn("[LLM Classifier] No JSON found in response, treating as low confidence signal");
+        
+        // Fallback: Default to low confidence since response was incomplete
+        const tokenMatch = originalTweet.match(/\$([A-Z]{2,6})\b/i);
+        const token = tokenMatch ? tokenMatch[1].toUpperCase() : null;
+        
+        return {
+          isSignalCandidate: false,
+          extractedTokens: token ? [token] : [],
+          sentiment: "neutral",
+          confidence: 0.1, // Very low confidence for unparseable responses
+          reasoning: "LLM response incomplete or invalid (likely hit token limit). Defaulting to low confidence for safety.",
+        };
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
@@ -459,7 +464,7 @@ export function createLLMClassifier(): LLMTweetClassifier | null {
       return new LLMTweetClassifier({
         provider: "eigenai",
         apiKey,
-        model: process.env.EIGENAI_MODEL || "gpt-oss-120b-f16",
+        model: process.env.EIGENAI_MODEL || "qwen3-32b-128k-bf16",
       });
     }
 

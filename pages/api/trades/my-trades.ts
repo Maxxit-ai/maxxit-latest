@@ -204,6 +204,8 @@ export default async function handler(
           hasSignatureData: !!relatedTelegramPost,
           signatureData: relatedTelegramPost ? {
             messageText: relatedTelegramPost.message_text,
+            marketContext: (relatedTelegramPost as any).llm_market_context || null,
+            llmFullPrompt: (relatedTelegramPost as any).llm_full_prompt || null,
             llmSignature: relatedTelegramPost.llm_signature,
             llmRawOutput: relatedTelegramPost.llm_raw_output,
             llmModelUsed: relatedTelegramPost.llm_model_used,
