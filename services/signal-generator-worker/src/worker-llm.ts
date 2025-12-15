@@ -398,9 +398,43 @@ async function generateSignalForAgentAndToken(
     }
     console.log(`    💭 Reason: ${tradeDecision.reason}`);
 
-    // If LLM decides not to trade, skip signal creation
+    // If LLM decides not to trade, create a skipped signal record
     if (!tradeDecision.shouldTrade) {
-      console.log(`    ⏭️  Skipping signal based on LLM decision`);
+      console.log(`    ⏭️  Creating skipped signal based on LLM decision`);
+
+      try {
+        await prisma.signals.create({
+          data: {
+            agent_id: agent.id,
+            deployment_id: deployment.id,
+            token_symbol: token,
+            venue: signalVenue,
+            side: side,
+            size_model: {
+              type: "balance-percentage",
+              value: tradeDecision.fundAllocation,
+              impactFactor: 0,
+            },
+            risk_model: {
+              stopLoss: 0.1,
+              takeProfit: 0.05,
+              leverage: signalVenue === "OSTIUM" ? tradeDecision.leverage : 3,
+            },
+            source_tweets: [post.message_id],
+            skipped_reason: tradeDecision.reason,
+            llm_decision: tradeDecision.reason,
+            llm_should_trade: tradeDecision.shouldTrade,
+            llm_fund_allocation: tradeDecision.fundAllocation,
+            llm_leverage: tradeDecision.leverage,
+          },
+        });
+
+        console.log(`    ✅ Skipped signal stored for deployment ${deployment.id.substring(0, 8)}: ${side} ${token} on ${signalVenue}`);
+        console.log(`    💭 Skipped reason: ${tradeDecision.reason}`);
+      } catch (error) {
+        console.error(`    ❌ Error storing skipped signal: ${error}`);
+      }
+      
       return false;
     }
 
