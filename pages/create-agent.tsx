@@ -398,12 +398,39 @@ export default function CreateAgent() {
                   <span className="text-sm font-bold text-[var(--text-primary)]">ADVANCED: SINGLE VENUE</span>
                 </summary>
                 <div className="mt-4 space-y-3 p-4 bg-[var(--bg-elevated)] border border-[var(--border)]">
-                  {['HYPERLIQUID', 'OSTIUM', 'GMX', 'SPOT'].map((venue) => (
-                    <label key={venue} className={`block p-3 border cursor-pointer transition-all ${formData.venue === venue ? 'border-[var(--accent)] bg-[var(--accent)]/10 shadow-[0_0_10px_rgba(0,255,136,0.1)]' : 'border-[var(--border)] hover:border-[var(--accent)]/50 hover:bg-[var(--bg-surface)]'}`}>
-                      <input type="radio" {...register('venue')} value={venue} className="sr-only" />
-                      <span className="font-bold text-[var(--text-primary)]">{venue}</span>
-                    </label>
-                  ))}
+                  {['OSTIUM', 'HYPERLIQUID', 'GMX', 'SPOT', 'MULTI'].map((venue) => {
+                    const isOstium = venue === 'OSTIUM';
+                    const isDisabled = !isOstium;
+
+                    return (
+                      <label
+                        key={venue}
+                        className={`
+                        block p-4 border transition-all relative
+                        ${isOstium && formData.venue === venue
+                            ? 'border-[var(--accent)] bg-[var(--accent)]/10 shadow-[0_0_10px_rgba(0,255,136,0.1)] cursor-pointer'
+                            : isOstium
+                              ? 'border-[var(--border)] hover:border-[var(--accent)]/50 hover:bg-[var(--bg-surface)] cursor-pointer'
+                              : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-50 cursor-not-allowed'
+                          }
+                      `}
+                      >
+                        <input
+                          type="radio"
+                          {...register('venue')}
+                          value={venue}
+                          disabled={isDisabled}
+                          className="sr-only"
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[var(--text-primary)]">{venue}</span>
+                          {isDisabled && (
+                            <span className="text-xs text-[var(--text-muted)] font-medium">COMING SOON</span>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </details>
               <div className="flex gap-4">
