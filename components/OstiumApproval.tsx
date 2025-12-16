@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { ethers } from 'ethers';
+import { getOstiumConfig } from '../lib/ostium-config';
 
 interface OstiumApprovalProps {
   deploymentId: string;
@@ -10,8 +11,8 @@ interface OstiumApprovalProps {
   onClose: () => void;
 }
 
-// Ostium Trading Contract on Arbitrum Sepolia
-const OSTIUM_TRADING_CONTRACT = '0x6D0bA1f9996DBD8885827e1b2e8f6593e7702411';
+// Get Ostium configuration based on environment
+const { tradingContract: OSTIUM_TRADING_CONTRACT } = getOstiumConfig();
 const OSTIUM_TRADING_ABI = [
   'function setDelegate(address delegate) external',
   'function delegations(address delegator) view returns (address)',
