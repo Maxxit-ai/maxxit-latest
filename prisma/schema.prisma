@@ -427,6 +427,7 @@ model telegram_posts {
   llm_model_used          String?               // Model ID used (e.g., "gpt-oss-120b-f16")
   llm_chain_id            Int?                  // Chain ID for signature verification
   llm_reasoning           String?               // LLM reasoning for classification
+  llm_market_context      String?               // Market context string used in the prompt (for signature verification)
   
   telegram_sources        telegram_sources?     @relation(fields: [source_id], references: [id], onDelete: Cascade)
   telegram_alpha_users    telegram_alpha_users? @relation(fields: [alpha_user_id], references: [id], onDelete: Cascade)

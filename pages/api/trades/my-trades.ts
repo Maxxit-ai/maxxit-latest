@@ -263,6 +263,7 @@ export default async function handler(
                 llmRawOutput: relatedTelegramPost.llm_raw_output,
                 llmModelUsed: relatedTelegramPost.llm_model_used,
                 llmChainId: relatedTelegramPost.llm_chain_id,
+                llmMarketContext: (relatedTelegramPost as any).llm_market_context || null,
                 llmReasoning: relatedTelegramPost.llm_reasoning,
                 messageCreatedAt:
                   relatedTelegramPost.message_created_at.toISOString(),

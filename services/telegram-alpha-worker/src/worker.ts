@@ -138,6 +138,7 @@ async function processTelegramAlphaMessages() {
             llm_model_used: classification.model,
             llm_chain_id: classification.chainId,
             llm_reasoning: classification.reasoning,
+            llm_market_context: classification.marketContext,
           },
         });
 

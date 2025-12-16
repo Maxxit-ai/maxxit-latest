@@ -13,6 +13,7 @@ interface ClassificationResult {
   rawOutput?: string; // Full raw output from LLM API (for EigenAI signature verification)
   model?: string; // Model used (for EigenAI signature verification)
   chainId?: number; // Chain ID (for EigenAI signature verification)
+  marketContext?: string; // Market context used in the prompt (for signature verification)
 }
 
 type LLMProvider = "eigenai" | "openai";
@@ -73,11 +74,13 @@ export class LLMTweetClassifier {
       marketData ? "YES" : "NO"
     );
 
-    const prompt = this.buildPromptWithMarketData(tweetText, marketData);
+    const { prompt, marketContext } = this.buildPromptWithMarketData(tweetText, marketData);
 
     // Try primary provider first
     try {
-      return await this.attemptClassification(prompt, tweetText, this.provider);
+      const result = await this.attemptClassification(prompt, tweetText, this.provider);
+      result.marketContext = marketContext;
+      return result;
     } catch (primaryError: any) {
       // If EigenAI fails, automatically fallback to OpenAI
       if (this.provider === "eigenai") {
@@ -95,7 +98,9 @@ export class LLMTweetClassifier {
           );
 
           try {
-            return await this.attemptClassification(prompt, tweetText, "openai");
+            const result = await this.attemptClassification(prompt, tweetText, "openai");
+            result.marketContext = marketContext;
+            return result;
           } catch (fallbackError: any) {
             this.logError("openai", fallbackError);
             throw fallbackError;
@@ -319,10 +324,10 @@ export class LLMTweetClassifier {
   /**
    * Build enhanced prompt with market data for EigenAI
    */
-  /**
-   * Build enhanced prompt with market data for EigenAI
-   */
-  private buildPromptWithMarketData(tweetText: string, marketData: any | null): string {
+  private buildPromptWithMarketData(
+    tweetText: string,
+    marketData: any | null
+  ): { prompt: string; marketContext: string } {
     let marketContext = 'NO MARKET DATA AVAILABLE';
 
     if (marketData) {
@@ -340,7 +345,7 @@ ${marketData.symbol}: Price=$${marketData.price?.toFixed(2)}, MCap=$${(marketDat
 GalaxyScore=${marketData.galaxy_score} | AltRank=${marketData.alt_rank} | Volatility=${marketData.volatility?.toFixed(4)}`;
     }
 
-    return `Expert elite crypto risk analyst. PRIMARY GOAL: Protect users from losses while identifying real elite opportunities.
+    const prompt = `Expert elite crypto risk analyst. PRIMARY GOAL: Protect users from losses while identifying real elite opportunities.
 
 SIGNAL: "${tweetText}"
 MARKET: ${marketContext}
@@ -391,7 +396,16 @@ JSON OUTPUT:
   "reasoning": "Direction: [LONG/SHORT] on TOKEN. Signal clarity: [clear/vague]. Market momentum: [24h/7d/30d analysis]. Alignment: [supports/contradicts signal]. Key risks: [volume/volatility/rank issues]. Strength factors: [galaxy/liquidity/stability]. Confidence X.XX: [why this protects user from losses]."
 }
 
+CRITICAL RULES:
+• isSignalCandidate MUST be true if extractedTokens contains at least one token (regardless of market contradictions)
+• isSignalCandidate is ONLY false if NO token can be extracted from the signal
+• confidence score reflects risk/quality (contradictions = lower confidence, but isSignalCandidate still true if token found)
+• If token extracted but market contradicts: isSignalCandidate=true, confidence=low (0.1-0.3)
+• If token extracted and market aligns: isSignalCandidate=true, confidence=high (0.7-1.0)
+
 CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outside JSON.`;
+
+    return { prompt, marketContext };
   }
 
   /**
@@ -429,13 +443,12 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
           },
         ],
         temperature: 0.1,
-        max_tokens: 1500,
+        max_tokens: 3500,
         seed: 42,
         // response_format: { type: "json_object" },
       }),
     });
 
-    console.log("[EigenAI] Response:", response);
 
     if (!response.ok) {
       const error = await response.text();
@@ -443,11 +456,9 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
     }
 
     const data = (await response.json()) as any;
-    console.log("[EigenAI] Data:", data);
 
     if (!data.signature) {
       console.warn("[EigenAI] ⚠️  Signature field missing from API response");
-      console.warn("[EigenAI] Response keys:", Object.keys(data));
     }
 
     // Validate response structure
@@ -479,13 +490,27 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
 
     console.log("[EigenAI] Raw message:", rawOutput);
 
-    // Extract content from <|channel|>final<|message|> tag
-    const finalChannelMatch = rawOutput.match(
-      /<\|channel\|>final<\|message\|>([\s\S]*?)(?:<\|end\|>|$)/
-    );
-    const extractedContent = finalChannelMatch
-      ? finalChannelMatch[1].trim()
-      : rawOutput;
+    // Extract content - try multiple patterns:
+    // 1. Content after <|end|> tag (for responses with thinking)
+    // 2. Content from <|channel|>final<|message|> tag
+    // 3. Fall back to raw output
+    let extractedContent = rawOutput;
+    
+    // Try extracting JSON after <|end|> tag first (handles thinking/analysis output)
+    const endTagMatch = rawOutput.match(/<\|end\|>\s*(\{[\s\S]*\})\s*$/);
+    if (endTagMatch) {
+      extractedContent = endTagMatch[1].trim();
+    } else {
+      // Try extracting from <|channel|>final<|message|> tag
+      const finalChannelMatch = rawOutput.match(
+        /<\|channel\|>final<\|message\|>([\s\S]*?)(?:<\|end\|>|$)/
+      );
+      if (finalChannelMatch) {
+        extractedContent = finalChannelMatch[1].trim();
+      } else {
+        console.log("[EigenAI] Using raw output (no extraction patterns matched)");
+      }
+    }
 
     return {
       content: extractedContent,
@@ -530,7 +555,7 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
           },
         ],
         temperature: 0.1,
-        max_tokens: 1500,
+        max_tokens: 2500,
         response_format: { type: "json_object" },
       }),
     });
@@ -582,11 +607,19 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
 
       const parsed = JSON.parse(jsonMatch[0]);
 
+      const extractedTokens = Array.isArray(parsed.extractedTokens)
+        ? parsed.extractedTokens.map((t: string) => t.toUpperCase())
+        : [];
+
+      // CRITICAL: If tokens were extracted, isSignalCandidate MUST be true
+      // (regardless of market contradictions - those affect confidence, not candidate status)
+      const isSignalCandidate = extractedTokens.length > 0 
+        ? true 
+        : Boolean(parsed.isSignalCandidate);
+
       return {
-        isSignalCandidate: Boolean(parsed.isSignalCandidate),
-        extractedTokens: Array.isArray(parsed.extractedTokens)
-          ? parsed.extractedTokens.map((t: string) => t.toUpperCase())
-          : [],
+        isSignalCandidate,
+        extractedTokens,
         sentiment: parsed.sentiment || "neutral",
         confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
         reasoning: parsed.reasoning || "",
