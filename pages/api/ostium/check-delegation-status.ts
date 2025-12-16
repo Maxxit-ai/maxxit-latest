@@ -6,9 +6,9 @@
 
 import { NextApiRequest, NextApiResponse } from 'next';
 import { ethers } from 'ethers';
+import { getOstiumConfig } from '../../../lib/ostium-config';
 
-const TRADING_CONTRACT = '0x6D0bA1f9996DBD8885827e1b2e8f6593e7702411'; // Ostium Trading
-const RPC_URL = 'https://arb1.arbitrum.io/rpc';
+const { tradingContract, rpcUrl } = getOstiumConfig();
 
 const TRADING_ABI = [
   'function delegations(address delegator) view returns (address)',
@@ -28,10 +28,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const checksummedUserAddress = ethers.utils.getAddress(userWallet);
     
-    const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
-    const tradingContract = new ethers.Contract(TRADING_CONTRACT, TRADING_ABI, provider);
+    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+    const tradingContractInstance = new ethers.Contract(tradingContract, TRADING_ABI, provider);
 
-    const delegatedAddress = await tradingContract.delegations(checksummedUserAddress);
+    const delegatedAddress = await tradingContractInstance.delegations(checksummedUserAddress);
     
     let isDelegatedToAgent = false;
     if (agentAddress && typeof agentAddress === 'string') {

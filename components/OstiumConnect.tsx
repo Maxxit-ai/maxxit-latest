@@ -7,6 +7,8 @@ import { usePrivy } from '@privy-io/react-auth';
 import { X, Wallet, CheckCircle, AlertCircle, Zap, Activity, ExternalLink } from 'lucide-react';
 import { ethers } from 'ethers';
 import { TradingPreferencesForm, TradingPreferences } from './TradingPreferencesModal';
+import { getOstiumConfig } from '../lib/ostium-config';
+// import { TradingPreferencesModal, TradingPreferences } from './TradingPreferencesModal';
 
 interface OstiumConnectProps {
   agentId: string;
@@ -15,16 +17,13 @@ interface OstiumConnectProps {
   onSuccess?: () => void;
 }
 
-const OSTIUM_TRADING_CONTRACT = '0x6D0bA1f9996DBD8885827e1b2e8f6593e7702411';
+// Get Ostium configuration based on environment
+const { tradingContract: OSTIUM_TRADING_CONTRACT, usdcContract: USDC_TOKEN, storageContract: OSTIUM_STORAGE } = getOstiumConfig();
 const OSTIUM_TRADING_ABI = ['function setDelegate(address delegate) external'];
-
-const USDC_TOKEN = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 const USDC_ABI = [
   'function approve(address spender, uint256 amount) public returns (bool)',
   'function allowance(address owner, address spender) view returns (uint256)',
 ];
-
-const OSTIUM_STORAGE = '0xccd5891083a8acd2074690f65d3024e7d13d66e7';
 
 export function OstiumConnect({
   agentId,
@@ -299,7 +298,7 @@ export function OstiumConnect({
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       const network = await ethersProvider.getNetwork();
 
-      const ARBITRUM_CHAIN_ID = 42161;
+      const ARBITRUM_CHAIN_ID = 421614;
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
         try {
           await provider.request({
@@ -367,7 +366,7 @@ export function OstiumConnect({
       await ethersProvider.send('eth_requestAccounts', []);
 
       const network = await ethersProvider.getNetwork();
-      const ARBITRUM_CHAIN_ID = 42161;
+      const ARBITRUM_CHAIN_ID = 421614;
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
         throw new Error('Please switch to Arbitrum');
       }

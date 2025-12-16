@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { X, Wallet, CheckCircle, AlertCircle, Activity, ExternalLink } from 'lucide-react';
 import { ethers } from 'ethers';
+import { getOstiumConfig } from '../lib/ostium-config';
 
 interface OstiumDelegationModalProps {
   agentAddress: string;
@@ -13,7 +14,8 @@ interface OstiumDelegationModalProps {
   onSuccess?: () => void;
 }
 
-const OSTIUM_TRADING_CONTRACT = '0x6D0bA1f9996DBD8885827e1b2e8f6593e7702411';
+// Get Ostium configuration based on environment
+const { tradingContract: OSTIUM_TRADING_CONTRACT } = getOstiumConfig();
 const OSTIUM_TRADING_ABI = ['function setDelegate(address delegate) external'];
 
 export function OstiumDelegationModal({

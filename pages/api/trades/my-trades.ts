@@ -197,6 +197,20 @@ export default async function handler(
           orderBy: {
             message_created_at: "desc",
           },
+          select: {
+            id: true,
+            alpha_user_id: true,
+            message_text: true,
+            llm_signature: true,
+            llm_raw_output: true,
+            llm_model_used: true,
+            llm_chain_id: true,
+            llm_reasoning: true,
+            llm_market_context: true,
+            message_created_at: true,
+            confidence_score: true,
+            extracted_tokens: true,
+          },
         });
 
         console.log(
@@ -263,6 +277,7 @@ export default async function handler(
                 llmRawOutput: relatedTelegramPost.llm_raw_output,
                 llmModelUsed: relatedTelegramPost.llm_model_used,
                 llmChainId: relatedTelegramPost.llm_chain_id,
+                llmMarketContext: (relatedTelegramPost as any).llm_market_context || null,
                 llmReasoning: relatedTelegramPost.llm_reasoning,
                 messageCreatedAt:
                   relatedTelegramPost.message_created_at.toISOString(),
@@ -273,6 +288,119 @@ export default async function handler(
                 telegramUsername:
                   trade.signals.agents.agent_telegram_users.find(
                     (atu) =>
+                      atu.telegram_alpha_user_id ===
+                      relatedTelegramPost.alpha_user_id
+                  )?.telegram_alpha_users.telegram_username || "Unknown",
+              }
+            : null,
+        };
+      })
+    );
+
+    // Also fetch signals that did NOT result in positions (untraded signals)
+    const untradedSignalsRaw = await prisma.signals.findMany({
+      // Type cast used here because Prisma client maps some fields to camelCase
+      // but our schema uses snake_case. This is safe at runtime.
+      where: {
+        deployment_id: { in: deploymentIds },
+        positions: {
+          none: {}, // no positions linked to this signal
+        },
+      } as any,
+      include: {
+        agents: {
+          include: {
+            agent_telegram_users: {
+              include: {
+                telegram_alpha_users: true,
+              },
+            },
+          },
+        },
+      } as any,
+      orderBy: {
+        created_at: "desc",
+      },
+      take: 20,
+    });
+
+    const untradedSignals = await Promise.all(
+      (untradedSignalsRaw as any[]).map(async (signal) => {
+        const telegramAlphaUserIds = signal.agents.agent_telegram_users.map(
+          (atu: any) => atu.telegram_alpha_user_id
+        );
+
+        const signalCreatedAt = signal.created_at;
+        const searchWindowStart = new Date(
+          signalCreatedAt.getTime() - 60 * 60 * 1000
+        ); // 1 hour before signal
+
+        const relatedTelegramPost = await prisma.telegram_posts.findFirst({
+          where: {
+            alpha_user_id: {
+              in: telegramAlphaUserIds,
+            },
+            extracted_tokens: {
+              has: signal.token_symbol,
+            },
+            message_created_at: {
+              gte: searchWindowStart,
+              lte: signalCreatedAt,
+            },
+            is_signal_candidate: true,
+            llm_signature: {
+              not: null,
+            },
+          },
+          orderBy: {
+            message_created_at: "desc",
+          },
+          select: {
+            id: true,
+            alpha_user_id: true,
+            message_text: true,
+            llm_signature: true,
+            llm_raw_output: true,
+            llm_model_used: true,
+            llm_chain_id: true,
+            llm_reasoning: true,
+            llm_market_context: true,
+            message_created_at: true,
+            confidence_score: true,
+            extracted_tokens: true,
+          },
+        });
+
+        return {
+          id: signal.id,
+          tokenSymbol: signal.token_symbol,
+          side: signal.side,
+          venue: signal.venue,
+          createdAt: signal.created_at.toISOString(),
+          agentName: signal.agents.name,
+          agentId: signal.agent_id,
+          deploymentId: signal.deployment_id || null,
+          llmDecision: signal.llm_decision,
+          llmFundAllocation: signal.llm_fund_allocation,
+          llmLeverage: signal.llm_leverage,
+          llmShouldTrade: signal.llm_should_trade,
+          hasSignatureData: !!relatedTelegramPost,
+          signatureData: relatedTelegramPost
+            ? {
+                messageText: relatedTelegramPost.message_text,
+                llmSignature: relatedTelegramPost.llm_signature,
+                llmRawOutput: relatedTelegramPost.llm_raw_output,
+                llmModelUsed: relatedTelegramPost.llm_model_used,
+                llmChainId: relatedTelegramPost.llm_chain_id,
+                llmMarketContext: (relatedTelegramPost as any).llm_market_context || null,
+                llmReasoning: relatedTelegramPost.llm_reasoning,
+                messageCreatedAt:
+                  relatedTelegramPost.message_created_at.toISOString(),
+                confidenceScore: relatedTelegramPost.confidence_score,
+                telegramPostId: relatedTelegramPost.id,
+                telegramUsername:
+                  signal.agents.agent_telegram_users.find(
+                    (atu: any) =>
                       atu.telegram_alpha_user_id ===
                       relatedTelegramPost.alpha_user_id
                   )?.telegram_alpha_users.telegram_username || "Unknown",
@@ -295,6 +423,7 @@ export default async function handler(
         open: openCount,
         closed: closedCount,
       },
+      untradedSignals,
     });
   } catch (error) {
     console.error("[MyTrades] Error fetching trades:", error);

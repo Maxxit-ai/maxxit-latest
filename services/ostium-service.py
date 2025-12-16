@@ -53,14 +53,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-# Flag is explicit: set OSTIUM_TESTNET=true only when using the testnet RPC.
-OSTIUM_TESTNET = os.getenv('OSTIUM_TESTNET', 'false').lower() == 'true'
-OSTIUM_RPC_URL = os.getenv('OSTIUM_RPC_URL', 'https://arb1.arbitrum.io/rpc')
-OSTIUM_RPC_BACKUP = os.getenv('OSTIUM_RPC_BACKUP', 'https://arb1.arbitrum.io/rpc')  # Backup RPC
+# Flag is explicit: set OSTIUM_MAINNET=true when using mainnet, false for testnet.
+OSTIUM_MAINNET = os.getenv('OSTIUM_MAINNET', 'false').lower() == 'true'
+OSTIUM_TESTNET = not OSTIUM_MAINNET  # Backward compatibility
+
+# Network configuration based on the flag
+if OSTIUM_MAINNET:
+    OSTIUM_RPC_URL = os.getenv('OSTIUM_RPC_URL', 'https://arb1.arbitrum.io/rpc')
+    OSTIUM_RPC_BACKUP = os.getenv('OSTIUM_RPC_BACKUP', 'https://arb1.arbitrum.io/rpc')
+else:
+    OSTIUM_RPC_URL = os.getenv('OSTIUM_RPC_URL', 'https://sepolia-rollup.arbitrum.io/rpc')
+    OSTIUM_RPC_BACKUP = os.getenv('OSTIUM_RPC_BACKUP', 'https://sepolia-rollup.arbitrum.io/rpc')
+
 PORT = int(os.getenv('OSTIUM_SERVICE_PORT', '5002'))
 
 logger.info(f"🚀 Ostium Service Starting...")
-logger.info(f"   Network: {'TESTNET' if OSTIUM_TESTNET else 'MAINNET'}")
+logger.info(f"   Network: {'MAINNET' if OSTIUM_MAINNET else 'TESTNET'}")
 logger.info(f"   RPC URL: {OSTIUM_RPC_URL}")
 
 # SDK Cache
@@ -108,7 +116,7 @@ def get_sdk(private_key: str, use_delegation: bool = False, force_new: bool = Fa
                 # Still proceed - might be temporary network issue
     
     if cache_key not in sdk_cache or force_new:
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        network = 'mainnet' if OSTIUM_MAINNET else 'testnet'
         sdk_cache[cache_key] = OstiumSDK(
             network=network,
             private_key=private_key,

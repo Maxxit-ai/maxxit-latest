@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Home, Wallet, User, TrendingUp, FileText, Plus, Github, Twitter, ExternalLink } from 'lucide-react';
+import Image from 'next/image';
 
 const FooterSection = () => {
   const currentYear = new Date().getFullYear();
@@ -25,10 +26,7 @@ const FooterSection = () => {
           {/* Brand Section */}
           <div className="space-y-4">
             <Link href="/" className="flex items-center gap-2 group">
-              <div className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center group-hover:bg-[var(--accent)]/10 transition-colors">
-                <span className="text-accent font-bold text-sm">M</span>
-              </div>
-              <span className="font-display text-xl tracking-wide">MAXXIT</span>
+              <Image src="/logo.png" alt="Maxxit" width={100} height={100} />
             </Link>
             <p className="text-xs text-[var(--text-muted)] leading-relaxed max-w-sm">
               DeFi trading involves risk. Past performance ≠ future results. Non-custodial & gasless.

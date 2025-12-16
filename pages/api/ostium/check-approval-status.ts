@@ -9,11 +9,9 @@
 
 import { NextApiRequest, NextApiResponse } from 'next';
 import { ethers } from 'ethers';
+import { getOstiumConfig } from '../../../lib/ostium-config';
 
-const USDC_ADDRESS = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'; // Arbitrum Sepolia
-const TRADING_CONTRACT = '0x6D0bA1f9996DBD8885827e1b2e8f6593e7702411'; // Ostium Trading
-const STORAGE_CONTRACT = '0xccd5891083a8acd2074690f65d3024e7d13d66e7'; // Ostium Storage (SDK checks this!)
-const RPC_URL = 'https://arb1.arbitrum.io/rpc';
+const { usdcContract, tradingContract, storageContract, rpcUrl } = getOstiumConfig();
 
 const USDC_ABI = [
   'function allowance(address owner, address spender) view returns (uint256)',
@@ -34,17 +32,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const checksummedAddress = ethers.utils.getAddress(userWallet);
 
-    // Connect to Arbitrum Sepolia
-    const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
-    const usdcContract = new ethers.Contract(USDC_ADDRESS, USDC_ABI, provider);
+    // Connect to the appropriate network
+    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+    const usdcContractInstance = new ethers.Contract(usdcContract, USDC_ABI, provider);
 
     // Check USDC allowance - SDK checks STORAGE_CONTRACT, not TRADING_CONTRACT
-    const allowanceStorage = await usdcContract.allowance(checksummedAddress, STORAGE_CONTRACT);
-    const allowanceTrading = await usdcContract.allowance(checksummedAddress, TRADING_CONTRACT);
+    const allowanceStorage = await usdcContractInstance.allowance(checksummedAddress, storageContract);
+    const allowanceTrading = await usdcContractInstance.allowance(checksummedAddress, tradingContract);
     const allowanceUsdc = parseFloat(ethers.utils.formatUnits(allowanceStorage, 6)); // Use STORAGE (SDK requirement)
 
     // Check USDC balance
-    const balance = await usdcContract.balanceOf(checksummedAddress);
+    const balance = await usdcContractInstance.balanceOf(checksummedAddress);
     const balanceUsdc = parseFloat(ethers.utils.formatUnits(balance, 6));
 
     // Minimum trade size on Ostium is $5
@@ -61,8 +59,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasApproval,
       hasSufficientBalance,
       needsApproval: !hasApproval,
-      storageContract: STORAGE_CONTRACT, // SDK checks this
-      tradingContract: TRADING_CONTRACT,
+      storageContract: storageContract,
+      tradingContract: tradingContract,
     });
   } catch (error: any) {
     console.error('[CheckApprovalStatus] Error:', error);

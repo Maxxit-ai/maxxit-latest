@@ -202,8 +202,6 @@ Respond ONLY with the JSON object, no other text.`;
     // Debug: Log if signature is missing
     if (!data.signature) {
       console.warn("[EigenAI] ⚠️  Signature field missing from API response");
-      console.warn("[EigenAI] Response keys:", Object.keys(data));
-      console.warn("[EigenAI] Full response structure:", JSON.stringify(data, null, 2).substring(0, 500));
     }
     
     // Extract the full raw output for signature verification
