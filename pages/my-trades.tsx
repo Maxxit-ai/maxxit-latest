@@ -67,6 +67,23 @@ interface VerificationResult {
   };
 }
 
+interface UntradedSignal {
+  id: string;
+  tokenSymbol: string;
+  side: string;
+  venue: string;
+  createdAt: string;
+  agentName: string;
+  agentId: string;
+  deploymentId: string | null;
+  llmDecision: string | null;
+  llmFundAllocation: number | null;
+  llmLeverage: number | null;
+  llmShouldTrade: boolean | null;
+  hasSignatureData: boolean;
+  signatureData: Trade["signatureData"];
+}
+
 interface TradesResponse {
   trades: Trade[];
   total: number;
@@ -75,6 +92,7 @@ interface TradesResponse {
     open: number;
     closed: number;
   };
+  untradedSignals?: UntradedSignal[];
 }
 
 export default function MyTrades() {
@@ -82,8 +100,13 @@ export default function MyTrades() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedTrade, setExpandedTrade] = useState<string | null>(null);
+  const [expandedUntradedSignal, setExpandedUntradedSignal] = useState<
+    string | null
+  >(null);
   const [verificationModalOpen, setVerificationModalOpen] = useState(false);
-  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
+  const [selectedTrade, setSelectedTrade] = useState<
+    Trade | UntradedSignal | null
+  >(null);
   const [verificationResult, setVerificationResult] =
     useState<VerificationResult | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -102,6 +125,7 @@ export default function MyTrades() {
     open: 0,
     closed: 0,
   });
+  const [untradedSignals, setUntradedSignals] = useState<UntradedSignal[]>([]);
   const cacheRef = useRef<Record<string, TradesResponse>>({});
 
   useEffect(() => {
@@ -132,6 +156,7 @@ export default function MyTrades() {
           closed: cached.summary.closed,
         });
       }
+      setUntradedSignals(cached.untradedSignals || []);
       setLoading(false);
       return;
     }
@@ -162,18 +187,20 @@ export default function MyTrades() {
           closed: data.summary.closed,
         });
       }
+      setUntradedSignals(data.untradedSignals || []);
       cacheRef.current[cacheKey] = data;
     } catch (error) {
       console.error("Failed to fetch trades:", error);
       setTrades([]);
       setTotal(0);
       setSummary({ total: 0, open: 0, closed: 0 });
+      setUntradedSignals([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifySignature = async (trade: Trade) => {
+  const handleVerifySignature = async (trade: Trade | UntradedSignal) => {
     if (!trade.signatureData) return;
 
     setSelectedTrade(trade);
@@ -217,6 +244,12 @@ export default function MyTrades() {
 
   const toggleTradeExpansion = (tradeId: string) => {
     setExpandedTrade(expandedTrade === tradeId ? null : tradeId);
+  };
+
+  const toggleUntradedExpansion = (signalId: string) => {
+    setExpandedUntradedSignal(
+      expandedUntradedSignal === signalId ? null : signalId
+    );
   };
 
   const formatDate = (isoDate: string) => {
@@ -771,6 +804,253 @@ export default function MyTrades() {
                     Next
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Untraded signals (signals without positions) */}
+            {untradedSignals.length > 0 && (
+              <div className="mt-12 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="data-label mb-1">UNTRADED SIGNALS</p>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Signals from your agents that did not result in positions.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono text-[var(--text-muted)]">
+                    {untradedSignals.length} signals
+                  </span>
+                </div>
+
+                {untradedSignals.map((signal, index) => {
+                  const isExpanded = expandedUntradedSignal === signal.id;
+
+                  return (
+                    <div
+                      key={signal.id}
+                      className="border border-[var(--border)] bg-[var(--bg-surface)]"
+                    >
+                      {/* Header */}
+                      <div
+                        className="p-6 cursor-pointer hover:bg-[var(--bg-elevated)] transition-colors"
+                        onClick={() => toggleUntradedExpansion(signal.id)}
+                      >
+                        <div className="grid grid-cols-12 items-center gap-4">
+                          {/* Index + token */}
+                          <div className="col-span-3 flex items-center gap-3">
+                            <div>
+                              <span className="text-[var(--accent)] font-mono text-xs">
+                                S#{String(index + 1).padStart(2, "0")}
+                              </span>
+                              <h3 className="font-display text-xl mt-1 flex items-center gap-2">
+                                {signal.tokenSymbol}
+                                <span
+                                  className={`text-xs px-2 py-0.5 font-bold ${
+                                    signal.side === "LONG"
+                                      ? "bg-green-500/20 text-green-400"
+                                      : "bg-red-500/20 text-red-400"
+                                  }`}
+                                >
+                                  {signal.side}
+                                </span>
+                                <span className="text-xs px-2 py-0.5 font-bold border border-[var(--border)] text-yellow-300 bg-yellow-500/10">
+                                  NOT TRADED
+                                </span>
+                              </h3>
+                            </div>
+                          </div>
+
+                          {/* Agent */}
+                          <div className="col-span-3">
+                            <p className="data-label mb-1">AGENT</p>
+                            <p className="text-sm">{signal.agentName}</p>
+                          </div>
+
+                          {/* Signal time */}
+                          <div className="col-span-3">
+                            <p className="data-label mb-1">SIGNAL TIME</p>
+                            <p className="text-sm text-[var(--text-secondary)]">
+                              {formatDate(signal.createdAt)}
+                            </p>
+                          </div>
+
+                          {/* Venue */}
+                          <div className="col-span-2">
+                            <p className="data-label mb-1">VENUE</p>
+                            <span className="text-xs border border-[var(--border)] px-2 py-1">
+                              {signal.venue}
+                            </span>
+                          </div>
+
+                          {/* Signature status + toggle */}
+                          <div className="col-span-1 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              {signal.hasSignatureData ? (
+                                <>
+                                  <Shield className="w-4 h-4 text-[var(--accent)]" />
+                                  <span className="text-xs font-bold text-[var(--accent)]">
+                                    SIGNED
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-xs text-[var(--text-muted)] font-mono">
+                                  No signature
+                                </span>
+                              )}
+                            </div>
+                            {isExpanded ? (
+                              <ChevronUp className="w-5 h-5 text-[var(--text-muted)]" />
+                            ) : (
+                              <ChevronDown className="w-5 h-5 text-[var(--text-muted)]" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Expanded details */}
+                      {isExpanded && (
+                        <div className="border-t border-[var(--border)] p-6 bg-[var(--bg-elevated)] space-y-6">
+                          {/* LLM decision summary row */}
+                          {(signal.llmDecision ||
+                            signal.llmFundAllocation !== null ||
+                            signal.llmLeverage !== null ||
+                            signal.llmShouldTrade !== null) && (
+                            <div className="space-y-3">
+                              <p className="data-label mb-2">AGENT DECISION</p>
+                              {signal.llmDecision && (
+                                <p className="text-xs text-[var(--text-secondary)]">
+                                  {signal.llmDecision}
+                                </p>
+                              )}
+                              <div className="flex flex-wrap gap-3 text-xs">
+                                {signal.llmFundAllocation !== null && (
+                                  <span className="border border-[var(--border)] px-2 py-1 font-mono text-[var(--accent)]">
+                                    Allocation:{" "}
+                                    {(signal.llmFundAllocation * 100).toFixed(
+                                      0
+                                    )}
+                                    %
+                                  </span>
+                                )}
+                                {signal.llmLeverage !== null && (
+                                  <span className="border border-[var(--border)] px-2 py-1 font-mono">
+                                    Leverage: {signal.llmLeverage.toFixed(1)}x
+                                  </span>
+                                )}
+                                {signal.llmShouldTrade !== null && (
+                                  <span
+                                    className={`border border-[var(--border)] px-2 py-1 font-mono ${
+                                      signal.llmShouldTrade
+                                        ? "text-green-400"
+                                        : "text-red-400"
+                                    }`}
+                                  >
+                                    {signal.llmShouldTrade
+                                      ? "Model: TRADE"
+                                      : "Model: DO NOT TRADE"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* EigenAI Signature for untraded signals */}
+                          <div>
+                            <p className="data-label mb-2">EIGENAI SIGNATURE</p>
+                            {signal.signatureData ? (
+                              <div className="border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-4 space-y-3">
+                                <div>
+                                  <p className="data-label mb-2">
+                                    ORIGINAL SIGNAL
+                                  </p>
+                                  <p className="text-xs text-[var(--text-secondary)] italic">
+                                    "
+                                    {signal.signatureData.messageText.substring(
+                                      0,
+                                      150
+                                    )}
+                                    {signal.signatureData.messageText.length >
+                                    150
+                                      ? "..."
+                                      : ""}
+                                    "
+                                  </p>
+                                </div>
+
+                                <div className="flex justify-between items-center py-2 border-t border-[var(--border)]">
+                                  <span className="text-xs text-[var(--text-muted)]">
+                                    Alpha Trader
+                                  </span>
+                                  <span className="text-xs font-mono">
+                                    @{signal.signatureData.telegramUsername}
+                                  </span>
+                                </div>
+
+                                <div className="flex justify-between items-center py-2 border-t border-[var(--border)]">
+                                  <span className="text-xs text-[var(--text-muted)]">
+                                    Model
+                                  </span>
+                                  <span className="text-xs font-mono">
+                                    {signal.signatureData.llmModelUsed}
+                                  </span>
+                                </div>
+
+                                <div className="flex justify-between items-center py-2 border-t border-[var(--border)]">
+                                  <span className="text-xs text-[var(--text-muted)]">
+                                    Chain ID
+                                  </span>
+                                  <span className="text-xs font-mono">
+                                    {signal.signatureData.llmChainId}
+                                  </span>
+                                </div>
+
+                                <div className="flex justify-between items-center py-2 border-t border-[var(--border)]">
+                                  <span className="text-xs text-[var(--text-muted)]">
+                                    Confidence
+                                  </span>
+                                  <span className="text-xs font-bold text-[var(--accent)]">
+                                    {(
+                                      signal.signatureData.confidenceScore * 100
+                                    ).toFixed(0)}
+                                    %
+                                  </span>
+                                </div>
+
+                                <div className="py-2 border-t border-[var(--border)]">
+                                  <p className="text-xs text-[var(--text-muted)] mb-1">
+                                    Signature
+                                  </p>
+                                  <p className="text-xs font-mono break-all text-[var(--accent)]">
+                                    {formatAddress(
+                                      signal.signatureData.llmSignature
+                                    )}
+                                  </p>
+                                </div>
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedTrade(signal);
+                                    setVerificationModalOpen(true);
+                                    setVerificationResult(null);
+                                    handleVerifySignature(signal);
+                                  }}
+                                  className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2 mt-2"
+                                >
+                                  <Shield className="w-4 h-4" />
+                                  VERIFY SIGNATURE
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-[var(--text-muted)]">
+                                No EigenAI signature available for this signal.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
