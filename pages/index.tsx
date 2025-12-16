@@ -33,6 +33,15 @@ export default function Home() {
     ostium?: string | null;
   } | null>(null);
   const [agentDeployments, setAgentDeployments] = useState<Record<string, string[]>>({}); // agentId -> enabled_venues[]
+  const [ostiumDelegationStatus, setOstiumDelegationStatus] = useState<{
+    hasDelegation: boolean;
+    delegatedAddress: string;
+    isDelegatedToAgent: boolean;
+  } | null>(null);
+  const [ostiumUsdcAllowance, setOstiumUsdcAllowance] = useState<{
+    usdcAllowance: number;
+    hasApproval: boolean;
+  } | null>(null);
 
   useEffect(() => {
     async function fetchAgents() {
@@ -113,6 +122,43 @@ export default function Home() {
     fetchAgents();
   }, [authenticated, user?.wallet?.address]);
 
+  // Fetch Ostium delegation status and USDC allowance when user has an Ostium address
+  useEffect(() => {
+    async function fetchOstiumStatus() {
+      if (!authenticated || !user?.wallet?.address || !userAgentAddresses?.ostium) {
+        return;
+      }
+
+      try {
+        const [delegationResponse, allowanceResponse] = await Promise.all([
+          fetch(`/api/ostium/check-delegation-status?userWallet=${user.wallet.address}&agentAddress=${userAgentAddresses.ostium}`),
+          fetch(`/api/ostium/check-approval-status?userWallet=${user.wallet.address}`)
+        ]);
+
+        if (delegationResponse.ok) {
+          const delegationData = await delegationResponse.json();
+          setOstiumDelegationStatus({
+            hasDelegation: delegationData.hasDelegation,
+            delegatedAddress: delegationData.delegatedAddress,
+            isDelegatedToAgent: delegationData.isDelegatedToAgent,
+          });
+        }
+
+        if (allowanceResponse.ok) {
+          const allowanceData = await allowanceResponse.json();
+          setOstiumUsdcAllowance({
+            usdcAllowance: allowanceData.usdcAllowance,
+            hasApproval: allowanceData.hasApproval,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching Ostium status:', error);
+      }
+    }
+
+    fetchOstiumStatus();
+  }, [authenticated, user?.wallet?.address, userAgentAddresses?.ostium]);
+
   const scrollToSection = useCallback((targetId: string) => {
     const element = document.getElementById(targetId);
     if (!element) {
@@ -157,22 +203,24 @@ export default function Home() {
           onLearnMoreScroll={() => scrollToSection('architecture')}
         />
       </div>
-      <div className="min-h-svh">
-        <ArchitectureSection activeAgent={activeAgent} onHover={setActiveAgent} />
-        <CreateAgentSection />
-        <EconomySection />
-        <StatsSection />
-        <AgentsSection
-          agents={agents}
-          loading={loading}
-          error={error}
-          onCardClick={handleAgentClick}
-          onDeployClick={handleDeployClick}
-          userAgentAddresses={userAgentAddresses}
-          agentDeployments={agentDeployments}
-        />
-        <CTASection />
-        <FooterSection />
+
+      <ArchitectureSection activeAgent={activeAgent} onHover={setActiveAgent} />
+      <CreateAgentSection />
+      <EconomySection />
+      <StatsSection />
+      <AgentsSection
+        agents={agents}
+        loading={loading}
+        error={error}
+        onCardClick={handleAgentClick}
+        onDeployClick={handleDeployClick}
+        userAgentAddresses={userAgentAddresses}
+        agentDeployments={agentDeployments}
+        ostiumDelegationStatus={ostiumDelegationStatus}
+        ostiumUsdcAllowance={ostiumUsdcAllowance}
+      />
+      <CTASection />
+      <FooterSection />
 
         {selectedAgent && (
           <AgentDrawer
@@ -255,7 +303,6 @@ export default function Home() {
           />
         )}
       </div>
-    </div>
   );
 }
 

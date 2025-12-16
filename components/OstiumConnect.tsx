@@ -378,28 +378,28 @@ export function OstiumConnect({
       const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
 
       const currentAllowanceStorage = await usdcContract.allowance(user.wallet.address, OSTIUM_STORAGE);
-      const currentAllowanceTrading = await usdcContract.allowance(user.wallet.address, OSTIUM_TRADING_CONTRACT);
+      // const currentAllowanceTrading = await usdcContract.allowance(user.wallet.address, OSTIUM_TRADING_CONTRACT);
       const allowanceAmount = ethers.utils.parseUnits('1000000', 6);
 
       const storageAllowance = parseFloat(ethers.utils.formatUnits(currentAllowanceStorage, 6));
-      const tradingAllowance = parseFloat(ethers.utils.formatUnits(currentAllowanceTrading, 6));
+      // const tradingAllowance = parseFloat(ethers.utils.formatUnits(currentAllowanceTrading, 6));
       const requiredAmount = parseFloat(ethers.utils.formatUnits(allowanceAmount, 6));
 
       console.log('[OstiumConnect] USDC Approval Check:');
       console.log('  Storage allowance:', storageAllowance, 'USDC');
-      console.log('  Trading allowance:', tradingAllowance, 'USDC');
+      // console.log('  Trading allowance:', tradingAllowance, 'USDC');
       console.log('  Required amount:', requiredAmount, 'USDC');
 
       // Use a lower threshold - only skip if user has genuinely high approval
       // This ensures first-time users always go through the approval flow
       const MIN_REQUIRED_APPROVAL = 100; // $100 minimum to skip (not $10)
       const needsStorageApproval = storageAllowance < MIN_REQUIRED_APPROVAL;
-      const needsTradingApproval = tradingAllowance < MIN_REQUIRED_APPROVAL;
+      // const needsTradingApproval = tradingAllowance < MIN_REQUIRED_APPROVAL;
 
       console.log('  Needs Storage approval:', needsStorageApproval, `(current: ${storageAllowance}, required: ${MIN_REQUIRED_APPROVAL})`);
-      console.log('  Needs Trading approval:', needsTradingApproval, `(current: ${tradingAllowance}, required: ${MIN_REQUIRED_APPROVAL})`);
+      // console.log('  Needs Trading approval:', needsTradingApproval, `(current: ${tradingAllowance}, required: ${MIN_REQUIRED_APPROVAL})`);
 
-      if (!needsStorageApproval && !needsTradingApproval) {
+      if (!needsStorageApproval) {
         console.log('[OstiumConnect] USDC already sufficiently approved, skipping to complete');
         setUsdcApproved(true);
         setStep('complete');
@@ -440,31 +440,31 @@ export function OstiumConnect({
         await ethersProvider.waitForTransaction(txHash);
       }
 
-      if (needsTradingApproval) {
-        const approveDataTrading = usdcContract.interface.encodeFunctionData('approve', [OSTIUM_TRADING_CONTRACT, allowanceAmount]);
-        const gasEstimateTrading = await ethersProvider.estimateGas({
-          to: USDC_TOKEN,
-          from: user.wallet.address,
-          data: approveDataTrading,
-        });
+      // if (needsTradingApproval) {
+      //   const approveDataTrading = usdcContract.interface.encodeFunctionData('approve', [OSTIUM_TRADING_CONTRACT, allowanceAmount]);
+      //   const gasEstimateTrading = await ethersProvider.estimateGas({
+      //     to: USDC_TOKEN,
+      //     from: user.wallet.address,
+      //     data: approveDataTrading,
+      //   });
 
-        // 50% gas buffer for reliability
-        const gasWithBufferTrading = gasEstimateTrading.mul(150).div(100);
-        console.log(`[OstiumConnect] USDC Trading approval - Gas estimate: ${gasEstimateTrading.toString()}, with 50% buffer: ${gasWithBufferTrading.toString()}`);
+      //   // 50% gas buffer for reliability
+      //   const gasWithBufferTrading = gasEstimateTrading.mul(150).div(100);
+      //   console.log(`[OstiumConnect] USDC Trading approval - Gas estimate: ${gasEstimateTrading.toString()}, with 50% buffer: ${gasWithBufferTrading.toString()}`);
 
-        const txHashTrading = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [{
-            from: user.wallet.address,
-            to: USDC_TOKEN,
-            data: approveDataTrading,
-            gas: gasWithBufferTrading.toHexString(),
-          }],
-        });
+      //   const txHashTrading = await provider.request({
+      //     method: 'eth_sendTransaction',
+      //     params: [{
+      //       from: user.wallet.address,
+      //       to: USDC_TOKEN,
+      //       data: approveDataTrading,
+      //       gas: gasWithBufferTrading.toHexString(),
+      //     }],
+      //   });
 
-        setTxHash(txHashTrading);
-        await ethersProvider.waitForTransaction(txHashTrading);
-      }
+      //   setTxHash(txHashTrading);
+      //   await ethersProvider.waitForTransaction(txHashTrading);
+      // }
 
       setUsdcApproved(true);
       setStep('complete');

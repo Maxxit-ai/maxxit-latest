@@ -47,9 +47,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const balance = await usdcContract.balanceOf(checksummedAddress);
     const balanceUsdc = parseFloat(ethers.utils.formatUnits(balance, 6));
 
-    // Minimum trade size on Ostium is $10
-    const hasApproval = allowanceUsdc >= 10;
-    const hasSufficientBalance = balanceUsdc >= 10;
+    // Minimum trade size on Ostium is $5
+    const hasApproval = allowanceUsdc >= 5;
+    const hasSufficientBalance = balanceUsdc >= 5;
 
     return res.status(200).json({
       success: true,
