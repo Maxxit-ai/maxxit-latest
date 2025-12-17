@@ -7,7 +7,7 @@ flask-cors>=4.0.0
 
 # Ostium SDK (v3.0.0+ required for get_open_trades method)
 # This will pull in all required dependencies: web3, gql, humanize, pydantic, etc.
-ostium-python-sdk==3.0.0
+ostium-python-sdk==3.0.1
 
 # Database
 psycopg2-binary>=2.9.9
