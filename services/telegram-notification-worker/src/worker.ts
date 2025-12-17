@@ -402,8 +402,7 @@ async function formatSignalExecutedMessage(
     message += `\n\n📊 *Trade Parameters:*`;
     if (signal.llm_fund_allocation !== null) {
       message += `\n• Fund Allocation: ${(
-        signal.llm_fund_allocation * 100
-      ).toFixed(0)}%`;
+        signal.llm_fund_allocation).toFixed(2)}%`;
     }
     if (signal.llm_leverage !== null) {
       message += `\n• Leverage: ${signal.llm_leverage.toFixed(1)}x`;
@@ -452,8 +451,7 @@ async function formatSignalNotTradedMessage(signal: any): Promise<string> {
     message += `\n📊 *Parameters Considered:*`;
     if (signal.llm_fund_allocation !== null) {
       message += `\n• Fund Allocation: ${(
-        signal.llm_fund_allocation * 100
-      ).toFixed(0)}%`;
+        signal.llm_fund_allocation).toFixed(2)}%`
     }
     if (signal.llm_leverage !== null) {
       message += `\n• Leverage: ${signal.llm_leverage.toFixed(1)}x`;
@@ -461,7 +459,7 @@ async function formatSignalNotTradedMessage(signal: any): Promise<string> {
   }
 
   message += `\n\n⏰ ${new Date(signal.created_at).toLocaleString()}`;
-  message += `\n\n💡 View all signals on your [Maxxit Dashboard](https://maxxit.io/my-trades)`;
+  message += `\n\n💡 View all signals on your [Maxxit Dashboard](https://maxxit.ai/my-trades)`;
 
   return message;
 }
