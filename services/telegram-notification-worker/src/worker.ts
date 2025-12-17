@@ -226,7 +226,6 @@ async function processNotifications() {
             )}...${userWallet.slice(-4)}`
           );
 
-     
           const userTelegram =
             await prisma.user_telegram_notifications.findUnique({
               where: {
@@ -401,15 +400,16 @@ async function formatSignalExecutedMessage(
   if (signal.llm_fund_allocation !== null || signal.llm_leverage !== null) {
     message += `\n\n📊 *Trade Parameters:*`;
     if (signal.llm_fund_allocation !== null) {
-      message += `\n• Fund Allocation: ${(
-        signal.llm_fund_allocation).toFixed(2)}%`;
+      message += `\n• Fund Allocation: ${signal.llm_fund_allocation.toFixed(
+        2
+      )}%`;
     }
     if (signal.llm_leverage !== null) {
       message += `\n• Leverage: ${signal.llm_leverage.toFixed(1)}x`;
     }
   }
 
-  message += `\n\n⏰ ${new Date(position.opened_at).toLocaleString()}`;
+  // message += `\n\n⏰ ${new Date(position.opened_at).toLocaleString()}`;
   message += `\n\n💡 Track this trade on your [Maxxit Dashboard](https://maxxit.ai/my-trades)`;
 
   return message;
@@ -450,15 +450,16 @@ async function formatSignalNotTradedMessage(signal: any): Promise<string> {
   if (signal.llm_fund_allocation !== null || signal.llm_leverage !== null) {
     message += `\n📊 *Parameters Considered:*`;
     if (signal.llm_fund_allocation !== null) {
-      message += `\n• Fund Allocation: ${(
-        signal.llm_fund_allocation).toFixed(2)}%`
+      message += `\n• Fund Allocation: ${signal.llm_fund_allocation.toFixed(
+        2
+      )}%`;
     }
     if (signal.llm_leverage !== null) {
       message += `\n• Leverage: ${signal.llm_leverage.toFixed(1)}x`;
     }
   }
 
-  message += `\n\n⏰ ${new Date(signal.created_at).toLocaleString()}`;
+  // message += `\n\n⏰ ${new Date(signal.created_at).toLocaleString()}`;
   message += `\n\n💡 View all signals on your [Maxxit Dashboard](https://maxxit.ai/my-trades)`;
 
   return message;
