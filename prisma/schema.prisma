@@ -587,6 +587,44 @@ model wallet_pool {
   created_at              DateTime? @default(now()) @db.Timestamptz(6)
 }
 
+model user_telegram_notifications {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_wallet       String    @unique
+  telegram_chat_id  String    @unique
+  telegram_username String?
+  telegram_user_id  String?
+  link_code         String?   @unique
+  is_active         Boolean   @default(true)
+  linked_at         DateTime  @default(now()) @db.Timestamptz(6)
+  last_notified_at  DateTime? @db.Timestamptz(6)
+  notification_logs notification_logs[]
+
+  @@index([user_wallet])
+  @@index([telegram_chat_id])
+  @@index([link_code])
+}
+
+model notification_logs {
+  id                              String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_wallet                     String
+  position_id                     String?                      @db.Uuid
+  signal_id                       String?                      @db.Uuid
+  notification_type               notification_type_t
+  message_content                 String?
+  telegram_message_id             String?
+  status                          notification_status_t        @default(PENDING)
+  error_message                   String?
+  sent_at                         DateTime?                    @db.Timestamptz(6)
+  created_at                      DateTime                     @default(now()) @db.Timestamptz(6)
+  user_telegram_notifications     user_telegram_notifications? @relation(fields: [user_wallet], references: [user_wallet], onDelete: Cascade)
+
+  @@index([user_wallet, created_at])
+  @@index([position_id])
+  @@index([signal_id])
+  @@index([notification_type, status])
+  @@index([created_at])
+}
+
 enum agent_status_t {
   DRAFT
   PUBLIC
@@ -622,4 +660,18 @@ enum venue_t {
   HYPERLIQUID
   OSTIUM
   MULTI
+}
+
+enum notification_type_t {
+  SIGNAL_EXECUTED      // Signal resulted in a position
+  SIGNAL_NOT_TRADED    // Signal generated but not traded
+  POSITION_CLOSED
+  STOP_LOSS_HIT
+  TAKE_PROFIT_HIT
+}
+
+enum notification_status_t {
+  PENDING
+  SENT
+  FAILED
 }

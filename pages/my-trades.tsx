@@ -14,6 +14,8 @@ import {
   ExternalLink,
   AlertCircle,
   Loader2,
+  Bell,
+  BellOff,
 } from "lucide-react";
 
 interface Trade {
@@ -128,6 +130,11 @@ export default function MyTrades() {
   });
   const [untradedSignals, setUntradedSignals] = useState<UntradedSignal[]>([]);
 
+  // Telegram Notification States
+  const [telegramConnected, setTelegramConnected] = useState(false);
+  const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [telegramLoading, setTelegramLoading] = useState(false);
+
   // Prevent background scroll when verification modal is open
   useEffect(() => {
     if (verificationModalOpen) {
@@ -149,10 +156,64 @@ export default function MyTrades() {
   useEffect(() => {
     if (authenticated && user?.wallet?.address) {
       fetchTrades(page, statusFilter);
+      checkTelegramStatus();
     } else {
       setLoading(false);
     }
   }, [authenticated, user?.wallet?.address, page, statusFilter]);
+
+  const checkTelegramStatus = async () => {
+    if (!user?.wallet?.address) return;
+
+    try {
+      const response = await fetch(
+        `/api/telegram-notifications/status?userWallet=${user.wallet.address}`
+      );
+      const data = await response.json();
+
+      if (data.connected) {
+        setTelegramConnected(true);
+        setTelegramUsername(data.telegram_username);
+      }
+    } catch (error) {
+      console.error("Failed to check Telegram status:", error);
+    }
+  };
+
+  const handleConnectTelegram = async () => {
+    if (!user?.wallet?.address) return;
+
+    setTelegramLoading(true);
+    try {
+      const response = await fetch(
+        "/api/telegram-notifications/generate-link",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userWallet: user.wallet.address }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Open the deep link in a new tab
+        window.open(data.deepLink, "_blank");
+
+        // Show success message
+        alert(
+          `Link generated! Click the link that just opened, or manually open:\n\n${data.deepLink}\n\nAfter clicking "Start" in Telegram, refresh this page to see the connection status.`
+        );
+      } else {
+        alert(`Error: ${data.error || "Failed to generate link"}`);
+      }
+    } catch (error) {
+      console.error("Failed to connect Telegram:", error);
+      alert("Failed to connect Telegram. Please try again.");
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
 
   const fetchTrades = async (
     currentPage: number = 1,
@@ -237,7 +298,8 @@ export default function MyTrades() {
           llm_raw_output: trade.signatureData.llmRawOutput,
           llm_model_used: trade.signatureData.llmModelUsed,
           llm_chain_id: trade.signatureData.llmChainId,
-          llm_market_context: trade.signatureData.llmMarketContext || "NO MARKET DATA AVAILABLE",
+          llm_market_context:
+            trade.signatureData.llmMarketContext || "NO MARKET DATA AVAILABLE",
         }),
       });
 
@@ -301,6 +363,82 @@ export default function MyTrades() {
             operator ensuring authenticity and transparency.
           </p>
         </div>
+
+        {/* Telegram Notifications */}
+        {authenticated && (
+          <div className="mb-8 border border-[var(--border)] bg-[var(--bg-surface)] p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                {telegramConnected ? (
+                  <>
+                    <div className="w-12 h-12 border border-[var(--accent)] bg-[var(--accent)]/10 flex items-center justify-center">
+                      <Bell className="w-6 h-6 text-[var(--accent)]" />
+                    </div>
+                    <div>
+                      <h3 className="font-display text-lg mb-1">
+                        TELEGRAM CONNECTED
+                      </h3>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Notifications enabled for @
+                        {telegramUsername || "your account"}
+                      </p>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                        You'll receive real-time updates when positions are
+                        opened or closed
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 border border-[var(--border)] flex items-center justify-center">
+                      <BellOff className="w-6 h-6 text-[var(--text-muted)]" />
+                    </div>
+                    <div>
+                      <h3 className="font-display text-lg mb-1">
+                        TELEGRAM NOTIFICATIONS
+                      </h3>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Get instant notifications about your trades on Telegram
+                      </p>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                        • New positions opened • Positions closed • Stop loss /
+                        Take profit hits
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div>
+                {telegramConnected ? (
+                  <button
+                    onClick={checkTelegramStatus}
+                    className="px-6 py-3 border border-[var(--accent)] text-[var(--accent)] font-bold hover:bg-[var(--accent)]/10 transition-colors"
+                  >
+                    ✓ CONNECTED
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleConnectTelegram}
+                    disabled={telegramLoading}
+                    className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {telegramLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        CONNECTING...
+                      </>
+                    ) : (
+                      <>
+                        <Bell className="w-4 h-4" />
+                        CONNECT TELEGRAM
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Overview cards */}
         {authenticated && (
