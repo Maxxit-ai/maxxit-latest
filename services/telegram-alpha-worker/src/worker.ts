@@ -132,6 +132,13 @@ async function processTelegramAlphaMessages() {
                 : classification.sentiment === "bearish"
                 ? "SHORT"
                 : null,
+            token_price:
+              typeof classification.tokenPrice === "number"
+                ? classification.tokenPrice
+                : null,
+            timeline_window: classification.timelineWindow || null,
+            take_profit: classification.takeProfit ?? 0,
+            stop_loss: classification.stopLoss ?? 0,
             // EigenAI signature verification fields
             llm_signature: classification.signature,
             llm_raw_output: classification.rawOutput,
@@ -139,6 +146,7 @@ async function processTelegramAlphaMessages() {
             llm_chain_id: classification.chainId,
             llm_reasoning: classification.reasoning,
             llm_market_context: classification.marketContext,
+            llm_full_prompt: classification.fullPrompt,
           },
         });
 

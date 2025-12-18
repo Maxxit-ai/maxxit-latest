@@ -264,6 +264,8 @@ async function handleAlphaMessage(message: any, telegramUserId: string, chatId: 
         confidence_score: null,
         signal_type: null,
         processed_for_signals: false,
+        impact_factor_flag: false,
+        impact_factor: 0,
       },
     });
 

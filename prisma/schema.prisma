@@ -418,6 +418,12 @@ model telegram_posts {
   extracted_tokens        String[]              @default([])
   confidence_score        Float?
   signal_type             String?
+  token_price             Float?               // Spot price from LunarCrush at classification time
+  timeline_window         String?              // Parsed time window / deadline for the signal (e.g. "2025-01-31" or textual)
+  take_profit             Float?   @default(0) // Take profit target extracted from signal
+  stop_loss               Float?   @default(0) // Stop loss target extracted from signal
+  impact_factor_flag      Boolean              @default(false) // Whether this signal has been used for impact-factor updates
+  pnl                     Float                @default(0) @db.Real // Profit & Loss percentage (calculated from token_price vs current price)
   processed_for_signals   Boolean               @default(false)
   created_at              DateTime              @default(now()) @db.Timestamptz(6)
   
@@ -428,7 +434,11 @@ model telegram_posts {
   llm_chain_id            Int?                  // Chain ID for signature verification
   llm_reasoning           String?               // LLM reasoning for classification
   llm_market_context      String?               // Market context string used in the prompt (for signature verification)
-  
+  llm_full_prompt         String?               // Full prompt (system + user) sent to LLM (for signature verification)
+  max_favorable_excursion  Decimal? @db.Decimal(10, 4)  // Track max MFE over lifetime
+  max_adverse_excursion    Decimal? @db.Decimal(10, 4)  // Track max MAE over lifetime
+  impact_factor  Decimal? @default(0) @db.Decimal(10, 4)  // Store final impact factor
+
   telegram_sources        telegram_sources?     @relation(fields: [source_id], references: [id], onDelete: Cascade)
   telegram_alpha_users    telegram_alpha_users? @relation(fields: [alpha_user_id], references: [id], onDelete: Cascade)
 

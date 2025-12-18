@@ -9,11 +9,16 @@ interface ClassificationResult {
   sentiment: "bullish" | "bearish" | "neutral";
   confidence: number; // 0-1
   reasoning?: string;
+  tokenPrice?: number | null; // Spot price from LunarCrush (USD)
+  timelineWindow?: string | null; // Parsed time window / deadline for the signal
+  takeProfit?: number | null; // Take profit target extracted from signal
+  stopLoss?: number | null; // Stop loss target extracted from signal
   signature?: string; // EigenAI response signature for verification
   rawOutput?: string; // Full raw output from LLM API (for EigenAI signature verification)
   model?: string; // Model used (for EigenAI signature verification)
   chainId?: number; // Chain ID (for EigenAI signature verification)
   marketContext?: string; // Market context used in the prompt (for signature verification)
+  fullPrompt?: string; // Full prompt (system + user) sent to LLM (for signature verification)
 }
 
 type LLMProvider = "eigenai" | "openai";
@@ -74,12 +79,26 @@ export class LLMTweetClassifier {
       marketData ? "YES" : "NO"
     );
 
-    const { prompt, marketContext } = this.buildPromptWithMarketData(tweetText, marketData);
+    const { prompt, marketContext } = this.buildPromptWithMarketData(
+      tweetText,
+      marketData
+    );
+
+    // Build full prompt for signature verification (system + user message)
+    const SYSTEM_MESSAGE = "You are a crypto trading signal analyst. Output ONLY valid JSON. No explanations, no reasoning text outside JSON, ONLY the JSON object. Start with { and end with }.";
+    const fullPrompt = SYSTEM_MESSAGE + prompt;
 
     // Try primary provider first
     try {
-      const result = await this.attemptClassification(prompt, tweetText, this.provider);
+      const result = await this.attemptClassification(
+        prompt,
+        tweetText,
+        this.provider
+      );
       result.marketContext = marketContext;
+      result.fullPrompt = fullPrompt;
+      result.tokenPrice =
+        typeof marketData?.price === "number" ? marketData.price : null;
       return result;
     } catch (primaryError: any) {
       // If EigenAI fails, automatically fallback to OpenAI
@@ -98,8 +117,15 @@ export class LLMTweetClassifier {
           );
 
           try {
-            const result = await this.attemptClassification(prompt, tweetText, "openai");
+            const result = await this.attemptClassification(
+              prompt,
+              tweetText,
+              "openai"
+            );
             result.marketContext = marketContext;
+            result.fullPrompt = fullPrompt;
+            result.tokenPrice =
+              typeof marketData?.price === "number" ? marketData.price : null;
             return result;
           } catch (fallbackError: any) {
             this.logError("openai", fallbackError);
@@ -328,83 +354,72 @@ export class LLMTweetClassifier {
     tweetText: string,
     marketData: any | null
   ): { prompt: string; marketContext: string } {
-    let marketContext = 'NO MARKET DATA AVAILABLE';
-
+    let marketContext = 'NO MARKET DATA';
+  
     if (marketData) {
-      console.log('[LLMClassifier] Market data for prompt:', JSON.stringify(marketData, null, 2));
-
+      console.log('[LLMClassifier] Market data:', JSON.stringify(marketData, null, 2));
+      
       const pct24h = marketData.percent_change_24h ?? 0;
       const pct7d = marketData.percent_change_7d ?? 0;
       const pct30d = marketData.percent_change_30d ?? 0;
       const vol = marketData.volume_24h ?? 0;
       const volM = (vol / 1e6).toFixed(1);
-
-      marketContext = `
-${marketData.symbol}: Price=$${marketData.price?.toFixed(2)}, MCap=$${(marketData.market_cap / 1e9).toFixed(1)}B
-24h=${pct24h.toFixed(2)}% | 7d=${pct7d.toFixed(2)}% | 30d=${pct30d.toFixed(2)}% | Vol=${volM}M
-GalaxyScore=${marketData.galaxy_score} | AltRank=${marketData.alt_rank} | Volatility=${marketData.volatility?.toFixed(4)}`;
+  
+      marketContext = `${marketData.symbol}: $${marketData.price?.toFixed(2)}, MCap=$${(marketData.market_cap / 1e9).toFixed(1)}B
+  24h=${pct24h.toFixed(2)}% | 7d=${pct7d.toFixed(2)}% | 30d=${pct30d.toFixed(2)}% | Vol=${volM}M
+  Galaxy=${marketData.galaxy_score} | Rank=${marketData.alt_rank} | Vol=${marketData.volatility?.toFixed(4)}`;
     }
-
-    const prompt = `Expert elite crypto risk analyst. PRIMARY GOAL: Protect users from losses while identifying real elite opportunities.
-
-SIGNAL: "${tweetText}"
-MARKET: ${marketContext}
-
-DATA MEANING:
-• Price/MCap: Size & liquidity (larger = safer exits)
-• 24h/7d/30d %: Momentum (consistent = stronger, mixed = uncertain)
-• Vol: Liquidity (>50M good, <10M risky, 0 = red flag)
-• GalaxyScore: Strength 0-100 (>70 strong, 50-70 moderate, <50 weak)
-• AltRank: Performance (1-100 excellent, 100-500 average, >500 weak)
-• Volatility: Stability (<0.02 stable, 0.02-0.05 normal, >0.05 risky)
-
-ANALYZE HOLISTICALLY:
-1. Signal clarity (specific targets vs vague sentiment)
-2. Market momentum alignment with signal direction
-3. Risk factors (volatility, volume, contradictions)
-4. Opportunity strength (galaxy score, alt rank, liquidity)
-
-KEY SCENARIOS:
-• BULLISH signal + positive momentum + vol>50M = STRONG (0.7-1.0)
-• BULLISH signal + negative momentum = CONTRADICTION - reduce heavily (0.1-0.3)
-• BEARISH signal + negative momentum + vol>50M = STRONG (0.7-1.0)
-• BEARISH signal + positive momentum = CONTRADICTION - reduce heavily (0.1-0.3)
-• Mixed momentum or low volume = MODERATE risk (0.3-0.6)
-• High volatility >0.05 or AltRank >1000 = PENALIZE (reduce 15-30%)
-• Zero/null data = CONSERVATIVE (max 0.4)
-
-CONFIDENCE BANDS:
-0.8-1.0: Exceptional (clear + aligned + low risk)
-0.6-0.8: Strong (good signal + supportive market)
-0.4-0.6: Moderate (decent OR mixed signals)
-0.2-0.4: Weak (poor signal OR contradicts market)
-0.0-0.2: Very High Risk (reject - will lose money)
-
-LOSS PREVENTION RULES:
-1. Market data > hype (momentum contradicts = low confidence)
-2. Volume critical (low volume = trapped = danger)
-3. Volatility kills (high = unpredictable = lower score)
-4. Contradictions fatal (bullish tweet + bearish market = 0.1-0.3)
-5. Conservative better (miss opportunity > cause loss)
-
-JSON OUTPUT:
-{
-  "isSignalCandidate": boolean,
-  "extractedTokens": ["SYMBOL"],
-  "sentiment": "bullish"|"bearish"|"neutral",
-  "confidence": 0.XX,
-  "reasoning": "Direction: [LONG/SHORT] on TOKEN. Signal clarity: [clear/vague]. Market momentum: [24h/7d/30d analysis]. Alignment: [supports/contradicts signal]. Key risks: [volume/volatility/rank issues]. Strength factors: [galaxy/liquidity/stability]. Confidence X.XX: [why this protects user from losses]."
-}
-
-CRITICAL RULES:
-• isSignalCandidate MUST be true if extractedTokens contains at least one token (regardless of market contradictions)
-• isSignalCandidate is ONLY false if NO token can be extracted from the signal
-• confidence score reflects risk/quality (contradictions = lower confidence, but isSignalCandidate still true if token found)
-• If token extracted but market contradicts: isSignalCandidate=true, confidence=low (0.1-0.3)
-• If token extracted and market aligns: isSignalCandidate=true, confidence=high (0.7-1.0)
-
-CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outside JSON.`;
-
+  
+  const prompt = `Elite crypto risk analyst. GOAL: Protect users from losses, identify real opportunities.
+  
+  SIGNAL: "${tweetText}"
+  MARKET: ${marketContext}
+  
+  DATA GUIDE:
+  • Vol>50M=liquid, <10M=risky, 0=danger | Galaxy>70=strong, <50=weak | Rank<100=excellent, >500=weak
+  • Volatility<0.02=stable, >0.05=risky | 24h/7d/30d %=momentum trend
+  
+  ANALYSIS PRIORITY:
+  1. Extract tokens, direction (bullish/bearish), TP/SL if mentioned, timeline if stated
+  2. Check signal-market alignment: BULLISH+positive momentum=STRONG (0.7-1.0), BULLISH+negative=CONTRADICTION (0.1-0.3)
+  3. Risk penalties: low vol (<10M), high volatility (>0.05), poor rank (>1000), zero data (max 0.4)
+  
+  TP/SL EXTRACTION:
+  • TP: "target $X", "TP at X%", "take profit X", "sell at X" → extract as number/percentage
+  • SL: "stop loss X", "SL at X%", "cut at X", "invalidation X" → extract as number/percentage
+  • If not mentioned, set null
+  
+  TIMELINE EXTRACTION:
+  • Explicit: "by Friday", "this week", "before Jan 31", "in 24h" → extract as string
+  • Implicit or none → null
+  
+  CONFIDENCE BANDS:
+  0.8-1.0: Clear signal + aligned market + low risk
+  0.6-0.8: Good signal + supportive data
+  0.4-0.6: Decent OR mixed signals
+  0.2-0.4: Poor signal OR contradicts market
+  0.0-0.2: High risk (reject)
+  
+  CRITICAL RULES:
+  • isSignalCandidate=true if ANY token extracted (even with contradictions)
+  • isSignalCandidate=false ONLY if NO token found
+  • Contradictions → lower confidence, NOT false signal
+  • Conservative > aggressive (better miss than lose)
+  
+  JSON OUTPUT:
+  {
+    "isSignalCandidate": boolean,
+    "extractedTokens": ["SYMBOL"],
+    "sentiment": "bullish"|"bearish"|"neutral",
+    "confidence": 0.XX,
+    "takeProfit": number|string|null,
+    "stopLoss": number|string|null,
+    "reasoning": "Direction: [LONG/SHORT] TOKEN. Signal: [clear/vague]. Momentum: [24h/7d/30d]. Alignment: [supports/contradicts]. Risks: [vol/volatility/rank]. Confidence X.XX: [why].",
+    "timelineWindow": string|null
+  }
+  
+  Output ONLY valid JSON. Start { end }. NO text outside JSON.`;
+  
     return { prompt, marketContext };
   }
 
@@ -613,9 +628,21 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
 
       // CRITICAL: If tokens were extracted, isSignalCandidate MUST be true
       // (regardless of market contradictions - those affect confidence, not candidate status)
-      const isSignalCandidate = extractedTokens.length > 0 
-        ? true 
-        : Boolean(parsed.isSignalCandidate);
+      const isSignalCandidate =
+        extractedTokens.length > 0
+          ? true
+          : Boolean(parsed.isSignalCandidate);
+
+      // Parse takeProfit and stopLoss (can be number, string percentage, or null)
+      const parseTPSL = (val: any): number | null => {
+        if (val === null || val === undefined) return null;
+        if (typeof val === "number") return val;
+        if (typeof val === "string") {
+          const num = parseFloat(val.replace(/[%$,]/g, ""));
+          return isNaN(num) ? null : num;
+        }
+        return null;
+      };
 
       return {
         isSignalCandidate,
@@ -623,6 +650,12 @@ CRITICAL: Output ONLY valid JSON. Start with { end with }. NO explanations outsi
         sentiment: parsed.sentiment || "neutral",
         confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
         reasoning: parsed.reasoning || "",
+        timelineWindow:
+          typeof parsed.timelineWindow === "string"
+            ? parsed.timelineWindow
+            : null,
+        takeProfit: parseTPSL(parsed.takeProfit),
+        stopLoss: parseTPSL(parsed.stopLoss),
       };
     } catch (error) {
       console.error("[LLM Classifier] Failed to parse LLM response:", error);
