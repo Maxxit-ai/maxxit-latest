@@ -160,6 +160,7 @@ GUIDELINES:
 7. A reason should explicitly mention why it chose the fund allocation and leverage given user's balance and trading preferences. (eg. I've $4300 in balance and given my risk tolerance of 80, I'm allocating 25% of my balance to this trade using 3x leverage.)
 8. Do not mention or suggest that any external service or source (such as LunarCrush or other analytics providers) was used to obtain scores or data in your explanation.
 9. Pay special attention to the trade_frequency parameter in user preferences - higher values indicate the user wants to open multiple positions, so fund allocation should reflect this by allowing capital for multiple trades, while lower values indicate preference for fewer, larger positions.
+10. If the fundsAllocation is 0 then shouldTrade should be false.
 
 VENUE-SPECIFIC NOTES:
 - For HYPERLIQUID: No explicit leverage (it's built into position sizing)

@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 5008;
 const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds default
 
 let workerInterval: NodeJS.Timeout | null = null;
+let isCycleRunning = false;
 
 // Health check server
 const app = express();
@@ -33,6 +34,7 @@ app.get("/health", async (req, res) => {
     interval: INTERVAL,
     database: dbHealthy ? "connected" : "disconnected",
     isRunning: workerInterval !== null,
+    isCycleRunning,
     timestamp: new Date().toISOString(),
   });
 });
@@ -46,6 +48,12 @@ const server = app.listen(PORT, () => {
  * Finds tweets with NULL signal analysis and tries to generate signals
  */
 async function generateAllSignals() {
+  if (isCycleRunning) {
+    console.log("[SignalGenerator] ⏭️ Skipping cycle - previous cycle still running");
+    return;
+  }
+
+  isCycleRunning = true;
   console.log("[SignalGenerator] ⏰ Running signal generation cycle...");
   
   try {
@@ -155,6 +163,8 @@ async function generateAllSignals() {
     console.log("[SignalGenerator] ✅ Signal generation cycle complete");
   } catch (error: any) {
     console.error("[SignalGenerator] ❌ Fatal error:", error.message);
+  } finally {
+    isCycleRunning = false;
   }
 }
 

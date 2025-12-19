@@ -16,6 +16,7 @@ const PORT = process.env.PORT || 5001;
 const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "600000"); // 10 minutes default
 
 let workerInterval: NodeJS.Timeout | null = null;
+let isCycleRunning = false;
 
 // Health check server
 const app = express();
@@ -27,6 +28,7 @@ app.get("/health", async (req, res) => {
     interval: INTERVAL,
     database: dbHealthy ? "connected" : "disconnected",
     isRunning: workerInterval !== null,
+    isCycleRunning,
     timestamp: new Date().toISOString(),
   });
 });
@@ -43,6 +45,12 @@ const server = app.listen(PORT, () => {
  * We must only execute a signal for its designated deployment, not for all deployments.
  */
 async function executeAllPendingSignals() {
+  if (isCycleRunning) {
+    console.log("[TradeExecutor] ⏭️ Skipping cycle - previous cycle still running");
+    return;
+  }
+
+  isCycleRunning = true;
   console.log("[TradeExecutor] ⏰ Running trade execution cycle...");
 
   try {
@@ -80,7 +88,9 @@ async function executeAllPendingSignals() {
         llm_should_trade: true,
         llm_fund_allocation: { gt: 0 },
         agents: {
-          status: "PUBLIC", // Only execute for public agents
+          status: {
+            in: ["PUBLIC", "PRIVATE"]
+          },
         },
       },
       include: {
@@ -180,6 +190,8 @@ async function executeAllPendingSignals() {
     console.log("[TradeExecutor] ✅ Trade execution cycle complete");
   } catch (error: any) {
     console.error("[TradeExecutor] ❌ Fatal error in execution cycle:", error);
+  } finally {
+    isCycleRunning = false;
   }
 }
 
