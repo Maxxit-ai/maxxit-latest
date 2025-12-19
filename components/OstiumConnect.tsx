@@ -44,6 +44,8 @@ export function OstiumConnect({
   // Trading preferences stored locally until all approvals complete
   const [tradingPreferences, setTradingPreferences] = useState<TradingPreferences | null>(null);
   const tradingPreferencesRef = useRef<TradingPreferences | null>(null); // ensures latest prefs are used in async flows
+  const [firstDeploymentPreferences, setFirstDeploymentPreferences] = useState<TradingPreferences | null>(null);
+  const [loadingFirstDeploymentPreferences, setLoadingFirstDeploymentPreferences] = useState(false);
 
   // Guard refs to prevent duplicate API calls
   const isCheckingRef = useRef(false);
@@ -54,6 +56,15 @@ export function OstiumConnect({
     // If already authenticated when component mounts, go to preferences step first
     if (authenticated && user?.wallet?.address && step === 'connect' && !hasInitialized) {
       setHasInitialized(true);
+      // Load first deployment preferences if they exist
+      setLoadingFirstDeploymentPreferences(true);
+      loadFirstDeploymentPreferences().then((prefs) => {
+        if (prefs) {
+          setFirstDeploymentPreferences(prefs);
+          console.log('[OstiumConnect] Set first deployment preferences:', prefs);
+        }
+        setLoadingFirstDeploymentPreferences(false);
+      });
       // Always show preferences as first step for new deployments
       setStep('preferences');
     }
@@ -500,6 +511,34 @@ export function OstiumConnect({
     checkSetupStatus();
   };
 
+  const loadFirstDeploymentPreferences = async () => {
+    if (!user?.wallet?.address) return null;
+
+    try {
+      const response = await fetch(
+        `/api/user/first-deployment-preferences?userWallet=${user.wallet.address}&agentId=${agentId}`
+      );
+
+      if (!response.ok) {
+        console.warn('[OstiumConnect] Failed to load first deployment preferences');
+        return null;
+      }
+
+      const data = await response.json();
+
+      if (data.isFirstDeployment) {
+        console.log('[OstiumConnect] This is the first deployment - using default preferences');
+        return null;
+      }
+
+      console.log('[OstiumConnect] Loaded first deployment preferences:', data.preferences);
+      return data.preferences;
+    } catch (err) {
+      console.error('[OstiumConnect] Error loading first deployment preferences:', err);
+      return null;
+    }
+  };
+
   const goBack = () => {
     if (step === 'preferences') {
       setStep('connect');
@@ -717,21 +756,29 @@ export function OstiumConnect({
                   <div>
                     <h3 className="font-display text-lg">Set Your Trading Preferences</h3>
                     <p className="text-xs text-[var(--text-muted)]">
-                      Configure how this agent should size and filter trades for you.
+                      {firstDeploymentPreferences
+                        ? 'Using values from your first deployment. Adjust as needed.'
+                        : 'Configure how this agent should size and filter trades for you.'}
                     </p>
                   </div>
                 </div>
 
                 <div className="border border-[var(--border)] bg-[var(--bg-deep)] flex flex-col max-h-[60vh]">
-                  <TradingPreferencesForm
-                    userWallet={user?.wallet?.address || ''}
-                    onClose={onClose}
-                    onBack={goBack}
-                    localOnly={true}
-                    onSaveLocal={handlePreferencesSet}
-                    primaryLabel={loading ? 'Saving...' : 'Save & Continue'}
-                    initialPreferences={tradingPreferences || undefined}
-                  />
+                  {loadingFirstDeploymentPreferences ? (
+                    <div className="flex items-center justify-center py-20">
+                      <Activity className="w-8 h-8 text-[var(--accent)] animate-spin" />
+                    </div>
+                  ) : (
+                    <TradingPreferencesForm
+                      userWallet={user?.wallet?.address || ''}
+                      onClose={onClose}
+                      onBack={goBack}
+                      localOnly={true}
+                      onSaveLocal={handlePreferencesSet}
+                      primaryLabel={loading ? 'Saving...' : 'Save & Continue'}
+                      initialPreferences={firstDeploymentPreferences || tradingPreferences || undefined}
+                    />
+                  )}
                 </div>
               </div>
             ) : step === 'agent' ? (
