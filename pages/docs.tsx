@@ -48,6 +48,7 @@ export default function DocsPage() {
 
   const scrollToSection = (id: string) => {
     setActiveSection(id);
+    console.log("Scrolling to section: ", id);
     const element = document.getElementById(id);
     if (element) {
       // Get the header height (sticky header)
@@ -1257,4 +1258,3 @@ export default function DocsPage() {
     </div>
   );
 }
-

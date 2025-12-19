@@ -16,6 +16,9 @@ import { ResearchInstituteSelector } from '@components/ResearchInstituteSelector
 import { TelegramAlphaUserSelector } from '@components/TelegramAlphaUserSelector';
 import { CtAccountSelector } from '@components/CtAccountSelector';
 import { FaXTwitter } from 'react-icons/fa6';
+import dynamic from 'next/dynamic';
+import { STATUS } from 'react-joyride';
+import type { CallBackProps, Step as JoyrideStep } from 'react-joyride';
 
 const wizardSchema = insertAgentSchema.extend({
   description: z.string().max(500).optional(),
@@ -27,6 +30,10 @@ export default function CreateAgent() {
   const router = useRouter();
   const { authenticated, user, login } = usePrivy();
   const [step, setStep] = useState(1);
+  const [runJoyride, setRunJoyride] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  // Track which wizard steps have completed the tour (per-step)
+  const [completedTourSteps, setCompletedTourSteps] = useState<number[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
@@ -47,9 +54,21 @@ export default function CreateAgent() {
   const [isSigningProof, setIsSigningProof] = useState(false);
 
   const [selectedCtAccounts, setSelectedCtAccounts] = useState<Set<string>>(new Set());
-
   const [selectedResearchInstitutes, setSelectedResearchInstitutes] = useState<string[]>([]);
   const [selectedTelegramUsers, setSelectedTelegramUsers] = useState<Set<string>>(new Set());
+
+  const Joyride = dynamic(() => import('react-joyride'), { ssr: false });
+
+  // Detailed data for review step
+  const [reviewData, setReviewData] = useState<{
+    researchInstitutes: Array<{ id: string; name: string; description: string | null; x_handle: string | null }>;
+    ctAccounts: Array<{ id: string; xUsername: string; displayName: string | null; followersCount: number | null }>;
+    telegramUsers: Array<{ id: string; telegram_username: string | null; first_name: string | null; last_name: string | null }>;
+  }>({
+    researchInstitutes: [],
+    ctAccounts: [],
+    telegramUsers: [],
+  });
 
   const {
     register,
@@ -80,6 +99,41 @@ export default function CreateAgent() {
       setValue('profitReceiverAddress', user.wallet.address, { shouldValidate: true, shouldDirty: true });
     }
   }, [authenticated, user?.wallet?.address, setValue]);
+
+  // Joyride: ensure client-side only & load per-step completion flags
+  useEffect(() => {
+    setIsMounted(true);
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = window.localStorage.getItem('createAgentTourCompletedSteps');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            const validSteps = parsed.filter(
+              (n: unknown) => typeof n === 'number' && n >= 1 && n <= 8
+            ) as number[];
+            setCompletedTourSteps(validSteps);
+          }
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  // Joyride: retrigger on step change if this step's tour hasn't been completed
+  useEffect(() => {
+    if (!isMounted) return;
+    if (completedTourSteps.includes(step)) return;
+
+    // Reset and restart joyride with a longer delay to prevent flickering
+    setRunJoyride(false);
+    const timer = setTimeout(() => {
+      setRunJoyride(true);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [step, isMounted, completedTourSteps]);
 
   const toggleCtAccount = (accountId: string) => {
     const newSelected = new Set(selectedCtAccounts);
@@ -284,12 +338,63 @@ export default function CreateAgent() {
   const steps = [
     { number: 1, label: 'BASIC', icon: User },
     { number: 2, label: 'VENUE', icon: Building2 },
-    { number: 3, label: 'RESEARCH', icon: Sliders },
+    { number: 3, label: 'STRATEGY', icon: Sliders },
     { number: 4, label: 'CT', icon: FaXTwitter },
     { number: 5, label: 'TELEGRAM', icon: Send },
     { number: 6, label: 'WALLET', icon: Wallet },
     { number: 7, label: 'PROOF', icon: Shield },
     { number: 8, label: 'REVIEW', icon: Eye },
+  ];
+
+  const joyrideSteps: JoyrideStep[] = [
+    {
+      target: '[data-tour="step-1"]',
+      content: 'Start by naming your agent and describing its trading style. This helps you recognize it later.',
+      disableBeacon: true,
+      placement: 'top',
+    },
+    {
+      target: '[data-tour="step-2"]',
+      content: 'Choose where your agent will route trades. Multi-venue automatically picks the best venue.',
+      disableBeacon: true,
+      placement: 'top',
+    },
+    {
+      target: '[data-tour="step-3"]',
+      content: 'Select research institutes whose signals your agent will follow with a fixed allocation.',
+      disableBeacon: true,
+      placement: 'top',
+    },
+    {
+      target: '[data-tour="step-4"]',
+      content: 'Pick CT accounts to mirror. Your agent will react when these accounts post signals.',
+      disableBeacon: true,
+      placement: 'top',
+    },
+    {
+      target: '[data-tour="step-5"]',
+      content: 'Connect Telegram alpha sources whose DM signals your agent should execute.',
+      disableBeacon: true,
+      placement: 'top',
+    },
+    {
+      target: '[data-tour="step-6"]',
+      content: 'Set the owner wallet and profit receiver for this agent.',
+      disableBeacon: true,
+      placement: 'top',
+    },
+    {
+      target: '[data-tour="step-7"]',
+      content: 'Sign a message proving you are the legitimate creator of this agent.',
+      disableBeacon: true,
+      placement: 'top',
+    },
+    {
+      target: '[data-tour="step-8"]',
+      content: 'Review every choice before creating your agent. Use Edit to jump back and adjust.',
+      disableBeacon: true,
+      placement: 'top',
+    },
   ];
 
   const stepDescriptions: Record<number, string> = {
@@ -303,9 +408,138 @@ export default function CreateAgent() {
     8: 'Review all settings before creating your agent.',
   };
 
+  // When user reaches the final step, refresh review data (but don't change tour visibility)
+  useEffect(() => {
+    if (step === 8) {
+      fetchReviewData();
+    }
+  }, [step]);
+
+  const handleJoyrideCallback = (data: CallBackProps) => {
+    const { status, action } = data;
+
+    // Only handle completion, ignore all other events to prevent interference
+    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status as any)) {
+      setRunJoyride(false);
+      try {
+        if (typeof window !== 'undefined') {
+          // Mark this specific step as completed and persist
+          setCompletedTourSteps((prev) => {
+            if (prev.includes(step)) return prev;
+            const updated = [...prev, step];
+            window.localStorage.setItem(
+              'createAgentTourCompletedSteps',
+              JSON.stringify(updated)
+            );
+            return updated;
+          });
+        }
+      } catch (e) {
+        console.log("Error saving tour progress:", e);
+      }
+    }
+  };
+
+  const fetchReviewData = async () => {
+    try {
+      const researchResponse = await fetch('/api/research-institutes');
+      const researchJson = await researchResponse.json();
+      const selectedInstitutes =
+        researchJson.institutes?.filter((inst: any) =>
+          selectedResearchInstitutes.includes(inst.id)
+        ) || [];
+
+      // CT accounts
+      const ctAccountsData = await db.get('ct_accounts');
+      const selectedCtAccountsData =
+        ctAccountsData?.filter((acc: any) => selectedCtAccounts.has(acc.id)) || [];
+
+      // Telegram users
+      const telegramResponse = await fetch('/api/telegram-alpha-users');
+      const telegramJson = await telegramResponse.json();
+      const selectedTelegramData =
+        telegramJson.alphaUsers?.filter((u: any) => selectedTelegramUsers.has(u.id)) || [];
+
+      setReviewData({
+        researchInstitutes: selectedInstitutes,
+        ctAccounts: selectedCtAccountsData,
+        telegramUsers: selectedTelegramData,
+      });
+    } catch (err) {
+      console.error('Failed to fetch review data', err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg-deep)]">
       <Header />
+      {isMounted && !completedTourSteps.includes(step) && (
+        <Joyride
+          steps={[joyrideSteps[step - 1]]}
+          run={runJoyride}
+          continuous={false}
+          showSkipButton={false}
+          showProgress={false}
+          hideBackButton
+          disableOverlayClose
+          disableScrolling={true}
+          disableScrollParentFix={true}
+          scrollToFirstStep={false}
+          scrollOffset={0}
+          callback={handleJoyrideCallback}
+          floaterProps={{
+            disableAnimation: true,
+            options: {
+              preventOverflow: {
+                enabled: true,
+                boundariesElement: 'viewport',
+                padding: 20,
+              },
+              flip: {
+                enabled: true,
+              },
+            },
+          }}
+          styles={{
+            options: {
+              zIndex: 10000,
+              primaryColor: 'var(--accent)',
+              backgroundColor: 'var(--bg-elevated)',
+              textColor: 'var(--text-primary)',
+              arrowColor: 'var(--bg-elevated)',
+            },
+            tooltip: {
+              padding: 20,
+              border: '1px solid var(--border)',
+              boxShadow: '0 18px 45px rgba(0,0,0,0.55)',
+              borderRadius: '8px',
+              maxWidth: 'min(320px, calc(100vw - 20px))',
+              width: 'auto',
+              minWidth: '250px',
+            },
+            tooltipContainer: {
+              textAlign: 'left',
+            },
+            buttonNext: {
+              backgroundColor: 'var(--accent)',
+              color: 'var(--bg-deep)',
+              fontWeight: 'bold',
+              padding: '8px 18px',
+              borderRadius: '4px',
+              border: 'none',
+            },
+            beacon: {
+              display: 'none',
+            },
+            overlay: {
+              display: 'none',
+            },
+            spotlight: {
+              display: 'none',
+            },
+          }}
+        />
+      )}
       <div className="max-w-4xl mx-auto px-6 py-12">
         {/* Title */}
         <div className="text-center mb-12">
@@ -367,7 +601,7 @@ export default function CreateAgent() {
         <form onSubmit={handleSubmit(onSubmit)} className="border border-[var(--border)] bg-[var(--bg-surface)] p-8">
           {/* Step 1: Basic Info */}
           {step === 1 && (
-            <div className="space-y-6">
+            <div className="space-y-6" data-tour="step-1">
               <h2 className="font-display text-2xl mb-6">BASIC INFORMATION</h2>
               <div>
                 <label className="data-label block mb-2">AGENT NAME *</label>
@@ -396,7 +630,7 @@ export default function CreateAgent() {
 
           {/* Step 2: Venue */}
           {step === 2 && (
-            <div className="space-y-6">
+            <div className="space-y-6" data-tour="step-2">
               <h2 className="font-display text-2xl mb-6">TRADING VENUE</h2>
               <div className="border border-[var(--accent)] bg-[var(--accent)]/10 p-6 shadow-[0_0_20px_rgba(0,255,136,0.1)]">
                 <div className="flex items-start gap-3 mb-4">
@@ -462,7 +696,7 @@ export default function CreateAgent() {
 
           {/* Step 3: Research Institutes */}
           {step === 3 && (
-            <div className="space-y-6">
+            <div className="space-y-6" data-tour="step-3">
               <h2 className="font-display text-2xl mb-2">RESEARCH INSTITUTES</h2>
               <p className="text-[var(--text-secondary)] text-sm mb-6">Choose which institutes your agent should follow for signals.</p>
               <ResearchInstituteSelector selectedIds={selectedResearchInstitutes} onChange={setSelectedResearchInstitutes} />
@@ -478,17 +712,19 @@ export default function CreateAgent() {
 
           {/* Step 4: CT Accounts */}
           {step === 4 && (
-            <CtAccountSelector
-              selectedIds={selectedCtAccounts}
-              onToggle={toggleCtAccount}
-              onNext={nextStep}
-              onBack={prevStep}
-            />
+            <div data-tour="step-4">
+              <CtAccountSelector
+                selectedIds={selectedCtAccounts}
+                onToggle={toggleCtAccount}
+                onNext={nextStep}
+                onBack={prevStep}
+              />
+            </div>
           )}
 
           {/* Step 5: Telegram */}
           {step === 5 && (
-            <div className="space-y-6">
+            <div className="space-y-6" data-tour="step-5">
               <h2 className="font-display text-2xl mb-2">TELEGRAM ALPHA</h2>
               <p className="text-[var(--text-secondary)] text-sm mb-6">Select Telegram users whose DM signals your agent should follow.</p>
               <TelegramAlphaUserSelector
@@ -509,7 +745,7 @@ export default function CreateAgent() {
 
           {/* Step 6: Wallet */}
           {step === 6 && (
-            <div className="space-y-6">
+            <div className="space-y-6" data-tour="step-6">
               <h2 className="font-display text-2xl mb-6">WALLET SETUP</h2>
               {!authenticated && (
                 <div className="p-4 border border-[var(--accent)] bg-[var(--accent)]/10 mb-4 shadow-[0_0_20px_rgba(0,255,136,0.1)]">
@@ -547,7 +783,7 @@ export default function CreateAgent() {
 
           {/* Step 7: Proof of Intent */}
           {step === 7 && (
-            <div className="space-y-6">
+            <div className="space-y-6" data-tour="step-7">
               <h2 className="font-display text-2xl mb-6">PROOF OF INTENT</h2>
               <p className="text-[var(--text-secondary)] text-sm mb-6">Sign a message to prove your intent to create this agent.</p>
 
@@ -602,11 +838,12 @@ export default function CreateAgent() {
 
           {/* Step 8: Review */}
           {step === 8 && (
-            <div className="space-y-6">
+            <div className="space-y-6" data-tour="step-8">
               <h2 className="font-display text-2xl mb-2">REVIEW</h2>
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                 <p className="text-sm text-[var(--text-secondary)]">
-                  Review your agent configuration. To change anything, jump back to a step below.
+                  Review your agent configuration. To change anything, jump back to a step below or use the Edit
+                  controls on each card.
                 </p>
                 <div className="flex items-center gap-2">
                   <label className="data-label text-xs">JUMP TO STEP</label>
@@ -631,41 +868,252 @@ export default function CreateAgent() {
                   </select>
                 </div>
               </div>
+
               <div className="space-y-4">
+                {/* Basic Info */}
                 <div className="p-4 border border-[var(--border)] bg-[var(--bg-elevated)]">
-                  <p className="data-label mb-1">NAME</p>
-                  <p className="font-bold text-[var(--text-primary)]">{formData.name}</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="data-label">BASIC INFORMATION</p>
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="text-xs text-[var(--accent)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <p className="font-bold text-[var(--text-primary)] mb-1">{formData.name || 'Untitled agent'}</p>
+                  {formData.description && (
+                    <p className="text-sm text-[var(--text-secondary)]">{formData.description}</p>
+                  )}
                 </div>
+
+                {/* Venue */}
                 <div className="p-4 border border-[var(--border)] bg-[var(--bg-elevated)]">
-                  <p className="data-label mb-1">VENUE</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="data-label">TRADING VENUE</p>
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="text-xs text-[var(--accent)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
                   <p className="font-bold text-[var(--text-primary)]">{formData.venue}</p>
                 </div>
+
+                {/* Research Institutes */}
                 <div className="p-4 border border-[var(--border)] bg-[var(--bg-elevated)]">
-                  <p className="data-label mb-1">CT ACCOUNTS</p>
-                  <p className="font-bold text-[var(--text-primary)]">{selectedCtAccounts.size} selected</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="data-label">
+                      RESEARCH INSTITUTES ({selectedResearchInstitutes.length} selected)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setStep(3)}
+                      className="text-xs text-[var(--accent)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {reviewData.researchInstitutes.length > 0 ? (
+                    <div className="space-y-2 mt-3">
+                      {reviewData.researchInstitutes.map((inst) => (
+                        <div
+                          key={inst.id}
+                          className="p-3 bg-[var(--bg-deep)] border border-[var(--border)] rounded flex items-start justify-between gap-3"
+                        >
+                          <div className="flex-1">
+                            <p className="font-semibold text-[var(--text-primary)]">{inst.name}</p>
+                            {inst.description && (
+                              <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">
+                                {inst.description}
+                              </p>
+                            )}
+                            {inst.x_handle && (
+                              <a
+                                href={`https://x.com/${inst.x_handle}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-[var(--accent)] hover:underline mt-1 inline-flex items-center gap-1"
+                              >
+                                <Twitter className="h-3 w-3" />
+                                @{inst.x_handle}
+                              </a>
+                            )}
+                          </div>
+                          <Check className="h-4 w-4 text-[var(--accent)] flex-shrink-0" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)] mt-1">
+                      No research institutes resolved yet. They will appear here once loaded.
+                    </p>
+                  )}
                 </div>
+
+                {/* CT Accounts */}
                 <div className="p-4 border border-[var(--border)] bg-[var(--bg-elevated)]">
-                  <p className="data-label mb-1">RESEARCH INSTITUTES</p>
-                  <p className="font-bold text-[var(--text-primary)]">{selectedResearchInstitutes.length} selected</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="data-label">
+                      CT ACCOUNTS ({selectedCtAccounts.size} selected)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setStep(4)}
+                      className="text-xs text-[var(--accent)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {reviewData.ctAccounts.length > 0 ? (
+                    <div className="space-y-2 mt-3">
+                      {reviewData.ctAccounts.map((acc) => (
+                        <div
+                          key={acc.id}
+                          className="p-3 bg-[var(--bg-deep)] border border-[var(--border)] rounded flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <FaXTwitter className="h-4 w-4 text-[var(--accent)]" />
+                            <div className="flex-1">
+                              <p className="font-semibold text-[var(--text-primary)]">@{acc.xUsername}</p>
+                              {acc.displayName && (
+                                <p className="text-xs text-[var(--text-secondary)]">{acc.displayName}</p>
+                              )}
+                              {typeof acc.followersCount === 'number' && (
+                                <p className="text-xs text-[var(--text-muted)] mt-1">
+                                  {acc.followersCount.toLocaleString()} followers
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Check className="h-4 w-4 text-[var(--accent)] flex-shrink-0" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)] mt-1">
+                      No CT accounts resolved yet. They will appear here once loaded.
+                    </p>
+                  )}
                 </div>
+
+                {/* Telegram Users */}
                 <div className="p-4 border border-[var(--border)] bg-[var(--bg-elevated)]">
-                  <p className="data-label mb-1">TELEGRAM USERS</p>
-                  <p className="font-bold text-[var(--text-primary)]">{selectedTelegramUsers.size} selected</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="data-label">
+                      TELEGRAM USERS ({selectedTelegramUsers.size} selected)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setStep(5)}
+                      className="text-xs text-[var(--accent)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {reviewData.telegramUsers.length > 0 ? (
+                    <div className="space-y-2 mt-3">
+                      {reviewData.telegramUsers.map((u) => {
+                        const displayName = u.telegram_username
+                          ? `@${u.telegram_username}`
+                          : u.first_name
+                            ? `${u.first_name} ${u.last_name || ''}`.trim()
+                            : 'Telegram User';
+                        return (
+                          <div
+                            key={u.id}
+                            className="p-3 bg-[var(--bg-deep)] border border-[var(--border)] rounded flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3 flex-1">
+                              <Send className="h-4 w-4 text-[var(--accent)]" />
+                              <p className="font-semibold text-[var(--text-primary)]">{displayName}</p>
+                            </div>
+                            <Check className="h-4 w-4 text-[var(--accent)] flex-shrink-0" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)] mt-1">
+                      No Telegram users resolved yet. They will appear here once loaded.
+                    </p>
+                  )}
                 </div>
+
+                {/* Wallet configuration */}
                 <div className="p-4 border border-[var(--border)] bg-[var(--bg-elevated)]">
-                  <p className="data-label mb-1">WALLET</p>
-                  <p className="font-mono text-sm text-[var(--text-primary)] break-all">{formData.creatorWallet}</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="data-label">WALLET CONFIGURATION</p>
+                    <button
+                      type="button"
+                      onClick={() => setStep(6)}
+                      className="text-xs text-[var(--accent)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="space-y-2 mt-2">
+                    <div>
+                      <p className="text-xs text-[var(--text-muted)] mb-1">Creator Wallet</p>
+                      <p className="font-mono text-xs text-[var(--text-primary)] break-all bg-[var(--bg-deep)] p-2 rounded border border-[var(--border)]">
+                        {formData.creatorWallet || 'Not set'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[var(--text-muted)] mb-1">Profit Receiver (20% of profits)</p>
+                      <p className="font-mono text-xs text-[var(--text-primary)] break-all bg-[var(--bg-deep)] p-2 rounded border border-[var(--border)]">
+                        {formData.profitReceiverAddress || 'Defaults to creator wallet'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                {formData.description && (
-                  <div className="p-4 border border-[var(--border)] bg-[var(--bg-elevated)]">
-                    <p className="data-label mb-1">DESCRIPTION</p>
-                    <p className="text-sm text-[var(--text-secondary)]">{formData.description}</p>
+
+                {/* Proof of Intent summary */}
+                {proofOfIntent && (
+                  <div className="p-4 border border-[var(--accent)] bg-[var(--accent)]/10">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="data-label text-[var(--accent)]">PROOF OF INTENT</p>
+                      <button
+                        type="button"
+                        onClick={() => setStep(7)}
+                        className="text-xs text-[var(--accent)] hover:underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <div className="flex items-start gap-2 mt-2">
+                      <Check className="h-5 w-5 text-[var(--accent)] mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm text-[var(--text-primary)] font-semibold">Signed and Verified</p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">
+                          Timestamp: {proofOfIntent.timestamp.toLocaleString()}
+                        </p>
+                        <p className="text-xs font-mono text-[var(--text-muted)] mt-1 break-all">
+                          {proofOfIntent.signature.slice(0, 20)}...{proofOfIntent.signature.slice(-20)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
+
               <div className="flex gap-4">
-                <button type="button" onClick={prevStep} disabled={isSubmitting} className="flex-1 py-4 border border-[var(--border)] font-bold hover:border-[var(--text-primary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">BACK</button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={prevStep}
+                  disabled={isSubmitting}
+                  className="flex-1 py-4 border border-[var(--border)] font-bold hover:border-[var(--text-primary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  BACK
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
                   {isSubmitting ? <><Activity className="h-5 w-5 animate-pulse" />CREATING...</> : 'CREATE AGENT'}
                 </button>
               </div>
