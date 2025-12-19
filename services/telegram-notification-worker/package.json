@@ -1,25 +1,30 @@
 {
   "name": "@maxxit/telegram-notification-worker",
   "version": "1.0.0",
-  "description": "Maxxit Telegram Notification Worker - Sends trade notifications to users",
+  "description": "Maxxit Telegram Notification Worker - Sends trade notifications to users (BullMQ-powered)",
   "main": "dist/worker.js",
   "scripts": {
     "dev": "tsx watch src/worker.ts",
     "build": "tsc",
-    "start": "node dist/worker.js"
+    "start": "node dist/worker.js",
+    "start:scanner": "WORKER_MODE=scanner node dist/worker.js",
+    "start:processor": "WORKER_MODE=processor node dist/worker.js"
   },
   "keywords": [
     "microservice",
     "worker",
     "telegram",
-    "notifications"
+    "notifications",
+    "bullmq"
   ],
   "author": "Maxxit",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.2",
+    "bullmq": "^5.60.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "ioredis": "^5.8.0",
     "@maxxit/database": "*",
     "@maxxit/common": "*"
   },
