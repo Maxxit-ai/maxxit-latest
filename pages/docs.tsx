@@ -188,16 +188,16 @@ export default function DocsPage() {
                       </p>
                     </li>
                     <li>
-                      <strong className="text-[var(--accent)]">Browse the Agent Marketplace</strong>
+                      <strong className="text-[var(--accent)]">Browse the Alpha Club Marketplace</strong>
                       <p className="ml-6 text-sm text-[var(--text-secondary)] mt-1">
-                        Explore agents created by the community. Each agent uses multi-parameter analysis with its own unique strategy configuration.
-                        Review performance metrics and risk parameters before deploying.
+                        Explore clubs created by the community. Each club uses multi-parameter analysis with its own unique strategy configuration.
+                        Review performance metrics and risk parameters before joining.
                       </p>
                     </li>
                     <li>
-                      <strong className="text-[var(--accent)]">Deploy an Agent</strong>
+                      <strong className="text-[var(--accent)]">Join an Alpha Club</strong>
                       <p className="ml-6 text-sm text-[var(--text-secondary)] mt-1">
-                        When you deploy an agent, you approve it to trade on your behalf via Ostium's delegation system. 
+                        When you join a club, you approve the agent to trade on your behalf via Ostium's delegation system. 
                         The agent can open/close positions but <strong className="text-[var(--accent)]">CANNOT withdraw funds</strong>.
                       </p>
                     </li>
@@ -219,12 +219,12 @@ export default function DocsPage() {
                   <div className="flex gap-3">
                     <Link href="/create-agent">
                       <Button data-testid="button-create-agent">
-                        Create Your Own Agent
+                        Create Your Own Club
                       </Button>
                     </Link>
                     <Link href="/">
                       <Button variant="outline" data-testid="button-browse-agents">
-                        Browse Agents
+                        Browse Clubs
                       </Button>
                     </Link>
                   </div>
@@ -263,7 +263,7 @@ export default function DocsPage() {
                         <div>
                           <h5 className="font-semibold text-sm">Agent Delegation</h5>
                           <p className="text-sm text-[var(--text-secondary)]">
-                            When you deploy an agent, you approve it to trade on your behalf via Ostium's delegation system. This grants the agent
+                            When you join a club, you approve the agent to trade on your behalf via Ostium's delegation system. This grants the agent
                             permission to open/close positions but <strong className="text-[var(--danger)]">NOT to withdraw funds</strong>.
                           </p>
                         </div>
@@ -651,10 +651,10 @@ export default function DocsPage() {
                           2
                         </div>
                         <div>
-                          <h5 className="font-semibold text-sm">Deploy Agent</h5>
+                          <h5 className="font-semibold text-sm">Join Club</h5>
                           <p className="text-sm text-[var(--text-secondary)]">
-                            Select an agent from the marketplace. Maxxit creates a dedicated agent wallet
-                            that will execute trades on your behalf.
+                            Select a club from the marketplace. Maxxit assigns an agent with a dedicated trading wallet
+                            to execute trades on your behalf.
                           </p>
                         </div>
                       </div>
@@ -664,7 +664,7 @@ export default function DocsPage() {
                           3
                         </div>
                         <div>
-                          <h5 className="font-semibold text-sm">Approve Agent (One-Time)</h5>
+                          <h5 className="font-semibold text-sm">Approve Club (One-Time)</h5>
                           <p className="text-sm text-[var(--text-secondary)]">
                             Sign a transaction approving the agent to trade on your behalf. This grants permission
                             to open/close positions but <strong className="text-[var(--accent)]">NOT to withdraw funds</strong>.
@@ -819,7 +819,7 @@ export default function DocsPage() {
                     </p>
                     <p className="text-sm text-[var(--text-primary)] leading-relaxed">
                       <strong className="text-[var(--danger)]">Cryptocurrency trading involves substantial risk of loss.</strong> Automated trading systems can experience significant losses,
-                      especially in volatile markets. <strong className="text-[var(--danger)]">Only invest capital you can afford to lose completely.</strong> Past performance of agents
+                      especially in volatile markets.                       <strong className="text-[var(--danger)]">Only invest capital you can afford to lose completely.</strong> Past performance of clubs
                       does not guarantee future results. You may lose your entire investment.
                     </p>
                   </div>
@@ -830,7 +830,7 @@ export default function DocsPage() {
                       <li><strong className="text-[var(--danger)]">Market Volatility:</strong> Crypto prices can drop 20-50%+ in minutes during flash crashes</li>
                       <li><strong className="text-[var(--danger)]">Leverage Risk:</strong> Leveraged positions amplify both gains and losses</li>
                       <li><strong className="text-[var(--danger)]">Liquidation:</strong> Positions can be liquidated if margin requirements aren't met</li>
-                      <li><strong className="text-[var(--danger)]">Agent Performance:</strong> Strategies may underperform or fail in certain market conditions</li>
+                      <li><strong className="text-[var(--danger)]">Club Performance:</strong> Strategies may underperform or fail in certain market conditions</li>
                     </ul>
                   </div>
 
@@ -856,7 +856,7 @@ export default function DocsPage() {
                     </p>
                     <p className="text-sm mt-2 font-semibold text-[var(--accent)]">
                       ✅ Maxxit's Non-Custodial Advantage: If Maxxit's servers were compromised or shut down, <strong className="text-[var(--accent)]">your funds remain 100% safe
-                        in your wallet</strong>. Simply revoke the agent and you retain full control.
+                        in your wallet</strong>. Simply revoke agent access and you retain full control.
                     </p>
                   </div>
 
@@ -865,12 +865,12 @@ export default function DocsPage() {
                   <div className="space-y-2 text-sm">
                     <h4 className="font-semibold">Best Practices</h4>
                     <ul className="list-disc list-inside space-y-1 text-[var(--text-primary)] ml-2">
-                      <li>Start with small position sizes to test agents</li>
-                      <li>Diversify across multiple agents and markets</li>
-                      <li>Monitor your deployments via dashboard or Telegram</li>
-                      <li>Review agent performance before deploying</li>
+                      <li>Start with small position sizes to test clubs</li>
+                      <li>Diversify across multiple clubs and markets</li>
+                      <li>Monitor your memberships via dashboard or Telegram</li>
+                      <li>Review club performance before joining</li>
                       <li>Set realistic expectations — most strategies have 40-60% win rates</li>
-                      <li>Revoke agent access if you want to pause trading</li>
+                      <li>Revoke club access if you want to pause trading</li>
                     </ul>
                   </div>
 

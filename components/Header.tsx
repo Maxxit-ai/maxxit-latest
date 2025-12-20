@@ -17,9 +17,9 @@ export function Header() {
 
   const navLinks = [
     { href: '/', label: 'Home', icon: Home, testId: 'nav-home' },
-    { href: '/my-deployments', label: 'Deployments', icon: Wallet, testId: 'nav-deployments' },
+    { href: '/my-deployments', label: 'My Clubs', icon: Wallet, testId: 'nav-deployments' },
     { href: '/my-trades', label: 'My Trades', icon: TrendingUp, testId: 'nav-my-trades' },
-    { href: '/creator', label: 'My Agents', icon: User, testId: 'nav-my-agents' },
+    { href: '/creator', label: 'Create Club', icon: User, testId: 'nav-my-agents' },
     { href: '/blog', label: 'Blog', icon: BookOpen, testId: 'nav-blog' },
     { href: '/docs', label: 'Docs', icon: FileText, testId: 'nav-docs' },
   ];
