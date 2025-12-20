@@ -212,29 +212,35 @@ async function generateSignalForAgentAndToken(
         );
       } else {
         // Ostium not available, check Hyperliquid
-        const hyperliquidMarket = await prisma.venue_markets.findFirst({
-          where: {
-            token_symbol: token.toUpperCase(),
-            venue: "HYPERLIQUID",
-            is_active: true,
-          },
-        });
+        // const hyperliquidMarket = await prisma.venue_markets.findFirst({
+        //   where: {
+        //     token_symbol: token.toUpperCase(),
+        //     venue: "HYPERLIQUID",
+        //     is_active: true,
+        //   },
+        // });
 
-        if (hyperliquidMarket) {
-          venueMarket = hyperliquidMarket;
-          signalVenue = "HYPERLIQUID";
-          console.log(
-            `    ✅ ${token} available on HYPERLIQUID (not on OSTIUM, using HYPERLIQUID)`
-          );
-        } else {
-          console.log(
-            `    ⏭️  Skipping ${token} - not available on OSTIUM or HYPERLIQUID`
-          );
-          console.log(
-            `       (Multi-venue agents need token on at least one enabled venue)`
-          );
-          return false;
-        }
+        // if (hyperliquidMarket) {
+        //   venueMarket = hyperliquidMarket;
+        //   signalVenue = "HYPERLIQUID";
+        //   console.log(
+        //     `    ✅ ${token} available on HYPERLIQUID (not on OSTIUM, using HYPERLIQUID)`
+        //   );
+        // } else {
+        //   console.log(
+        //     `    ⏭️  Skipping ${token} - not available on OSTIUM or HYPERLIQUID`
+        //   );
+        //   console.log(
+        //     `       (Multi-venue agents need token on at least one enabled venue)`
+        //   );
+        //   return false;
+        // }
+
+        console.log(
+          `    ⏭️  Skipping ${token} - not available on OSTIUM`
+        );
+        
+        return false;
       }
     } else {
       // For single-venue agents, check specific venue

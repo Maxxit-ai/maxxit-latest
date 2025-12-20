@@ -2,6 +2,103 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { TrendingUp, Activity, DollarSign, Target, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 import { Header } from "@components/Header";
+import { usePrivy } from '@privy-io/react-auth';
+
+// Custom styles for checkboxes and range sliders
+const customStyles = `
+  /* Custom checkbox styling */
+  input[type="checkbox"].deployment-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid #fff;
+    border-radius: 0.25rem;
+    background: transparent;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  
+  input[type="checkbox"].deployment-checkbox:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  
+  input[type="checkbox"].deployment-checkbox:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+  
+  input[type="checkbox"].deployment-checkbox:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #000;
+    font-size: 0.75rem;
+    font-weight: bold;
+    line-height: 1;
+  }
+  
+  input[type="checkbox"].deployment-checkbox:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  
+  /* Custom range slider styling */
+  input[type="range"].deployment-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 0.5rem;
+    border-radius: 0.25rem;
+    background: #fff;
+    outline: none;
+    cursor: pointer;
+    border: 1px solid var(--border);
+  }
+  
+  input[type="range"].deployment-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 3px solid #000;
+    box-shadow: 0 0 0 1px var(--accent);
+    transition: all 0.2s;
+  }
+  
+  input[type="range"].deployment-range::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+  }
+  
+  input[type="range"].deployment-range::-moz-range-thumb {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 3px solid #000;
+    box-shadow: 0 0 0 1px var(--accent);
+    transition: all 0.2s;
+  }
+  
+  input[type="range"].deployment-range::-moz-range-thumb:hover {
+    transform: scale(1.1);
+  }
+  
+  input[type="range"].deployment-range::-moz-range-track {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    height: 0.5rem;
+  }
+`;
 
 interface Agent {
   id: string;
@@ -71,6 +168,16 @@ interface PaginatedSignalsResponse {
   total: number;
 }
 
+interface Deployment {
+  subActive: boolean;
+  enabledVenues: string[];
+  riskTolerance: number;
+  tradeFrequency: number;
+  socialSentimentWeight: number;
+  priceMomentumFocus: number;
+  marketRankPriority: number;
+}
+
 const PaginationControls = ({
   page,
   pageSize,
@@ -116,6 +223,7 @@ const PaginationControls = ({
 export default function AgentDashboard() {
   const router = useRouter();
   const { id: agentId } = router.query;
+  const { authenticated, user } = usePrivy();
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -151,6 +259,13 @@ export default function AgentDashboard() {
   const [signalsLoading, setSignalsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  
+  // Deployment state
+  const [deployment, setDeployment] = useState<Deployment | null>(null);
+  const [deploymentLoading, setDeploymentLoading] = useState(false);
+  const [deploymentEditOpen, setDeploymentEditOpen] = useState(false);
+  const [deploymentSaving, setDeploymentSaving] = useState(false);
+  const [deploymentForm, setDeploymentForm] = useState<Deployment | null>(null);
 
   const agentIdParam = Array.isArray(agentId) ? agentId[0] : agentId;
 
@@ -161,6 +276,12 @@ export default function AgentDashboard() {
       fetchSignals(1);
     }
   }, [agentIdParam]);
+
+  useEffect(() => {
+    if (agentIdParam && authenticated) {
+      fetchDeployment();
+    }
+  }, [agentIdParam, authenticated]);
 
   useEffect(() => {
     if (agentIdParam) {
@@ -251,6 +372,65 @@ export default function AgentDashboard() {
     }
   };
 
+  const fetchDeployment = async () => {
+    if (!agentIdParam) return;
+    if (!authenticated || !user?.wallet?.address) {
+      setError("User not authenticated");
+      return;
+    }
+    
+    setDeploymentLoading(true);
+
+    try {
+      const userWallet = user.wallet.address;
+      const deploymentRes = await fetch(`/api/agents/${agentIdParam}/deployments?userWallet=${encodeURIComponent(userWallet)}`);
+      if (!deploymentRes.ok) throw new Error("Failed to fetch deployment");
+
+      const deploymentData: Deployment = await deploymentRes.json();
+      setDeployment(deploymentData);
+      setDeploymentForm(deploymentData);
+    } catch (err: any) {
+      setError(err.message || "Failed to load deployment");
+    } finally {
+      setDeploymentLoading(false);
+    }
+  };
+
+  const saveDeployment = async () => {
+    if (!deploymentForm || !agentIdParam || !authenticated || !user?.wallet?.address) return;
+    setDeploymentSaving(true);
+
+    try {
+      const userWallet = user.wallet.address;
+      const deploymentRes = await fetch(`/api/agents/${agentIdParam}/deployments?userWallet=${encodeURIComponent(userWallet)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subActive: deploymentForm.subActive,
+          enabledVenues: deploymentForm.enabledVenues,
+          riskTolerance: deploymentForm.riskTolerance,
+          tradeFrequency: deploymentForm.tradeFrequency,
+          socialSentimentWeight: deploymentForm.socialSentimentWeight,
+          priceMomentumFocus: deploymentForm.priceMomentumFocus,
+          marketRankPriority: deploymentForm.marketRankPriority,
+        }),
+      });
+      
+      if (!deploymentRes.ok) throw new Error("Failed to update deployment");
+
+      const updatedDeployment: Deployment = await deploymentRes.json();
+      setDeployment(updatedDeployment);
+      setDeploymentForm(updatedDeployment);
+      setDeploymentEditOpen(false);
+    } catch (err: any) {
+      setError(err.message || "Failed to update deployment");
+    } finally {
+      setDeploymentSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -284,6 +464,7 @@ export default function AgentDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <style dangerouslySetInnerHTML={{ __html: customStyles }} />
       <Header />
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
@@ -293,7 +474,7 @@ export default function AgentDashboard() {
             className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to My Agents
+            Back to My Deployments
           </button>
 
           <div className="flex items-start justify-between">
@@ -367,6 +548,354 @@ export default function AgentDashboard() {
             <div className="text-2xl font-bold">{positionSummary.openCount}</div>
             <div className="text-xs text-muted-foreground">{positionSummary.closedCount} closed</div>
           </div>
+        </div>
+
+        {/* Deployment Configuration */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center">
+                <Activity className="h-5 w-5 text-[var(--accent)]" />
+              </div>
+              <div>
+                <p className="data-label mb-1">AGENT SETTINGS</p>
+                <h2 className="font-display text-xl">Deployment Configuration</h2>
+              </div>
+            </div>
+            <button
+              onClick={() => deploymentEditOpen ? setDeploymentEditOpen(false) : setDeploymentEditOpen(true)}
+              disabled={deploymentLoading}
+              className={`px-4 py-2 border font-bold transition-colors ${
+                deploymentEditOpen
+                  ? 'border-[var(--text-muted)] text-[var(--text-muted)]'
+                  : 'border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)]/10'
+              }`}
+            >
+              {deploymentEditOpen ? 'CANCEL' : 'EDIT SETTINGS'}
+            </button>
+          </div>
+
+          {deploymentLoading ? (
+            <div className="border border-[var(--border)] bg-[var(--bg-deep)] p-6 rounded">
+              <div className="flex items-center justify-center gap-2">
+                <Activity className="h-5 w-5 text-[var(--accent)] animate-spin" />
+                Loading deployment configuration...
+              </div>
+            </div>
+          ) : deployment ? (
+            <div className="border border-[var(--border)] bg-[var(--bg-deep)] p-6 rounded">
+              {deploymentEditOpen ? (
+                <div className="space-y-6">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="border border-[var(--border)] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-[var(--text-primary)]">SUBSCRIPTION STATUS</p>
+                        <span className={`text-[10px] px-2 py-1 border font-bold rounded ${
+                          deploymentForm?.subActive 
+                            ? 'border-[var(--accent)] text-[var(--accent)]'
+                            : 'border-[var(--text-muted)] text-[var(--text-muted)]'
+                        }`}>
+                          {deploymentForm?.subActive ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-3 mt-2">
+                        <input
+                          type="checkbox"
+                          id="subActive"
+                          checked={deploymentForm?.subActive || false}
+                          onChange={(e) => setDeploymentForm({
+                            ...deploymentForm!,
+                            subActive: e.target.checked
+                          })}
+                          className="deployment-checkbox"
+                        />
+                        <label htmlFor="subActive" className="text-sm text-[var(--text-secondary)]">
+                          Enable trading for this agent
+                        </label>
+                      </div>
+                    </div>
+                    
+                    <div className="border border-[var(--border)] p-4 space-y-3">
+                      <p className="text-sm font-bold text-[var(--text-primary)]">ENABLED VENUES</p>
+                      <div className="space-y-3">
+                        {['HYPERLIQUID', 'GMX', 'OSTIUM', 'SPOT', 'MULTI'].map((venue) => (
+                          <div key={venue} className={`flex items-center space-x-3 ${
+                            venue === 'OSTIUM' ? '' : 'opacity-50'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              id={`venue-${venue}`}
+                              checked={deploymentForm?.enabledVenues.includes(venue) || false}
+                              disabled={venue !== 'OSTIUM'}
+                              onChange={(e) => {
+                                const venues = deploymentForm?.enabledVenues || [];
+                                if (e.target.checked) {
+                                  setDeploymentForm({
+                                    ...deploymentForm!,
+                                    enabledVenues: [...venues, venue]
+                                  });
+                                } else {
+                                  setDeploymentForm({
+                                    ...deploymentForm!,
+                                    enabledVenues: venues.filter(v => v !== venue)
+                                  });
+                                }
+                              }}
+                              className="deployment-checkbox"
+                            />
+                            <label 
+                              htmlFor={`venue-${venue}`} 
+                              className={`text-sm ${
+                                venue === 'OSTIUM' 
+                                  ? 'text-[var(--text-primary)]' 
+                                  : 'text-[var(--text-muted)]'
+                              }`}
+                            >
+                              {venue}
+                              {venue === 'OSTIUM' && (
+                                <span className="ml-2 text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
+                                  ACTIVE
+                                </span>
+                              )}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] mt-2">
+                        Only Ostium is available for this deployment. Other venues are disabled.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="border border-[var(--border)] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-[var(--text-primary)]">RISK TOLERANCE</p>
+                        <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
+                          {deploymentForm?.riskTolerance}/100
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          value={deploymentForm?.riskTolerance || 50}
+                          onChange={(e) => setDeploymentForm({
+                            ...deploymentForm!,
+                            riskTolerance: parseInt(e.target.value)
+                          })}
+                          className="deployment-range"
+                        />
+                        <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
+                          <span>CONSERVATIVE</span>
+                          <span>AGGRESSIVE</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border border-[var(--border)] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-[var(--text-primary)]">TRADE FREQUENCY</p>
+                        <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
+                          {deploymentForm?.tradeFrequency}/100
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          value={deploymentForm?.tradeFrequency || 50}
+                          onChange={(e) => setDeploymentForm({
+                            ...deploymentForm!,
+                            tradeFrequency: parseInt(e.target.value)
+                          })}
+                          className="deployment-range"
+                        />
+                        <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
+                          <span>LOW</span>
+                          <span>HIGH</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border border-[var(--border)] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-[var(--text-primary)]">SOCIAL SENTIMENT WEIGHT</p>
+                        <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
+                          {deploymentForm?.socialSentimentWeight}/100
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          value={deploymentForm?.socialSentimentWeight || 50}
+                          onChange={(e) => setDeploymentForm({
+                            ...deploymentForm!,
+                            socialSentimentWeight: parseInt(e.target.value)
+                          })}
+                          className="deployment-range"
+                        />
+                        <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
+                          <span>LOW</span>
+                          <span>HIGH</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border border-[var(--border)] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-[var(--text-primary)]">PRICE MOMENTUM FOCUS</p>
+                        <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
+                          {deploymentForm?.priceMomentumFocus}/100
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          value={deploymentForm?.priceMomentumFocus || 50}
+                          onChange={(e) => setDeploymentForm({
+                            ...deploymentForm!,
+                            priceMomentumFocus: parseInt(e.target.value)
+                          })}
+                          className="deployment-range"
+                        />
+                        <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
+                          <span>LOW</span>
+                          <span>HIGH</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border border-[var(--border)] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-[var(--text-primary)]">MARKET RANK PRIORITY</p>
+                        <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
+                          {deploymentForm?.marketRankPriority}/100
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="range"
+                          min="1"
+                          max="100"
+                          value={deploymentForm?.marketRankPriority || 50}
+                          onChange={(e) => setDeploymentForm({
+                            ...deploymentForm!,
+                            marketRankPriority: parseInt(e.target.value)
+                          })}
+                          className="deployment-range"
+                        />
+                        <div className="flex justify-between text-xs text-[var(--text-muted)] mt-1">
+                          <span>LOW</span>
+                          <span>HIGH</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setDeploymentEditOpen(false)}
+                      className="px-4 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveDeployment}
+                      disabled={deploymentSaving}
+                      className="px-4 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {deploymentSaving ? (
+                        <>
+                          <Activity className="w-5 h-5 animate-pulse" />
+                          SAVING...
+                        </>
+                      ) : (
+                        'SAVE CONFIGURATION'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {deployment.subActive ? (
+                    <div className="border border-[var(--border)]/60 bg-[var(--accent)]/5 p-4">
+                      <p className="text-sm font-bold text-[var(--accent)] mb-1">DEPLOYMENT ACTIVE</p>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Your agent is currently deployed and trading on Ostium. Adjust settings below to modify trading behavior.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border border-[var(--border)]/60 bg-[var(--text-muted)]/10 p-4">
+                      <p className="text-sm font-bold text-[var(--text-muted)] mb-1">DEPLOYMENT INACTIVE</p>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Your agent deployment is currently inactive. Enable the subscription to start trading.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="border border-[var(--border)] p-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-[var(--text-primary)]">SUBSCRIPTION STATUS</p>
+                        <span className={`text-[10px] px-2 py-1 border font-bold rounded ${
+                          deployment.subActive 
+                            ? 'border-[var(--accent)] text-[var(--accent)]'
+                            : 'border-[var(--text-muted)] text-[var(--text-muted)]'
+                        }`}>
+                          {deployment.subActive ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-[var(--text-primary)]">ENABLED VENUES</p>
+                        <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
+                          {deployment.enabledVenues.includes('OSTIUM') ? 'OSTIUM' : 'NONE'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="border border-[var(--border)] p-4">
+                        <p className="text-xs text-[var(--text-muted)] mb-1">RISK TOLERANCE</p>
+                        <p className="text-lg font-bold text-[var(--text-primary)]">{deployment.riskTolerance}/100</p>
+                      </div>
+
+                      <div className="border border-[var(--border)] p-4">
+                        <p className="text-xs text-[var(--text-muted)] mb-1">TRADE FREQUENCY</p>
+                        <p className="text-lg font-bold text-[var(--text-primary)]">{deployment.tradeFrequency}/100</p>
+                      </div>
+
+                      <div className="border border-[var(--border)] p-4">
+                        <p className="text-xs text-[var(--text-muted)] mb-1">SOCIAL SENTIMENT</p>
+                        <p className="text-lg font-bold text-[var(--text-primary)]">{deployment.socialSentimentWeight}/100</p>
+                      </div>
+
+                      <div className="border border-[var(--border)] p-4">
+                        <p className="text-xs text-[var(--text-muted)] mb-1">PRICE MOMENTUM</p>
+                        <p className="text-lg font-bold text-[var(--text-primary)]">{deployment.priceMomentumFocus}/100</p>
+                      </div>
+
+                      <div className="border border-[var(--border)] p-4">
+                        <p className="text-xs text-[var(--text-muted)] mb-1">MARKET RANK</p>
+                        <p className="text-lg font-bold text-[var(--text-primary)]">{deployment.marketRankPriority}/100</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="border border-[var(--border)] bg-[var(--bg-deep)] p-6 text-center rounded">
+              <p className="text-[var(--text-muted)]">No deployment configuration found for this agent.</p>
+            </div>
+          )}
         </div>
 
         {/* Positions */}

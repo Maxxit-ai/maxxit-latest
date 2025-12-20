@@ -40,6 +40,16 @@ interface Deployment {
   enabledVenues?: string[];
 }
 
+interface DeploymentStatus {
+  subActive: boolean;
+  enabledVenues: string[];
+  riskTolerance: number;
+  tradeFrequency: number;
+  socialSentimentWeight: number;
+  priceMomentumFocus: number;
+  marketRankPriority: number;
+}
+
 export default function MyDeployments() {
   const { authenticated, user, login } = usePrivy();
   const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -86,6 +96,12 @@ export default function MyDeployments() {
     usdcAllowance: number;
     hasApproval: boolean;
   } | null>(null);
+  const [deploymentStatuses, setDeploymentStatuses] = useState<
+    Record<string, DeploymentStatus>
+  >({});
+  const [deploymentStatusesLoading, setDeploymentStatusesLoading] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     if (authenticated && user?.wallet?.address) {
@@ -106,13 +122,61 @@ export default function MyDeployments() {
       if (!response.ok) throw new Error("Failed to fetch deployments");
 
       const data = await response.json();
-      setDeployments(Array.isArray(data) ? data : []);
+      const deploymentsList = Array.isArray(data) ? data : [];
+      setDeployments(deploymentsList);
+      
+      if (deploymentsList.length > 0) {
+        fetchDeploymentStatuses(deploymentsList);
+      }
     } catch (error) {
       console.error("Failed to fetch deployments:", error);
       setDeployments([]);
     } finally {
       setDeploymentsLoading(false);
     }
+  };
+
+  const fetchDeploymentStatuses = async (deployments: Deployment[]) => {
+    if (!user?.wallet?.address) return;
+
+    const userWallet = user.wallet.address;
+
+    const statusPromises = deployments.map(async (deployment) => {
+      setDeploymentStatusesLoading((prev) => ({
+        ...prev,
+        [deployment.id]: true,
+      }));
+
+      try {
+        const response = await fetch(
+          `/api/agents/${deployment.agentId}/deployments?userWallet=${encodeURIComponent(userWallet)}`
+        );
+
+        if (response.ok) {
+          const statusData: DeploymentStatus = await response.json();
+          setDeploymentStatuses((prev) => ({
+            ...prev,
+            [deployment.id]: statusData,
+          }));
+        } else {
+          console.error(
+            `Failed to fetch deployment status for ${deployment.id}`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `Error fetching deployment status for ${deployment.id}:`,
+          error
+        );
+      } finally {
+        setDeploymentStatusesLoading((prev) => ({
+          ...prev,
+          [deployment.id]: false,
+        }));
+      }
+    });
+
+    await Promise.all(statusPromises);
   };
 
   const fetchAgents = async () => {
@@ -435,14 +499,31 @@ export default function MyDeployments() {
                         {deployment.agent.name}
                       </h3>
                     </div>
-                    <span
-                      className={`text-xs px-2 py-1 font-bold ${deployment.status === "ACTIVE"
-                        ? "bg-[var(--accent)] text-[var(--bg-deep)]"
-                        : "border border-[var(--border)] text-[var(--text-muted)]"
+                    {deploymentStatusesLoading[deployment.id] ? (
+                      <Activity className="w-4 h-4 animate-pulse text-[var(--accent)]" />
+                    ) : deploymentStatuses[deployment.id] ? (
+                      <span
+                        className={`text-xs px-2 py-1 font-bold ${
+                          deploymentStatuses[deployment.id].subActive
+                            ? "bg-[var(--accent)] text-[var(--bg-deep)]"
+                            : "border border-[var(--border)] text-[var(--text-muted)]"
                         }`}
-                    >
-                      {deployment.status}
-                    </span>
+                      >
+                        {deploymentStatuses[deployment.id].subActive
+                          ? "ACTIVE"
+                          : "INACTIVE"}
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-xs px-2 py-1 font-bold ${
+                          deployment.status === "ACTIVE"
+                            ? "bg-[var(--accent)] text-[var(--bg-deep)]"
+                            : "border border-[var(--border)] text-[var(--text-muted)]"
+                        }`}
+                      >
+                        {deployment.status}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-[var(--text-muted)] border border-[var(--border)] px-2 py-0.5">
                     {deployment.agent.venue}
