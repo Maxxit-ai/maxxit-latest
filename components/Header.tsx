@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { Home, Wallet, User, Plus, TrendingUp, Menu } from 'lucide-react';
+import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen } from 'lucide-react';
 import { Bot, BarChart3, FileText, Copy, Check, LogOut, X } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import Image from 'next/image';
@@ -22,6 +22,7 @@ export function Header() {
     { href: '/my-deployments', label: 'Deployments', icon: Wallet, testId: 'nav-deployments' },
     { href: '/my-trades', label: 'My Trades', icon: TrendingUp, testId: 'nav-my-trades' },
     { href: '/creator', label: 'My Agents', icon: User, testId: 'nav-my-agents' },
+    { href: '/blog', label: 'Blog', icon: BookOpen, testId: 'nav-blog' },
     { href: '/docs', label: 'Docs', icon: FileText, testId: 'nav-docs' },
   ];
 
