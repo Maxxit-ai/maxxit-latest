@@ -114,12 +114,12 @@ const CreateAgentSection = () => {
               ))}
 
               {/* Add More Button */}
-              <div className="border-2 border-[var(--border)] border-dashed bg-[var(--bg-surface)] p-4 opacity-60 hover:opacity-100 hover:border-accent transition-all group">
+              <div className="border-2 border-[var(--border)] border-dashed bg-[var(--bg-surface)] p-4 opacity-60 hover:opacity-100 transition-all group">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 border-2 border-[var(--border)] group-hover:border-accent flex items-center justify-center transition-colors">
-                    <span className="text-[var(--text-muted)] group-hover:text-accent text-xl font-bold transition-colors">+</span>
+                  <div className="w-12 h-12 border-2 border-[var(--border)] flex items-center justify-center transition-colors">
+                    <span className="text-[var(--text-muted)] text-xl font-bold transition-colors">+</span>
                   </div>
-                  <p className="text-sm text-[var(--text-muted)] group-hover:text-accent font-medium transition-colors">
+                  <p className="text-sm text-[var(--text-muted)] font-medium transition-colors">
                     Add more sources...
                   </p>
                 </div>

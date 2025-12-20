@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Activity } from 'lucide-react';
-import * as Slider from '@radix-ui/react-slider';
+import {Slider, SliderRange, SliderThumb, SliderTrack} from '@radix-ui/react-slider';
 
 export interface TradingPreferences {
   risk_tolerance: number;
@@ -187,13 +187,18 @@ export function TradingPreferencesForm({
   }) => {
     const [inputValue, setInputValue] = useState(value.toString());
     const [isInputFocused, setIsInputFocused] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const [tempValue, setTempValue] = useState(value);
 
     // Only sync input with slider value when input is not focused
     useEffect(() => {
       if (!isInputFocused) {
         setInputValue(value.toString());
       }
-    }, [value, isInputFocused]);
+      if (!isDragging) {
+        setTempValue(value);
+      }
+    }, [value, isInputFocused, isDragging]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
@@ -261,35 +266,41 @@ export function TradingPreferencesForm({
             <span>{right}</span>
           </div>
 
-          <Slider.Root
+          <Slider
             className="relative flex items-center select-none touch-none w-full h-12 group cursor-pointer"
-            value={[value]}
+            value={[tempValue]}
             onValueChange={(vals) => {
               const v = Math.min(100, Math.max(0, vals[0]));
-              onChange(v);
+              setTempValue(v);
+              setIsDragging(true);
               if (!isInputFocused) {
-                setInputValue(v.toFixed(0));
+                setInputValue(Math.round(v).toString());
               }
+            }}
+            onValueCommit={(vals) => {
+              const v = Math.min(100, Math.max(0, vals[0]));
+              const rounded = Math.round(v);
+              onChange(rounded);
+              setTempValue(rounded);
+              setIsDragging(false);
             }}
             max={100}
             min={0}
-            step={1}
+            step={0.1}
+            draggable={true}
           >
             <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[var(--accent)]/15 via-transparent to-[var(--accent)]/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Slider.Track className="bg-gray-500/60 relative grow rounded-full h-3 cursor-pointer hover:bg-gray-300/60 transition-colors shadow-inner overflow-hidden">
-              <Slider.Range className="absolute bg-gradient-to-r from-[var(--accent)] to-[var(--accent)]/60 h-full rounded-full shadow-[0_0_10px_rgba(0,0,0,0.45)]" />
+            <SliderTrack className="bg-gray-500/60 relative grow rounded-full h-3 cursor-pointer hover:bg-gray-300/60 transition-colors shadow-inner overflow-hidden">
+              <SliderRange className="absolute bg-gradient-to-r from-[var(--accent)] to-[var(--accent)]/60 h-full rounded-full shadow-[0_0_10px_rgba(0,0,0,0.45)]" />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_50%,rgba(255,255,255,0.18),transparent_35%),radial-gradient(circle_at_90%_50%,rgba(255,255,255,0.18),transparent_35%)] opacity-60 pointer-events-none" />
-            </Slider.Track>
-            <Slider.Thumb
+            </SliderTrack>
+            <SliderThumb
               className="relative flex items-center justify-center w-10 h-10 bg-[var(--accent)] text-black text-[11px] font-bold border-[3px] border-black rounded-full hover:scale-110 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 transition-all duration-150 cursor-grab active:cursor-grabbing active:scale-105 shadow-xl"
               aria-label={title}
             >
-              {/* <span className="absolute -top-7 px-2 py-1 text-[11px] font-semibold text-[var(--bg-deep)] bg-white/90 rounded-full shadow-lg border border-black/10 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity pointer-events-none">
-                {Number.isInteger(value) ? value : value.toFixed(0)}
-              </span> */}
-              {Number.isInteger(value) ? value : value.toFixed(0)}
-            </Slider.Thumb>
-          </Slider.Root>
+              {Math.round(tempValue)}
+            </SliderThumb>
+          </Slider>
 
           <div className="flex justify-between text-xs text-gray-500 px-1 font-mono">
             <span>0</span>

@@ -256,7 +256,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
             <div className="mb-8 p-4 border border-[var(--accent)]/40 bg-[var(--accent)]/5">
               <p className="data-label mb-3">YOUR AGENT WALLETS</p>
               <div className="grid md:grid-cols-2 gap-3">
-                {userAgentAddresses.hyperliquid && (
+                {/* {userAgentAddresses.hyperliquid && (
                   <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-8 h-8 border-2 border-[var(--accent)]/60 flex items-center justify-center flex-shrink-0">
@@ -281,10 +281,10 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                       )}
                     </button>
                   </div>
-                )}
+                )} */}
 
                 {userAgentAddresses.ostium && (
-                  <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
+                  <div className="flex items-center justify-between gap-3 bg-[var(--bg-deep)] hover:border-[var(--accent)]/50 transition-colors">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-8 h-8 border-2 border-[var(--accent)]/60 flex items-center justify-center flex-shrink-0">
                         <Wallet className="w-4 h-4 text-[var(--accent)]" />

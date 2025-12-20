@@ -18,7 +18,7 @@ interface OstiumConnectProps {
 }
 
 // Get Ostium configuration based on environment
-const { tradingContract: OSTIUM_TRADING_CONTRACT, usdcContract: USDC_TOKEN, storageContract: OSTIUM_STORAGE } = getOstiumConfig();
+const { tradingContract: OSTIUM_TRADING_CONTRACT, usdcContract: USDC_TOKEN, storageContract: OSTIUM_STORAGE, chainId: ARBITRUM_CHAIN_ID } = getOstiumConfig();
 const OSTIUM_TRADING_ABI = ['function setDelegate(address delegate) external'];
 const USDC_ABI = [
   'function approve(address spender, uint256 amount) public returns (bool)',
@@ -309,7 +309,6 @@ export function OstiumConnect({
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       const network = await ethersProvider.getNetwork();
 
-      const ARBITRUM_CHAIN_ID = 421614;
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
         try {
           await provider.request({
@@ -377,7 +376,8 @@ export function OstiumConnect({
       await ethersProvider.send('eth_requestAccounts', []);
 
       const network = await ethersProvider.getNetwork();
-      const ARBITRUM_CHAIN_ID = 421614;
+      console.log("network.chainId", network.chainId);
+      console.log("ARBITRUM_CHAIN_ID", ARBITRUM_CHAIN_ID);
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
         throw new Error('Please switch to Arbitrum');
       }

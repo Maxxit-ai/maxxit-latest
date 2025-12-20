@@ -321,10 +321,11 @@ export default function MyDeployments() {
 
   if (deploymentsLoading) {
     return (
-      <div className="min-h-screen bg-[var(--bg-deep)]">
+      <div className="min-h-screen bg-[var(--bg-deep)] border border-[var(--border)]">
         <Header />
-        <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col gap-4 items-center justify-center h-96">
           <Activity className="w-8 h-8 animate-pulse text-[var(--accent)]" />
+          <p className="text-[var(--text-muted)]">Loading deployments...</p>
         </div>
       </div>
     );

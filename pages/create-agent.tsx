@@ -471,7 +471,7 @@ export default function CreateAgent() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-deep)]">
+    <div className="min-h-screen bg-[var(--bg-deep)] border border-[var(--border)]">
       <Header />
       {isMounted && !completedTourSteps.includes(step) && (
         <Joyride

@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { Home, Wallet, User, Plus, TrendingUp, Menu } from 'lucide-react';
 import { Bot, BarChart3, FileText, Copy, Check, LogOut, X } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import Image from 'next/image';
 
 export function Header() {
+  const router = useRouter();
   const { ready, authenticated, user, login, logout } = usePrivy();
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -76,19 +78,31 @@ export function Header() {
   }, [isMobileMenuOpen]);
 
   const renderNavLinks = (onClick?: () => void) =>
-    navLinks.map(({ href, label, icon: Icon, testId }) => (
-      <Link key={href} href={href}>
-        <button
-          onClick={onClick}
-          className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors w-full text-left md:w-auto md:text-center"
-          data-testid={testId}
-        >
-          <Icon className="h-4 w-4" />
-          <span className="hidden sm:inline">{label}</span>
-          <span className="sm:hidden">{label}</span>
-        </button>
-      </Link>
-    ));
+    navLinks.map(({ href, label, icon: Icon, testId }) => {
+      const isActive = router.pathname === href;
+      return (
+        <Link key={href} href={href}>
+          <button
+            onClick={onClick}
+            className={`relative inline-flex items-center justify-center gap-2 px-3 py-2 text-sm transition-colors w-full text-left md:w-auto md:text-center group ${isActive
+              ? 'text-[var(--text-primary)]'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            data-testid={testId}
+          >
+            <Icon className={`h-4 w-4 transition-colors ${isActive ? 'text-[var(--accent)]' : ''}`} />
+            <span className="hidden sm:inline relative">{label}</span>
+            <span className="sm:hidden relative">{label}</span>
+            {isActive && (
+              <>
+                {/* Decorative underline with accent dot */}
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"></span>
+              </>
+            )}
+          </button>
+        </Link>
+      );
+    });
 
   return (
     <header className="sticky py-4 top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-lg">
@@ -107,7 +121,7 @@ export function Header() {
 
           {/* Navigation */}
           <div className="flex items-center gap-2">
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden lg:flex items-center gap-1">
               {renderNavLinks()}
               <Link href="/create-agent">
                 <button
@@ -219,7 +233,7 @@ export function Header() {
             <button
               ref={mobileButtonRef}
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
+              className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
               aria-label="Toggle menu"
             >
               <Menu className="h-5 w-5" />
