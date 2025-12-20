@@ -26,6 +26,8 @@ interface Trade {
   qty: string;
   entryPrice: string;
   currentPrice: string | null;
+  exitPrice: string | null;
+  pnl: string | null;
   unrealizedPnl: string | null;
   unrealizedPnlPercent: string | null;
   stopLoss: string | null;
@@ -714,6 +716,43 @@ export default function MyTrades() {
                                     {trade.status}
                                   </p>
                                 </div>
+
+                                {/* PNL and Exit Price - Only show if present */}
+                                {(trade.pnl !== null ||
+                                  trade.exitPrice !== null) && (
+                                  <>
+                                    {trade.exitPrice && (
+                                      <div className="border border-[var(--border)] p-3">
+                                        <p className="data-label mb-1">
+                                          EXIT PRICE
+                                        </p>
+                                        <p className="font-mono">
+                                          ${trade.exitPrice}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {trade.pnl && (
+                                      <div className="border border-[var(--border)] p-3">
+                                        <p className="data-label mb-1">
+                                          REALIZED PNL
+                                        </p>
+                                        <p
+                                          className={`font-mono text-sm font-bold ${
+                                            parseFloat(trade.pnl) >= 0
+                                              ? "text-green-400"
+                                              : "text-red-400"
+                                          }`}
+                                        >
+                                          {parseFloat(trade.pnl) >= 0
+                                            ? "+"
+                                            : ""}
+                                          ${trade.pnl}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
 
                                 <div className="border border-[var(--border)] p-3">
                                   <p className="data-label mb-1">STOP LOSS</p>

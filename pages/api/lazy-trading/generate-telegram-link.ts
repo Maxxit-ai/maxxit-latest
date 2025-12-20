@@ -67,10 +67,29 @@ export default async function handler(
 
     // Get bot info
     const botInfo = await bot.getMe();
-    const botUsername =
-      botInfo?.username ||
-      process.env.TELEGRAM_BOT_USERNAME ||
-      "Prime_Alpha_bot";
+    console.log("[LazyTrading] Bot info:", JSON.stringify(botInfo, null, 2));
+    console.log(
+      "[LazyTrading] TELEGRAM_BOT_TOKEN set:",
+      !!process.env.TELEGRAM_BOT_TOKEN
+    );
+    console.log(
+      "[LazyTrading] TELEGRAM_BOT_USERNAME env:",
+      process.env.TELEGRAM_BOT_USERNAME
+    );
+
+    const botUsername = botInfo?.username || "Prime_Alpha_bot"; // Use the correct default for the main trading bot
+
+    // If botInfo doesn't have a username, there's likely an issue with the bot token
+    if (!botInfo?.username) {
+      console.warn(
+        "[LazyTrading] Bot getMe() returned no username. Bot token might be incorrect."
+      );
+      console.warn(
+        "[LazyTrading] Please check that TELEGRAM_BOT_TOKEN is set to the correct Prime_Alpha_bot token."
+      );
+    }
+
+    console.log("[LazyTrading] Using bot username:", botUsername);
 
     // Create deep link URL - user clicks start with the code
     const deepLink = `https://t.me/${botUsername}?start=${linkCode}`;

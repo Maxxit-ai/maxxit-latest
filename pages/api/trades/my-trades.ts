@@ -248,6 +248,8 @@ export default async function handler(
           qty: trade.qty.toString(),
           entryPrice: trade.entry_price.toString(),
           currentPrice: trade.current_price?.toString() || null,
+          exitPrice: trade.exit_price?.toString() || null,
+          pnl: trade.pnl?.toString() || null,
           unrealizedPnl: unrealizedPnl?.toFixed(2) || null,
           unrealizedPnlPercent: unrealizedPnlPercent?.toFixed(2) || null,
           stopLoss: trade.stop_loss?.toString() || null,
@@ -277,7 +279,8 @@ export default async function handler(
                 llmRawOutput: relatedTelegramPost.llm_raw_output,
                 llmModelUsed: relatedTelegramPost.llm_model_used,
                 llmChainId: relatedTelegramPost.llm_chain_id,
-                llmMarketContext: (relatedTelegramPost as any).llm_market_context || null,
+                llmMarketContext:
+                  (relatedTelegramPost as any).llm_market_context || null,
                 llmReasoning: relatedTelegramPost.llm_reasoning,
                 messageCreatedAt:
                   relatedTelegramPost.message_created_at.toISOString(),
@@ -392,7 +395,8 @@ export default async function handler(
                 llmRawOutput: relatedTelegramPost.llm_raw_output,
                 llmModelUsed: relatedTelegramPost.llm_model_used,
                 llmChainId: relatedTelegramPost.llm_chain_id,
-                llmMarketContext: (relatedTelegramPost as any).llm_market_context || null,
+                llmMarketContext:
+                  (relatedTelegramPost as any).llm_market_context || null,
                 llmReasoning: relatedTelegramPost.llm_reasoning,
                 messageCreatedAt:
                   relatedTelegramPost.message_created_at.toISOString(),
