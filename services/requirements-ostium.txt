@@ -1,0 +1,21 @@
+# Ostium Service Requirements
+# Install: pip install -r requirements-ostium.txt
+
+# Core
+Flask>=3.0.0
+flask-cors>=4.0.0
+
+# Ostium SDK (v3.0.0+ required for get_open_trades method)
+# This will pull in all required dependencies: web3, gql, humanize, pydantic, etc.
+ostium-python-sdk==3.0.1
+
+# Database
+psycopg2-binary>=2.9.9
+
+# Additional utilities (may be satisfied by SDK dependencies)
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Encryption (for agent private key decryption from user_agent_addresses)
+cryptography>=41.0.0
+

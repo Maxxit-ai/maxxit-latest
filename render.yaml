@@ -1,0 +1,52 @@
+# Render Configuration for Hyperliquid & Ostium Services
+# Deploy these as Web Services on Render
+
+services:
+  # Hyperliquid Python Service
+  - type: web
+    name: hyperliquid-service
+    env: python
+    region: oregon # or your preferred region
+    plan: starter # free tier, upgrade to standard for 24/7
+    buildCommand: cd services && pip install -r requirements-hyperliquid.txt
+    startCommand: cd services && python3 hyperliquid-service.py
+    healthCheckPath: /health
+    envVars:
+      - key: HYPERLIQUID_TESTNET
+        value: true # Change to false for mainnet
+      - key: HYPERLIQUID_SERVICE_PORT
+        value: 5001
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    # Auto-deploy from GitHub
+    autoDeploy: true
+    # Dockerfile path (if you want to use Docker instead)
+    # dockerfilePath: ./Dockerfile.hyperliquid
+    # Docker context
+    # dockerContext: ./services
+
+  # Ostium Python Service
+  - type: web
+    name: ostium-service
+    env: python
+    region: oregon # or your preferred region
+    plan: starter # free tier, upgrade to standard for 24/7
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: cd services && python3 ostium-service.py
+    healthCheckPath: /health
+    envVars:
+      - key: OSTIUM_TESTNET
+        value: true # Change to false for mainnet
+      - key: OSTIUM_SERVICE_PORT
+        value: 5002
+      - key: OSTIUM_RPC_URL
+        value: https://sepolia-rollup.arbitrum.io/rpc
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        sync: false # Set this in Render dashboard (connect to your Postgres)
+      - key: NEXTJS_API_URL
+        value: https://maxxit.vercel.app # Your Next.js app URL
+    # Auto-deploy from GitHub
+    autoDeploy: true
+

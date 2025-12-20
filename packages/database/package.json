@@ -1,0 +1,22 @@
+{
+  "name": "@maxxit/database",
+  "version": "1.0.0",
+  "description": "Shared database package for all Maxxit services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.3",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.16.3",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}
+
