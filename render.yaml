@@ -31,7 +31,7 @@ services:
     env: python
     region: oregon # or your preferred region
     plan: starter # free tier, upgrade to standard for 24/7
-    buildCommand: pip install --no-cache-dir -r requirements.txt
+    buildCommand: pip install --no-cache-dir -r services/requirements-ostium.txt
     startCommand: cd services && python3 ostium-service.py
     healthCheckPath: /health
     envVars:
