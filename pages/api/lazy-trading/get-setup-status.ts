@@ -145,6 +145,7 @@ export default async function handler(
           deployment: null,
           tradingPreferences: null,
           ostiumAgentAddress: userAgentAddress?.ostium_agent_address || null,
+          hyperliquidAgentAddress: userAgentAddress?.hyperliquid_agent_address || null,
           // Include status fields for consistency
           hasExistingOstiumAddress,
           isDelegatedToAgent,
@@ -161,6 +162,7 @@ export default async function handler(
           isDelegatedToAgent,
           hasUsdcApproval,
           ostiumAgentAddress: userAgentAddress?.ostium_agent_address || null,
+          hyperliquidAgentAddress: userAgentAddress?.hyperliquid_agent_address || null,
         });
       }
     }
@@ -245,6 +247,7 @@ export default async function handler(
         : null,
       tradingPreferences,
       ostiumAgentAddress: userAgentAddress?.ostium_agent_address || null,
+      hyperliquidAgentAddress: userAgentAddress?.hyperliquid_agent_address || null,
       // NEW: Include delegation and approval status so frontend can pre-fill states
       hasExistingOstiumAddress,
       isDelegatedToAgent,
