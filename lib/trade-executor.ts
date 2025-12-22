@@ -1825,6 +1825,15 @@ export class TradeExecutor {
 
       console.log('[TradeExecutor] ✅ Position verified on-chain, proceeding with close...');
 
+      await prisma.positions.update({
+        where: { id: position.id },
+        data: {
+          status: 'CLOSING',
+          exit_reason: 'TRAILING_STOP',
+        },
+      });
+      console.log('[TradeExecutor] 📝 Position marked as CLOSING (awaiting keeper fulfillment)');
+
       // Close position via Ostium adapter
       // Use stored trade index if available (fixes SDK bug where all indices are '0')
       const storedIndex = position.ostium_trade_index;
@@ -1866,15 +1875,52 @@ export class TradeExecutor {
           };
         }
         
+        await prisma.positions.update({
+          where: { id: position.id },
+          data: {
+            status: 'OPEN',
+            exit_reason: null,
+          },
+        });
+        console.log('[TradeExecutor] ⚠️  Close order failed, reverted position to OPEN');
+        
         throw new Error(result.error || 'Failed to close position');
       }
 
       console.log('[TradeExecutor] Ostium position close result:', result);
+      console.log('[TradeExecutor] ⏳ Close order submitted - waiting for keeper to fulfill...');
+
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
+      
+      const verifyPositions = await getOstiumPositions(userArbitrumAddress);
+      const stillExists = verifyPositions.some(
+        p => p.tradeId === position.ostium_trade_id || 
+             (p.market === position.token_symbol && p.side.toUpperCase() === position.side)
+      );
+
+      if (stillExists) {
+        console.log('[TradeExecutor] ⚠️  IMPORTANT: Position still exists on-chain after close order!');
+        console.log('[TradeExecutor] ⚠️  This means close order was submitted but not yet fulfilled by keeper');
+        console.log('[TradeExecutor] ⚠️  Keeping status as CLOSING - position monitor will verify later');
+        
+        await prisma.positions.update({
+          where: { id: position.id },
+          data: {
+            status: 'CLOSING',
+            exit_reason: 'TRAILING_STOP',
+          },
+        });
+        
+        return {
+          success: true,
+          positionId: position.id,
+          message: 'Close order submitted, awaiting keeper fulfillment',
+        };
+      }
 
       // Get P&L from result
       const pnl = result.closePnl || 0;
 
-      // Update position in database
       await prisma.positions.update({
         where: { id: position.id },
         data: {
@@ -1886,7 +1932,7 @@ export class TradeExecutor {
         },
       });
 
-      console.log('[TradeExecutor] ✅ Ostium position closed:', {
+      console.log('[TradeExecutor] ✅ Ostium position closed and verified:', {
         positionId: position.id,
         pnl: pnl.toFixed(2) + ' USD',
       });

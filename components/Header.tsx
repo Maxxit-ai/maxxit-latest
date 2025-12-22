@@ -22,6 +22,7 @@ export function Header() {
   const [currentChainId, setCurrentChainId] = useState<number | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [isInitialBalanceLoad, setIsInitialBalanceLoad] = useState(true);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -58,15 +59,24 @@ export function Header() {
   const isOnArbitrum = currentChainId === ARBITRUM_ONE_CHAIN_ID;
   const needsNetworkSwitch = authenticated && currentChainId !== null && !isOnArbitrum;
 
+  useEffect(() => {
+    if (!authenticated || !isOnArbitrum) {
+      setIsInitialBalanceLoad(true);
+      setUsdcBalance(null);
+    }
+  }, [authenticated, isOnArbitrum]);
+
   // Fetch USDC balance using ethers.js contract call
-  const fetchUsdcBalance = async (walletAddress: string) => {
+  const fetchUsdcBalance = async (walletAddress: string, showLoadingState = false) => {
     if (!isOnArbitrum) {
       setUsdcBalance(null);
       return;
     }
 
     try {
-      setIsLoadingBalance(true);
+      if (showLoadingState) {
+        setIsLoadingBalance(true);
+      }
       
       // Get provider from connected wallet
       const provider = new ethers.providers.Web3Provider(window.ethereum);
@@ -81,7 +91,9 @@ export function Header() {
       console.error('Failed to fetch USDC balance:', error);
       setUsdcBalance(null);
     } finally {
-      setIsLoadingBalance(false);
+      if (showLoadingState) {
+        setIsLoadingBalance(false);
+      }
     }
   };
 
@@ -89,10 +101,13 @@ export function Header() {
   useEffect(() => {
     if (authenticated && isOnArbitrum && user?.wallet?.address) {
       const address = user.wallet.address;
-      fetchUsdcBalance(address);
-      // Refresh balance every 30 seconds
+      fetchUsdcBalance(address, isInitialBalanceLoad);
+      if (isInitialBalanceLoad) {
+        setIsInitialBalanceLoad(false);
+      }
+      
       const interval = setInterval(() => {
-        fetchUsdcBalance(address);
+        fetchUsdcBalance(address, false);
       }, 30000);
       return () => clearInterval(interval);
     }

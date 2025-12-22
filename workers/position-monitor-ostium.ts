@@ -151,22 +151,23 @@ export async function monitorOstiumPositions() {
         const usedOstiumKeys = new Set<string>();
         
         console.log(`   Ostium Positions: ${ostiumPositions.length}`);
+        console.log(`   Ostium Positions: ${JSON.stringify(ostiumPositions, null, 2)}`);
         
         for (const ostPos of ostiumPositions) {
           const txHashPreview = ostPos.txHash ? ostPos.txHash.slice(0, 16) + '...' : 'N/A';
           console.log(`      - ${ostPos.market} ${ostPos.side.toUpperCase()} | TX: ${txHashPreview}`);
         }
 
-        // Get open positions from DB for this deployment
+        // Get open positions and closing positionf from DB
         const dbPositions = await prisma.positions.findMany({
           where: {
             deployment_id: deployment.id,
             venue: 'OSTIUM',
-            status: 'OPEN', // Use status field for consistency
+            status: { in: ['OPEN', 'CLOSING'] },
           },
         });
 
-        console.log(`   Positions Monitored: ${dbPositions.length}`);
+        console.log(`   Positions Monitored: ${dbPositions.length} (OPEN + CLOSING)`);
         totalPositionsMonitored += dbPositions.length;
 
         // Monitor each position
@@ -175,6 +176,52 @@ export async function monitorOstiumPositions() {
             const ostPosition = findMatchForPosition(position, ostiumPositions, usedOstiumKeys);
             if (ostPosition) {
               usedOstiumKeys.add(getOstiumKey(ostPosition));
+            }
+            
+            if (position.status === 'CLOSING') {
+              if (!ostPosition) {
+                console.log(`   ✅ CLOSING → CLOSED: Close order fulfilled by keeper`);
+                console.log(`      Position: ${position.token_symbol} ${position.side}`);
+                
+                await prisma.positions.update({
+                  where: { id: position.id },
+                  data: {
+                    status: 'CLOSED',
+                    closed_at: new Date(),
+                    exit_price: null,
+                    pnl: 0,
+                  },
+                });
+                
+                totalPositionsClosed++;
+                
+                updateMetricsForDeployment(deployment.id).catch(err => {
+                  console.error('Failed to update metrics:', err.message);
+                });
+                
+                continue;
+              } else {
+                const positionAge = Date.now() - (position.closed_at?.getTime() || Date.now());
+                const minutesWaiting = Math.round(positionAge / 1000 / 60);
+                
+                console.log(`   ⏳ CLOSING: Waiting for keeper to fulfill close order (${minutesWaiting} min)`);
+                console.log(`      Position: ${position.token_symbol} ${position.side}`);
+                
+                if (minutesWaiting > 10) {
+                  console.log(`   ⚠️  WARNING: Close order pending for ${minutesWaiting} minutes - keeper might have rejected it`);
+                  console.log(`   ⚠️  Consider manual intervention if this persists`);
+                  await prisma.positions.update({
+                    where: { id: position.id },
+                    data: {
+                      status: 'OPEN',
+                      exit_reason: null,
+                    },
+                  });
+                  continue;
+                }
+                
+                continue;
+              }
             }
             
             if (ostPosition && ostPosition.tradeIndex !== undefined) {
@@ -263,8 +310,8 @@ export async function monitorOstiumPositions() {
             const needsSL = !ostPosition.stopLossPrice || ostPosition.stopLossPrice === 0;
             
             if (ostPosition.tradeIndex !== undefined || needsSL) {
-              const stopLossPercent = 0.10; // Default 10%
-              const takeProfitPercent = 0.30; // Default 30%
+              const stopLossPercent = 0.05; // Default 5%
+              const takeProfitPercent = 0.10; // Default 10%
               const entryPrice = Number(position.entry_price.toString());
               const isLong = position.side === 'LONG' || position.side === 'BUY';
               

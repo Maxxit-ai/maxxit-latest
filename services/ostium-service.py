@@ -17,6 +17,12 @@ import warnings
 import asyncio
 import asyncio
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("WARNING: python-dotenv not installed. To use .env file, run: pip install python-dotenv")
+
 # Disable SSL warnings for testnet (dev only)
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 os.environ['PYTHONHTTPSVERIFY'] = '0'
@@ -1748,6 +1754,58 @@ def validate_market_endpoint():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route('/history', methods=['POST'])
+def get_history():
+    """
+    Get raw trading history for an address from Ostium subgraph
+    Body: { "address": "0x...", "count": 50 }
+    Returns raw history data without filtering (includes open, close, cancelled orders, etc.)
+    """
+    try:
+        data = request.json
+        address = data.get('address')
+        count = int(data.get('count', 50))
+        
+        if not address:
+            return jsonify({"success": False, "error": "Missing address"}), 400
+        
+        address = address.lower()
+        
+        dummy_key = '0x' + '1' * 64
+        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        history = loop.run_until_complete(
+            sdk.subgraph.get_recent_history(trader=address, last_n_orders=count)
+        )
+        loop.close()
+        
+        if not history:
+            logger.info(f"No history found for {address}")
+            return jsonify({
+                "success": True,
+                "history": [],
+                "count": 0
+            })
+        
+        logger.info(f"Found {len(history)} orders in history for {address}")
+        
+        return jsonify({
+            "success": True,
+            "history": history,
+            "count": len(history)
+        })
+    
+    except Exception as e:
+        logger.error(f"Get history error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/closed-positions', methods=['POST'])
 def get_closed_positions():
     """
@@ -2206,6 +2264,11 @@ def get_price(token):
 if __name__ == '__main__':
     # Create logs directory
     os.makedirs('logs', exist_ok=True)
+    print("--------------------------------", os.getenv('OSTIUM_MAINNET'))
+
+    print("Ostium mainnet: ", OSTIUM_MAINNET)
+    print("RPC URL: ", OSTIUM_RPC_URL)
+    print("Ostium testnet: ", OSTIUM_TESTNET)
     
     logger.info(f"🚀 Starting Ostium Service on port {PORT}")
     logger.info(f"   Network: {'TESTNET (Arbitrum Sepolia)' if OSTIUM_TESTNET else 'MAINNET'}")

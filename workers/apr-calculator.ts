@@ -67,11 +67,18 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
       where: {
         deployment_id: deploymentId,
         venue: 'OSTIUM',
-        status: 'CLOSED',
         OR: [
-          { pnl: null },
-          { pnl: 0 },
-          { exit_reason: 'CLOSED_EXTERNALLY' },
+          {
+            status: 'CLOSED',
+            OR: [
+              { pnl: null },
+              { pnl: 0 },
+              { exit_reason: 'CLOSED_EXTERNALLY' },
+            ],
+          },
+          {
+            status: 'CLOSING',
+          },
         ],
       },
     });
@@ -80,7 +87,7 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
       return 0;
     }
 
-    console.log(`   🔄 Found ${positionsNeedingSync.length} positions needing PnL sync`);
+    console.log(`   🔄 Found ${positionsNeedingSync.length} positions needing PnL sync (CLOSED + CLOSING)`);
 
     const closedPositions = await getOstiumClosedPositions(safeWallet, 50);
     const closeActions = ['close', 'takeprofit', 'stoploss', 'liquidation'];
@@ -138,7 +145,26 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
       });
 
       if (!matchedCloseTrade) {
-        console.log(`   ⚠️  No matching close order found for ${dbPosition.token_symbol} (open order: ${dbTradeId})`);
+        if (dbPosition.status === 'CLOSING') {
+          const closingAge = Date.now() - (dbPosition.closed_at?.getTime() || dbPosition.opened_at.getTime());
+          const minutesInClosing = Math.round(closingAge / 1000 / 60);
+          
+          console.log(`   ⏳ CLOSING position not yet in closed trades: ${dbPosition.token_symbol} (waiting ${minutesInClosing} min)`);
+          
+          if (minutesInClosing > 15) {
+            console.log(`   ⚠️  CLOSING → OPEN: Close order likely rejected by keeper (>15 min)`);
+            await prisma.positions.update({
+              where: { id: dbPosition.id },
+              data: {
+                status: 'OPEN',
+                exit_reason: null,
+              },
+            });
+            syncedCount++;
+          }
+        } else {
+          console.log(`   ⚠️  No matching close order found for ${dbPosition.token_symbol} (open order: ${dbTradeId})`);
+        }
         continue;
       }
 
@@ -148,6 +174,8 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
       await prisma.positions.update({
         where: { id: dbPosition.id },
         data: {
+          status: 'CLOSED',
+          closed_at: dbPosition.closed_at || new Date(),
           pnl: pnlUsdc,
           exit_price: exitPrice > 0 ? exitPrice : dbPosition.exit_price,
           exit_reason: dbPosition.exit_reason || String(matchedCloseTrade.orderAction).toUpperCase(),
@@ -155,7 +183,12 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
       });
 
       syncedPositions.add(positionKey);
-      console.log(`   ✅ Synced PnL for ${dbPosition.token_symbol}: $${pnlUsdc.toFixed(2)} (tradeID: ${dbTradeId})`);
+      
+      if (dbPosition.status === 'CLOSING') {
+        console.log(`   ✅ CLOSING → CLOSED: Synced PnL for ${dbPosition.token_symbol}: $${pnlUsdc.toFixed(2)} (tradeID: ${dbTradeId})`);
+      } else {
+        console.log(`   ✅ Synced PnL for ${dbPosition.token_symbol}: $${pnlUsdc.toFixed(2)} (tradeID: ${dbTradeId})`);
+      }
       syncedCount++;
 
     }
