@@ -159,28 +159,41 @@ export default async function handler(
       `[LazyTrading] Created agent ${agent.id} for wallet ${normalizedWallet}`
     );
 
-    // Now generate agent address using the standard flow
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.host}`;
+    // Check if wallet already has an Ostium agent address assigned
+    // (Same pattern as normal club flow - reuse existing address)
+    const existingAgentAddress = await prisma.user_agent_addresses.findUnique({
+      where: { user_wallet: normalizedWallet },
+      select: { ostium_agent_address: true },
+    });
 
-    const addressResponse = await fetch(
-      `${baseUrl}/api/agents/${agent.id}/generate-deployment-address`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userWallet: normalizedWallet,
-          venue: "OSTIUM",
-        }),
+    let ostiumAgentAddress: string | null = existingAgentAddress?.ostium_agent_address || null;
+
+    // Only generate new address if wallet doesn't already have one
+    if (!ostiumAgentAddress) {
+      console.log(`[LazyTrading] No existing Ostium address for ${normalizedWallet}, generating new one`);
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.host}`;
+
+      const addressResponse = await fetch(
+        `${baseUrl}/api/agents/${agent.id}/generate-deployment-address`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userWallet: normalizedWallet,
+            venue: "OSTIUM",
+          }),
+        }
+      );
+
+      if (addressResponse.ok) {
+        const addressData = await addressResponse.json();
+        ostiumAgentAddress = addressData.addresses?.ostium?.address || addressData.address;
       }
-    );
-
-    let ostiumAgentAddress: string | null = null;
-    if (addressResponse.ok) {
-      const addressData = await addressResponse.json();
-      ostiumAgentAddress =
-        addressData.addresses?.ostium?.address || addressData.address;
+    } else {
+      console.log(`[LazyTrading] Reusing existing Ostium address ${ostiumAgentAddress} for ${normalizedWallet}`);
     }
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.host}`;
 
     // Create deployment using the standard flow
     const deploymentResponse = await fetch(

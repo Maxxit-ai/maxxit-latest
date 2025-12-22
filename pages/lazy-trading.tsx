@@ -120,7 +120,20 @@ export default function LazyTrading() {
           setOstiumAgentAddress(data.ostiumAgentAddress);
         }
 
+        // NEW: Pre-fill delegation and approval status from API
+        // This matches the normal club flow behavior - if user already has
+        // delegated and approved, we skip those steps
+        if (data.isDelegatedToAgent) {
+          console.log("[LazyTrading] Delegation already complete - pre-filling state");
+          setDelegationComplete(true);
+        }
+        if (data.hasUsdcApproval) {
+          console.log("[LazyTrading] USDC approval already complete - pre-filling state");
+          setAllowanceComplete(true);
+        }
+
         // Set the current step based on progress
+        // Note: The API now returns 'complete' step if both delegation and approval are done
         setStep(data.step as Step);
 
         // If on ostium step, set address and check delegation/allowance status
@@ -133,6 +146,19 @@ export default function LazyTrading() {
         }
       } else {
         // No existing setup, start fresh
+        // But check if wallet already has agent address assigned (from normal club flow)
+        if (data.hasExistingOstiumAddress && data.ostiumAgentAddress) {
+          console.log("[LazyTrading] Wallet has existing Ostium address from normal flow:", data.ostiumAgentAddress);
+          setOstiumAgentAddress(data.ostiumAgentAddress);
+
+          // Also pre-fill delegation/approval if already done
+          if (data.isDelegatedToAgent) {
+            setDelegationComplete(true);
+          }
+          if (data.hasUsdcApproval) {
+            setAllowanceComplete(true);
+          }
+        }
         setStep("telegram");
       }
     } catch (err) {
@@ -313,7 +339,15 @@ export default function LazyTrading() {
           // checkOstiumStatus will be called via useEffect when address is set
         }
 
-        setStep("ostium");
+        // NEW: Check if delegation and approval are already complete
+        // (from existing wallet setup via normal club flow)
+        // If both are already done, skip to complete step
+        if (delegationComplete && allowanceComplete) {
+          console.log("[LazyTrading] Delegation and approval already complete, skipping to complete step");
+          setStep("complete");
+        } else {
+          setStep("ostium");
+        }
       } else {
         setError(data.error || "Failed to create agent");
       }
@@ -610,9 +644,8 @@ export default function LazyTrading() {
             <div
               className="absolute top-4 left-4 h-0.5 bg-[var(--accent)] transition-all duration-500"
               style={{
-                width: `calc(${
-                  (currentStepIndex / (steps.length - 1)) * 100
-                }% - 32px)`,
+                width: `calc(${(currentStepIndex / (steps.length - 1)) * 100
+                  }% - 32px)`,
               }}
             />
             <div className="relative flex justify-between">
@@ -623,13 +656,12 @@ export default function LazyTrading() {
                 return (
                   <div key={s.id} className="flex flex-col items-center">
                     <div
-                      className={`w-8 h-8 flex items-center justify-center transition-all border ${
-                        isCompleted
-                          ? "bg-[var(--accent)] border-[var(--accent)] text-[var(--bg-deep)]"
-                          : isCurrent
+                      className={`w-8 h-8 flex items-center justify-center transition-all border ${isCompleted
+                        ? "bg-[var(--accent)] border-[var(--accent)] text-[var(--bg-deep)]"
+                        : isCurrent
                           ? "border-[var(--accent)] text-[var(--accent)]"
                           : "border-[var(--border)] text-[var(--text-muted)]"
-                      }`}
+                        }`}
                     >
                       {isCompleted ? (
                         <Check className="h-4 w-4" />
@@ -638,11 +670,10 @@ export default function LazyTrading() {
                       )}
                     </div>
                     <span
-                      className={`mt-2 text-[10px] font-bold hidden sm:block ${
-                        isCurrent
-                          ? "text-[var(--accent)]"
-                          : "text-[var(--text-muted)]"
-                      }`}
+                      className={`mt-2 text-[10px] font-bold hidden sm:block ${isCurrent
+                        ? "text-[var(--accent)]"
+                        : "text-[var(--text-muted)]"
+                        }`}
                     >
                       {s.label}
                     </span>
@@ -934,20 +965,18 @@ export default function LazyTrading() {
 
               {/* Step 1: Delegation */}
               <div
-                className={`border p-4 ${
-                  delegationComplete
-                    ? "border-[var(--accent)] bg-[var(--accent)]/5"
-                    : "border-[var(--border)]"
-                }`}
+                className={`border p-4 ${delegationComplete
+                  ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                  : "border-[var(--border)]"
+                  }`}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <span
-                      className={`w-8 h-8 flex items-center justify-center border ${
-                        delegationComplete
-                          ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]"
-                          : "border-[var(--border)]"
-                      }`}
+                      className={`w-8 h-8 flex items-center justify-center border ${delegationComplete
+                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]"
+                        : "border-[var(--border)]"
+                        }`}
                     >
                       {delegationComplete ? <Check className="w-4 h-4" /> : "1"}
                     </span>
@@ -996,20 +1025,18 @@ export default function LazyTrading() {
 
               {/* Step 2: USDC Allowance */}
               <div
-                className={`border p-4 ${
-                  allowanceComplete
-                    ? "border-[var(--accent)] bg-[var(--accent)]/5"
-                    : "border-[var(--border)]"
-                }`}
+                className={`border p-4 ${allowanceComplete
+                  ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                  : "border-[var(--border)]"
+                  }`}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <span
-                      className={`w-8 h-8 flex items-center justify-center border ${
-                        allowanceComplete
-                          ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]"
-                          : "border-[var(--border)]"
-                      }`}
+                      className={`w-8 h-8 flex items-center justify-center border ${allowanceComplete
+                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]"
+                        : "border-[var(--border)]"
+                        }`}
                     >
                       {allowanceComplete ? <Check className="w-4 h-4" /> : "2"}
                     </span>
@@ -1118,8 +1145,7 @@ export default function LazyTrading() {
                 </p>
                 <p className="text-xs">
                   Send trading signals to the Telegram bot, and your agent will
-                  execute them automatically. Example: "Long ETH 5x" or "Short
-                  BTC 3x"
+                  execute them automatically.
                 </p>
               </div>
 
