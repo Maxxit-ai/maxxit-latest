@@ -5,9 +5,10 @@
  * These preferences adjust position sizing weights (Agent HOW layer)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { X, Activity } from 'lucide-react';
-import {Slider, SliderRange, SliderThumb, SliderTrack} from '@radix-ui/react-slider';
+import { Slider, SliderRange, SliderThumb, SliderTrack } from '@radix-ui/react-slider';
 
 export interface TradingPreferences {
   risk_tolerance: number;
@@ -81,7 +82,14 @@ export function TradingPreferencesForm({
       if (response.ok) {
         const data = await response.json();
         if (data.preferences) {
-          setPreferences(data.preferences);
+          // Ensure all values default to 50 if missing
+          setPreferences({
+            risk_tolerance: data.preferences.risk_tolerance ?? 50,
+            trade_frequency: data.preferences.trade_frequency ?? 50,
+            social_sentiment_weight: data.preferences.social_sentiment_weight ?? 50,
+            price_momentum_focus: data.preferences.price_momentum_focus ?? 50,
+            market_rank_priority: data.preferences.market_rank_priority ?? 50,
+          });
         }
       }
     } catch (err) {
@@ -189,6 +197,7 @@ export function TradingPreferencesForm({
     const [isInputFocused, setIsInputFocused] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [tempValue, setTempValue] = useState(value);
+    const sliderRowRef = useRef<HTMLDivElement>(null);
 
     // Only sync input with slider value when input is not focused
     useEffect(() => {
@@ -208,12 +217,20 @@ export function TradingPreferencesForm({
       }
     };
 
-    const handleInputFocus = () => {
+    const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
       setIsInputFocused(true);
+      // Prevent browser from scrolling input into view
+      e.target.scrollIntoView = () => { };
     };
 
     const handleInputBlur = () => {
       setIsInputFocused(false);
+
+      // Preserve scroll position before state update
+      const container = scrollContainerRef.current;
+      const scrollPosition = container?.scrollTop ?? 0;
+      const activeElement = document.activeElement as HTMLElement;
+      const elementPosition = sliderRowRef.current?.offsetTop ?? 0;
 
       // Validate and correct on blur
       const num = parseFloat(inputValue);
@@ -228,10 +245,21 @@ export function TradingPreferencesForm({
         onChange(rounded);
         setInputValue(rounded.toString());
       }
+
+      // Restore scroll position after state update
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = scrollPosition;
+        }
+        // Prevent focus from causing scroll
+        if (activeElement && activeElement !== document.body) {
+          activeElement.blur();
+        }
+      });
     };
 
     return (
-      <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-5 space-y-4 rounded-lg">
+      <div ref={sliderRowRef} className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-5 space-y-4 rounded-lg">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <h3 className="text-base font-bold text-[var(--text-primary)]">{title}</h3>
@@ -280,9 +308,21 @@ export function TradingPreferencesForm({
             onValueCommit={(vals) => {
               const v = Math.min(100, Math.max(0, vals[0]));
               const rounded = Math.round(v);
+
+              // Preserve scroll position when committing slider value
+              const container = scrollContainerRef.current;
+              const scrollPosition = container?.scrollTop ?? 0;
+
               onChange(rounded);
               setTempValue(rounded);
               setIsDragging(false);
+
+              // Restore scroll position after state update
+              requestAnimationFrame(() => {
+                if (container) {
+                  container.scrollTop = scrollPosition;
+                }
+              });
             }}
             max={100}
             min={0}
@@ -316,8 +356,26 @@ export function TradingPreferencesForm({
     );
   };
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Helper function to preserve scroll position during state updates
+  const preserveScrollPosition = (callback: () => void) => {
+    const container = scrollContainerRef.current;
+    const scrollPosition = container?.scrollTop ?? 0;
+
+    callback();
+
+    // Restore scroll position after state update
+    requestAnimationFrame(() => {
+      if (container) {
+        container.scrollTop = scrollPosition;
+      }
+    });
+  };
+
   return (
     <div
+      ref={scrollContainerRef}
       className="p-6 space-y-4 bg-[var(--bg-deep)] overflow-y-auto flex-1 modal-scrollable"
       style={{ overscrollBehavior: 'contain' }}
       onWheel={(e) => {
@@ -341,7 +399,7 @@ export function TradingPreferencesForm({
             title="Risk Tolerance"
             helper="How aggressive should sizing be?"
             value={preferences.risk_tolerance}
-            onChange={(v) => setPreferences({ ...preferences, risk_tolerance: v })}
+            onChange={(v) => preserveScrollPosition(() => setPreferences({ ...preferences, risk_tolerance: v }))}
             left="Conservative"
             right="Aggressive"
             badge={getLabel(preferences.risk_tolerance)}
@@ -358,7 +416,7 @@ export function TradingPreferencesForm({
             title="Trade Frequency"
             helper="How often to take trades?"
             value={preferences.trade_frequency}
-            onChange={(v) => setPreferences({ ...preferences, trade_frequency: v })}
+            onChange={(v) => preserveScrollPosition(() => setPreferences({ ...preferences, trade_frequency: v }))}
             left="Patient"
             right="Active"
             badge={getFrequencyLabel(preferences.trade_frequency)}
@@ -375,7 +433,7 @@ export function TradingPreferencesForm({
             title="Social Sentiment Impact"
             helper="Weight social media sentiment"
             value={preferences.social_sentiment_weight}
-            onChange={(v) => setPreferences({ ...preferences, social_sentiment_weight: v })}
+            onChange={(v) => preserveScrollPosition(() => setPreferences({ ...preferences, social_sentiment_weight: v }))}
             left="Ignore"
             right="Follow"
             badge={getLabel(preferences.social_sentiment_weight)}
@@ -392,7 +450,7 @@ export function TradingPreferencesForm({
             title="Price Momentum Strategy"
             helper="Trend follow or contrarian?"
             value={preferences.price_momentum_focus}
-            onChange={(v) => setPreferences({ ...preferences, price_momentum_focus: v })}
+            onChange={(v) => preserveScrollPosition(() => setPreferences({ ...preferences, price_momentum_focus: v }))}
             left="Contrarian"
             right="Momentum"
             badge={getMomentumLabel(preferences.price_momentum_focus)}
@@ -409,7 +467,7 @@ export function TradingPreferencesForm({
             title="Market Cap Preference"
             helper="Focus on large caps or any token"
             value={preferences.market_rank_priority}
-            onChange={(v) => setPreferences({ ...preferences, market_rank_priority: v })}
+            onChange={(v) => preserveScrollPosition(() => setPreferences({ ...preferences, market_rank_priority: v }))}
             left="Any Coin"
             right="Top Only"
             badge={getRankLabel(preferences.market_rank_priority)}

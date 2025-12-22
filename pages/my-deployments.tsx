@@ -24,6 +24,8 @@ import {
   Zap,
   ExternalLink,
 } from "lucide-react";
+import { FaPlus } from "react-icons/fa6";
+import { useRouter } from "next/navigation";
 
 interface Deployment {
   id: string;
@@ -102,6 +104,7 @@ export default function MyDeployments() {
   const [deploymentStatusesLoading, setDeploymentStatusesLoading] = useState<
     Record<string, boolean>
   >({});
+  const router = useRouter();
 
   useEffect(() => {
     if (authenticated && user?.wallet?.address) {
@@ -124,7 +127,7 @@ export default function MyDeployments() {
       const data = await response.json();
       const deploymentsList = Array.isArray(data) ? data : [];
       setDeployments(deploymentsList);
-      
+
       if (deploymentsList.length > 0) {
         fetchDeploymentStatuses(deploymentsList);
       }
@@ -404,34 +407,44 @@ export default function MyDeployments() {
         <div className="mb-12">
           <p className="data-label mb-2">DASHBOARD</p>
           <h1 className="font-display text-4xl md:text-5xl mb-4">
-            {activeTab === "deployments" ? "MY DEPLOYMENTS" : "LIVE AGENTS"}
+            {activeTab === "deployments" ? "MY DEPLOYMENTS" : "ALPHA CLUBS"}
           </h1>
-          <p className="text-[var(--text-secondary)] max-w-xl">
+          <p className="text-[var(--text-secondary)]">
             {activeTab === "deployments"
               ? "Manage your agent subscriptions and connect Telegram for manual trading"
-              : "Browse live agents and deploy directly from your dashboard"}
+              : "Browse alpha clubs and deploy directly from your dashboard"}
           </p>
         </div>
 
-        <div className="flex gap-3 mb-10">
-          <button
-            onClick={() => setActiveTab("deployments")}
-            className={`px-5 py-2 text-sm font-bold border ${activeTab === "deployments"
-              ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
-              : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
-              }`}
-          >
-            MY DEPLOYMENTS
-          </button>
-          <button
-            onClick={() => setActiveTab("agents")}
-            className={`px-5 py-2 text-sm font-bold border ${activeTab === "agents"
-              ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
-              : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
-              }`}
-          >
-            LIVE AGENTS
-          </button>
+        <div className="flex mb-10 justify-between items-center">
+          <div className="flex gap-3">
+            <button
+              onClick={() => setActiveTab("deployments")}
+              className={`px-5 py-2 text-sm font-bold border ${activeTab === "deployments"
+                ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
+                }`}
+            >
+              MY DEPLOYMENTS
+            </button>
+            <button
+              onClick={() => setActiveTab("agents")}
+              className={`px-5 py-2 text-sm font-bold border ${activeTab === "agents"
+                ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
+                }`}
+            >
+              ALPHA CLUBS
+            </button>
+          </div>
+          {
+            activeTab === "agents" && (
+              <button className="flex items-center gap-2 uppercase px-5 py-2 text-sm font-bold border border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
+                onClick={() => router.push("/create-agent")}>
+                <FaPlus className="w-4 h-4" /> Create Alpha Club
+              </button>
+            )
+          }
         </div>
 
         {activeTab === "agents" ? (
@@ -446,6 +459,7 @@ export default function MyDeployments() {
               agentDeployments={agentDeployments}
               ostiumDelegationStatus={ostiumDelegationStatus}
               ostiumUsdcAllowance={ostiumUsdcAllowance}
+              fromHome={false}
             />
           </div>
         ) : !authenticated ? (
@@ -504,11 +518,10 @@ export default function MyDeployments() {
                       <Activity className="w-4 h-4 animate-pulse text-[var(--accent)]" />
                     ) : deploymentStatuses[deployment.id] ? (
                       <span
-                        className={`text-xs px-2 py-1 font-bold ${
-                          deploymentStatuses[deployment.id].subActive
-                            ? "bg-[var(--accent)] text-[var(--bg-deep)]"
-                            : "border border-[var(--border)] text-[var(--text-muted)]"
-                        }`}
+                        className={`text-xs px-2 py-1 font-bold ${deploymentStatuses[deployment.id].subActive
+                          ? "bg-[var(--accent)] text-[var(--bg-deep)]"
+                          : "border border-[var(--border)] text-[var(--text-muted)]"
+                          }`}
                       >
                         {deploymentStatuses[deployment.id].subActive
                           ? "ACTIVE"
@@ -516,11 +529,10 @@ export default function MyDeployments() {
                       </span>
                     ) : (
                       <span
-                        className={`text-xs px-2 py-1 font-bold ${
-                          deployment.status === "ACTIVE"
-                            ? "bg-[var(--accent)] text-[var(--bg-deep)]"
-                            : "border border-[var(--border)] text-[var(--text-muted)]"
-                        }`}
+                        className={`text-xs px-2 py-1 font-bold ${deployment.status === "ACTIVE"
+                          ? "bg-[var(--accent)] text-[var(--bg-deep)]"
+                          : "border border-[var(--border)] text-[var(--text-muted)]"
+                          }`}
                       >
                         {deployment.status}
                       </span>

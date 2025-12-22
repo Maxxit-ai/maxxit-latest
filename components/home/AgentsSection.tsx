@@ -25,9 +25,10 @@ interface AgentsSectionProps {
     usdcAllowance: number;
     hasApproval: boolean;
   } | null;
+  fromHome?: boolean;
 }
 
-const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {}, ostiumDelegationStatus, ostiumUsdcAllowance }: AgentsSectionProps) => {
+const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {}, ostiumDelegationStatus, ostiumUsdcAllowance, fromHome = true }: AgentsSectionProps) => {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
@@ -59,7 +60,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
   return (
     <>
-      <section id="agents" className="py-24 border-t-2 border-[var(--border)] bg-[var(--bg-deep)]">
+      <section id="agents" className={`border-[var(--border)] bg-[var(--bg-deep)] ${fromHome ? 'border-t-2 py-24' : 'border-t-0 py-8' }`}>
         <style jsx>{`
         @keyframes borderScan {
           0% {
@@ -226,30 +227,34 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
       `}</style>
 
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 pb-8 border-b-2 border-[var(--border)]">
-            <div>
-              <p className="data-label mb-4">JOIN NOW</p>
-              <h2 className="font-display text-4xl md:text-5xl">
-                <span className="text-accent">ALPHA</span> CLUBS
-              </h2>
-              <p className="text-[var(--text-secondary)] mt-2">
-                Each club has unique alpha sources and trading strategies
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="border-2 border-[var(--border)] px-4 py-2 bg-[var(--bg-surface)]">
-                <span className="text-sm text-[var(--text-muted)] font-mono">
-                  {!loading && `${agents.length} AVAILABLE`}
-                </span>
+          {fromHome && (
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 pb-8 border-b-2 border-[var(--border)]">
+              <div>
+                <p className="data-label mb-4">JOIN NOW</p>
+                <h2 className="font-display text-4xl md:text-5xl">
+                  <span className="text-accent">ALPHA</span> CLUBS
+                </h2>
+                <p className="text-[var(--text-secondary)] mt-2">
+                  Each club has unique alpha sources and trading strategies
+                </p>
               </div>
-              <Link href="/create-agent">
-                <button className="group px-4 py-2 border-2 border-[var(--border)] bg-[var(--bg-surface)] text-sm font-bold hover:border-accent hover:text-accent hover:bg-accent/5 transition-all flex items-center gap-2">
-                  <Plus className="group-hover:rotate-12 transition-transform" size={14} />
-                  CREATE CLUB
-                </button>
-              </Link>
+              <div className="flex items-center gap-4">
+                <div className="border-2 border-[var(--border)] px-4 py-2 bg-[var(--bg-surface)]">
+                  <span className="text-sm text-[var(--text-muted)] font-mono">
+                    {!loading && `${agents.length} AVAILABLE`}
+                  </span>
+                </div>
+                <Link href="/create-agent">
+                  <button className="group px-4 py-2 border-2 border-[var(--border)] bg-[var(--bg-surface)] text-sm font-bold hover:border-accent hover:text-accent hover:bg-accent/5 transition-all flex items-center gap-2">
+                    <Plus className="group-hover:rotate-12 transition-transform" size={14} />
+                    CREATE CLUB
+                  </button>
+                </Link>
+              </div>
             </div>
-          </div>
+          )}
+
+
 
           {/* Trading Wallets Display - Single Location */}
           {userAgentAddresses && (userAgentAddresses.hyperliquid || userAgentAddresses.ostium) && (
@@ -284,7 +289,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                 )} */}
 
                 {userAgentAddresses.ostium && (
-                  <div className="flex items-center justify-between gap-3 bg-[var(--bg-deep)] hover:border-[var(--accent)]/50 transition-colors">
+                  <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-8 h-8 border-2 border-[var(--accent)]/60 flex items-center justify-center flex-shrink-0">
                         <Wallet className="w-4 h-4 text-[var(--accent)]" />
@@ -449,10 +454,10 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                       <p className="data-label mb-2">30D RETURN</p>
                       <p
                         className={`data-value text-4xl font-display leading-none ${agent.apr30d && agent.apr30d > 0
-                            ? 'text-accent'
-                            : agent.apr30d && agent.apr30d < 0
-                              ? 'text-[var(--danger)]'
-                              : 'text-[var(--text-muted)]'
+                          ? 'text-accent'
+                          : agent.apr30d && agent.apr30d < 0
+                            ? 'text-[var(--danger)]'
+                            : 'text-[var(--text-muted)]'
                           }`}
                       >
                         {agent.apr30d != null
