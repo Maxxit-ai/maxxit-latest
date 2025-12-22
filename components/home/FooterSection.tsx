@@ -11,7 +11,7 @@ const FooterSection = () => {
     { href: '/your-trades', label: 'Your Trades', icon: TrendingUp },
     { href: '/creator', label: 'My Agents', icon: User },
     { href: '/docs', label: 'Docs', icon: FileText },
-    { href: '/create-agent', label: 'Create Agent', icon: Plus },
+    { href: '/create-agent', label: 'Create Club', icon: Plus },
   ];
 
   const socialLinks = [

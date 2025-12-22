@@ -1,11 +1,11 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { prisma } from '../../../lib/prisma';
-import { bucket6hUtc } from '../../../lib/time-utils';
-import { createLunarCrushScorer } from '../../../lib/lunarcrush-score';
+import type { NextApiRequest, NextApiResponse } from "next";
+import { prisma } from "../../../lib/prisma";
+import { bucket6hUtc } from "../../../lib/time-utils";
+import { createLunarCrushScorer } from "../../../lib/lunarcrush-score";
 
 /**
  * Admin endpoint to trigger signal creation once for testing
- * 
+ *
  * This implements a minimal signal creation flow:
  * 1. Reads candidate ct_posts (is_signal_candidate=true)
  * 2. Gets latest market_indicators_6h
@@ -17,17 +17,19 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    console.log('[ADMIN] Running signal creation once...');
+    console.log("[ADMIN] Running signal creation once...");
 
     // Initialize LunarCrush scorer
     const lunarCrushScorer = createLunarCrushScorer();
     if (!lunarCrushScorer) {
-      console.warn('[SIGNAL] LunarCrush API key not configured - using default 5% position size');
+      console.warn(
+        "[SIGNAL] LunarCrush API key not configured - using default 5% position size"
+      );
     }
 
     // 1. Get candidate posts from Twitter, Telegram Channels, and Telegram Alpha Users
@@ -35,11 +37,11 @@ export default async function handler(
       where: {
         is_signal_candidate: true,
         ct_accounts: {
-          is_active: true
-        }
+          is_active: true,
+        },
       },
       include: { ct_accounts: true },
-      orderBy: { tweet_created_at: 'desc' },
+      orderBy: { tweet_created_at: "desc" },
       take: 10,
     });
 
@@ -49,11 +51,11 @@ export default async function handler(
         is_signal_candidate: true,
         source_id: { not: null }, // Has source (channel/group)
         telegram_sources: {
-          is_active: true
-        }
+          is_active: true,
+        },
       },
       include: { telegram_sources: true },
-      orderBy: { message_created_at: 'desc' },
+      orderBy: { message_created_at: "desc" },
       take: 10,
     });
 
@@ -63,39 +65,48 @@ export default async function handler(
         is_signal_candidate: true,
         alpha_user_id: { not: null }, // Has alpha user (individual DMs)
         telegram_alpha_users: {
-          is_active: true
-        }
+          is_active: true,
+        },
       },
       include: { telegram_alpha_users: true },
-      orderBy: { message_created_at: 'desc' },
+      orderBy: { message_created_at: "desc" },
       take: 10,
     });
 
-    console.log(`[SIGNAL] Found ${ctPosts.length} Twitter + ${telegramChannelPosts.length} Telegram channels + ${telegramAlphaPosts.length} Telegram alpha users`);
+    console.log(
+      `[SIGNAL] Found ${ctPosts.length} Twitter + ${telegramChannelPosts.length} Telegram channels + ${telegramAlphaPosts.length} Telegram alpha users`
+    );
 
-    if (ctPosts.length === 0 && telegramChannelPosts.length === 0 && telegramAlphaPosts.length === 0) {
-      return res.status(200).json({ 
-        message: 'No signal candidates found',
+    if (
+      ctPosts.length === 0 &&
+      telegramChannelPosts.length === 0 &&
+      telegramAlphaPosts.length === 0
+    ) {
+      return res.status(200).json({
+        message: "No signal candidates found",
         signalsCreated: 0,
       });
     }
 
     // Normalize posts to a common format for processing
     interface NormalizedPost {
-      source: 'twitter' | 'telegram_channel' | 'telegram_alpha';
+      source: "twitter" | "telegram_channel" | "telegram_alpha";
       id: string;
       text: string;
       extracted_tokens: string[];
       signal_type: string | null;
       created_at: Date;
-      source_id: string;  // ct_account_id, telegram_source_id, or telegram_alpha_user_id
+      source_id: string; // ct_account_id, telegram_source_id, or telegram_alpha_user_id
       source_name: string;
       impact_factor?: number;
+      // Telegram alpha specific flags for filtering
+      is_lazy_trader?: boolean;
+      is_public_source?: boolean;
     }
 
     const candidatePosts: NormalizedPost[] = [
-      ...ctPosts.map(p => ({
-        source: 'twitter' as const,
+      ...ctPosts.map((p) => ({
+        source: "twitter" as const,
         id: p.tweet_id,
         text: p.tweet_text,
         extracted_tokens: p.extracted_tokens,
@@ -105,8 +116,8 @@ export default async function handler(
         source_name: `@${p.ct_accounts.x_username}`,
         impact_factor: p.ct_accounts.impact_factor,
       })),
-      ...telegramChannelPosts.map(p => ({
-        source: 'telegram_channel' as const,
+      ...telegramChannelPosts.map((p) => ({
+        source: "telegram_channel" as const,
         id: p.message_id,
         text: p.message_text,
         extracted_tokens: p.extracted_tokens,
@@ -116,51 +127,57 @@ export default async function handler(
         source_name: p.telegram_sources!.source_name,
         impact_factor: 0.5, // Default impact factor for Telegram channels
       })),
-      ...telegramAlphaPosts.map(p => ({
-        source: 'telegram_alpha' as const,
+      ...telegramAlphaPosts.map((p) => ({
+        source: "telegram_alpha" as const,
         id: p.message_id,
         text: p.message_text,
         extracted_tokens: p.extracted_tokens,
         signal_type: p.signal_type,
         created_at: p.message_created_at,
         source_id: p.alpha_user_id!,
-        source_name: p.telegram_alpha_users!.telegram_username 
-          ? `@${p.telegram_alpha_users!.telegram_username}` 
-          : p.telegram_alpha_users!.first_name || 'Telegram User',
+        source_name: p.telegram_alpha_users!.telegram_username
+          ? `@${p.telegram_alpha_users!.telegram_username}`
+          : p.telegram_alpha_users!.first_name || "Telegram User",
         impact_factor: p.telegram_alpha_users!.impact_factor,
+        // Get lazy_trader and public_source flags for filtering
+        is_lazy_trader: (p.telegram_alpha_users as any)?.lazy_trader === true,
+        is_public_source:
+          (p.telegram_alpha_users as any)?.public_source === true,
       })),
     ].sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
 
     const signalsCreated = [];
-    
+
     // Stablecoins that should NOT be traded (they are the base currency)
-    const EXCLUDED_TOKENS = ['USDC', 'USDT', 'DAI', 'USDC.E', 'BUSD', 'FRAX'];
+    const EXCLUDED_TOKENS = ["USDC", "USDT", "DAI", "USDC.E", "BUSD", "FRAX"];
 
     for (const post of candidatePosts) {
       // Extract tokens from the post
       for (const tokenSymbol of post.extracted_tokens) {
         // Skip stablecoins - they are base currency, not trading assets
         if (EXCLUDED_TOKENS.includes(tokenSymbol.toUpperCase())) {
-          console.log(`[SIGNAL] Skipping stablecoin ${tokenSymbol} - base currency only`);
+          console.log(
+            `[SIGNAL] Skipping stablecoin ${tokenSymbol} - base currency only`
+          );
           continue;
         }
         // 2. Get latest market indicators for this token
         const indicators = await prisma.market_indicators_6h.findFirst({
           where: { token_symbol: tokenSymbol },
-          orderBy: { window_start: 'desc' },
+          orderBy: { window_start: "desc" },
         });
 
         // 3. Find agents that monitor this source
         let agents: any[] = [];
-        
-        if (post.source === 'twitter') {
+
+        if (post.source === "twitter") {
           // For Twitter: find agents linked via agent_accounts
           const agentLinks = await prisma.agent_accounts.findMany({
             where: { ct_account_id: post.source_id },
             include: { agents: true },
           });
-          agents = agentLinks.map(link => link.agents);
-        } else if (post.source === 'telegram_channel') {
+          agents = agentLinks.map((link) => link.agents);
+        } else if (post.source === "telegram_channel") {
           // For Telegram Channels: find agents linked via research_institutes
           const telegramSource = await prisma.telegram_sources.findUnique({
             where: { id: post.source_id },
@@ -168,33 +185,82 @@ export default async function handler(
               research_institutes: {
                 include: {
                   agent_research_institutes: {
-                    include: { agents: true }
-                  }
-                }
-              }
-            }
+                    include: { agents: true },
+                  },
+                },
+              },
+            },
           });
-          
+
           if (telegramSource?.research_institutes) {
-            agents = telegramSource.research_institutes.agent_research_institutes.map(
-              ari => ari.agents
-            );
+            agents =
+              telegramSource.research_institutes.agent_research_institutes.map(
+                (ari) => ari.agents
+              );
           }
-        } else if (post.source === 'telegram_alpha') {
+        } else if (post.source === "telegram_alpha") {
           // For Telegram Alpha Users: find agents linked via agent_telegram_users
           const agentLinks = await prisma.agent_telegram_users.findMany({
             where: { telegram_alpha_user_id: post.source_id },
             include: { agents: true },
           });
-          agents = agentLinks.map(link => link.agents);
+
+          // Skip if source is neither lazy_trader nor public_source (invalid signal source)
+          if (!post.is_lazy_trader && !post.is_public_source) {
+            console.log(
+              `[SIGNAL] Skipping ${post.source_name} - neither lazy_trader nor public_source`
+            );
+            continue;
+          }
+
+          console.log(
+            `[SIGNAL] Source flags: lazy_trader=${post.is_lazy_trader}, public_source=${post.is_public_source}`
+          );
+
+          // Filter agents based on source user's flags and agent status:
+          //
+          // For PUBLIC agents: only include if source is public_source
+          // For PRIVATE agents: include if source is lazy_trader OR public_source
+          //   - lazy_trader=true: lazy trader agents receiving their own signals
+          //   - public_source=true: normal private agents subscribed to public alphas
+          // DRAFT agents: never include
+          agents = agentLinks
+            .map((link) => link.agents)
+            .filter((agent) => {
+              if (agent.status === "PUBLIC") {
+                if (!post.is_public_source) {
+                  console.log(
+                    `[SIGNAL] Skipping PUBLIC agent ${agent.name}: source is not public_source`
+                  );
+                  return false;
+                }
+                return true;
+              }
+
+              if (agent.status === "PRIVATE") {
+                if (post.is_lazy_trader || post.is_public_source) {
+                  return true;
+                }
+                console.log(
+                  `[SIGNAL] Skipping PRIVATE agent ${agent.name}: source is neither lazy_trader nor public_source`
+                );
+                return false;
+              }
+
+              // DRAFT agents should never receive signals
+              return false;
+            });
         }
 
-        console.log(`[SIGNAL] Found ${agents.length} agents monitoring ${post.source_name}`);
+        console.log(
+          `[SIGNAL] Found ${agents.length} eligible agents for ${post.source_name}`
+        );
 
         for (const agent of agents) {
-
-          // Skip non-ACTIVE agents
-          if (agent.status !== 'PUBLIC') continue; // Only generate signals for public agents
+          // For twitter and telegram_channel sources, still check for PUBLIC only
+          // (telegram_alpha filtering is done above)
+          if (post.source !== "telegram_alpha" && agent.status !== "PUBLIC")
+            continue;
 
           // Check for duplicate (same agent, token, 6h bucket)
           const currentBucket = bucket6hUtc(new Date());
@@ -209,37 +275,56 @@ export default async function handler(
           });
 
           if (existing) {
-            console.log(`[SIGNAL] Duplicate found for ${agent.name} - ${tokenSymbol}`);
+            console.log(
+              `[SIGNAL] Duplicate found for ${agent.name} - ${tokenSymbol}`
+            );
             continue;
           }
 
           // For MULTI venue agents, default to HYPERLIQUID (Agent Where will route dynamically)
-          const signalVenue = agent.venue === 'MULTI' ? 'HYPERLIQUID' : agent.venue;
+          const signalVenue =
+            agent.venue === "MULTI" ? "HYPERLIQUID" : agent.venue;
 
           // Get LunarCrush score for dynamic position sizing
           let positionSizePercentage = 5; // Default 5%
-          let lunarCrushScore = null;
-          let lunarCrushReasoning = null;
-          let lunarCrushBreakdown = null;
+          let lunarCrushScore: number | null = null;
+          let lunarCrushReasoning: string | null = null;
+          let lunarCrushBreakdown: Record<string, any> | undefined = undefined;
 
           if (lunarCrushScorer) {
             try {
-              console.log(`[SIGNAL] Fetching LunarCrush score for ${tokenSymbol}...`);
-              const scoreData = await lunarCrushScorer.getTokenScore(tokenSymbol);
-              
+              console.log(
+                `[SIGNAL] Fetching LunarCrush score for ${tokenSymbol}...`
+              );
+              const scoreData = await lunarCrushScorer.getTokenScore(
+                tokenSymbol
+              );
+
               if (scoreData.tradeable) {
                 positionSizePercentage = scoreData.positionSize; // 0-10%
                 lunarCrushScore = scoreData.score;
                 lunarCrushReasoning = scoreData.reasoning;
                 lunarCrushBreakdown = scoreData.breakdown;
-                
-                console.log(`[SIGNAL] LunarCrush: ${tokenSymbol} score=${scoreData.score.toFixed(3)}, position=${positionSizePercentage.toFixed(2)}%`);
+
+                console.log(
+                  `[SIGNAL] LunarCrush: ${tokenSymbol} score=${scoreData.score.toFixed(
+                    3
+                  )}, position=${positionSizePercentage.toFixed(2)}%`
+                );
               } else {
-                console.log(`[SIGNAL] LunarCrush: ${tokenSymbol} score=${scoreData.score.toFixed(3)} - NOT TRADEABLE (score <= 0)`);
+                console.log(
+                  `[SIGNAL] LunarCrush: ${tokenSymbol} score=${scoreData.score.toFixed(
+                    3
+                  )} - NOT TRADEABLE (score <= 0)`
+                );
                 continue; // Skip this signal if LunarCrush says don't trade
               }
             } catch (error: any) {
-              console.warn(`[SIGNAL] LunarCrush error for ${tokenSymbol}:`, error.message, '- using default 5%');
+              console.warn(
+                `[SIGNAL] LunarCrush error for ${tokenSymbol}:`,
+                error.message,
+                "- using default 5%"
+              );
             }
           }
 
@@ -251,9 +336,9 @@ export default async function handler(
                 agent_id: agent.id,
                 token_symbol: tokenSymbol,
                 venue: signalVenue, // MULTI agents → HYPERLIQUID (Agent Where will re-route if needed)
-                side: 'LONG', // Simplified - would use sentiment analysis
+                side: "LONG", // Simplified - would use sentiment analysis
                 size_model: {
-                  type: 'balance-percentage',
+                  type: "balance-percentage",
                   value: positionSizePercentage, // Dynamic from LunarCrush!
                   impactFactor: post.impact_factor || 0.5,
                 },
@@ -261,7 +346,9 @@ export default async function handler(
                   stopLoss: 0.05,
                   takeProfit: 0.15,
                 },
-                source_tweets: [post.source === 'twitter' ? post.id : `TELEGRAM_${post.id}`],
+                source_tweets: [
+                  post.source === "twitter" ? post.id : `TELEGRAM_${post.id}`,
+                ],
                 lunarcrush_score: lunarCrushScore,
                 lunarcrush_reasoning: lunarCrushReasoning,
                 lunarcrush_breakdown: lunarCrushBreakdown,
@@ -269,11 +356,19 @@ export default async function handler(
             });
 
             signalsCreated.push(signal);
-            console.log(`[SIGNAL] Created signal from ${post.source}: ${agent.name} - ${tokenSymbol} with ${positionSizePercentage.toFixed(2)}% position size`);
+            console.log(
+              `[SIGNAL] Created signal from ${post.source}: ${
+                agent.name
+              } - ${tokenSymbol} with ${positionSizePercentage.toFixed(
+                2
+              )}% position size`
+            );
           } catch (createError: any) {
             // P2002: Unique constraint violation (race condition - another worker created it first)
-            if (createError.code === 'P2002') {
-              console.log(`[SIGNAL] Signal already created by another worker: ${agent.name} - ${tokenSymbol} (race condition handled)`);
+            if (createError.code === "P2002") {
+              console.log(
+                `[SIGNAL] Signal already created by another worker: ${agent.name} - ${tokenSymbol} (race condition handled)`
+              );
             } else {
               // Re-throw unexpected errors
               throw createError;
@@ -284,12 +379,14 @@ export default async function handler(
     }
 
     return res.status(200).json({
-      message: 'Signal creation completed',
+      message: "Signal creation completed",
       signalsCreated: signalsCreated.length,
       signals: signalsCreated,
     });
   } catch (error: any) {
-    console.error('[ADMIN] Signal creation error:', error.message);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error("[ADMIN] Signal creation error:", error.message);
+    return res
+      .status(500)
+      .json({ error: error.message || "Internal server error" });
   }
 }

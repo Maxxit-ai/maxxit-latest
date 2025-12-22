@@ -32,36 +32,47 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
   const where = search
     ? {
         OR: [
-          { xUsername: { contains: search as string, mode: 'insensitive' as const } },
-          { displayName: { contains: search as string, mode: 'insensitive' as const } },
+          { x_username: { contains: search as string, mode: 'insensitive' as const } },
+          { display_name: { contains: search as string, mode: 'insensitive' as const } },
         ],
       }
     : {};
 
-  const ctAccounts = await prisma.ctAccount.findMany({
+  const ctAccounts = await prisma.ct_accounts.findMany({
     where,
     take: parseInt(limit as string),
     orderBy: [
-      { impactFactor: 'desc' },
-      { followersCount: 'desc' },
+      { impact_factor: 'desc' },
+      { followers_count: 'desc' },
     ],
     select: {
       id: true,
-      xUsername: true,
-      displayName: true,
-      followersCount: true,
-      impactFactor: true,
-      lastSeenAt: true,
+      x_username: true,
+      display_name: true,
+      followers_count: true,
+      impact_factor: true,
+      last_seen_at: true,
       _count: {
         select: {
-          ctPosts: true,
-          agentAccounts: true,
+          ct_posts: true,
+          agent_accounts: true,
         },
       },
     },
   });
 
-  return res.status(200).json(ctAccounts);
+  // Convert to camelCase for frontend
+  const formatted = ctAccounts.map(acc => ({
+    id: acc.id,
+    xUsername: acc.x_username,
+    displayName: acc.display_name,
+    followersCount: acc.followers_count,
+    impactFactor: acc.impact_factor,
+    lastSeenAt: acc.last_seen_at,
+    _count: acc._count,
+  }));
+
+  return res.status(200).json(formatted);
 }
 
 async function handlePost(req: NextApiRequest, res: NextApiResponse) {
@@ -69,39 +80,56 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     const validated = createCtAccountSchema.parse(req.body);
 
     // Check if account already exists
-    const existing = await prisma.ctAccount.findUnique({
-      where: { xUsername: validated.xUsername },
+    const existing = await prisma.ct_accounts.findUnique({
+      where: { x_username: validated.xUsername },
     });
 
     if (existing) {
       return res.status(400).json({ 
         error: 'CT account with this username already exists',
-        account: existing,
+        account: {
+          id: existing.id,
+          xUsername: existing.x_username,
+          displayName: existing.display_name,
+          followersCount: existing.followers_count,
+          impactFactor: existing.impact_factor,
+          lastSeenAt: existing.last_seen_at,
+        },
       });
     }
 
     // Create new CT account
-    const ctAccount = await prisma.ctAccount.create({
+    const ctAccount = await prisma.ct_accounts.create({
       data: {
-        xUsername: validated.xUsername,
-        displayName: validated.displayName,
-        followersCount: validated.followersCount,
-        impactFactor: 0,
+        x_username: validated.xUsername,
+        display_name: validated.displayName,
+        followers_count: validated.followersCount,
+        impact_factor: 0,
       },
       select: {
         id: true,
-        xUsername: true,
-        displayName: true,
-        followersCount: true,
-        impactFactor: true,
-        lastSeenAt: true,
+        x_username: true,
+        display_name: true,
+        followers_count: true,
+        impact_factor: true,
+        last_seen_at: true,
       },
     });
+
+    // Convert to camelCase for frontend
+    const formatted = {
+      id: ctAccount.id,
+      xUsername: ctAccount.x_username,
+      displayName: ctAccount.display_name,
+      followersCount: ctAccount.followers_count,
+      impactFactor: ctAccount.impact_factor,
+      lastSeenAt: ctAccount.last_seen_at,
+    };
 
     // TODO: Trigger initial tweet ingestion for this account
     // await tweetIngestQueue.add('ingest-tweets', { ctAccountId: ctAccount.id });
 
-    return res.status(201).json(ctAccount);
+    return res.status(201).json(formatted);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ 

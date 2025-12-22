@@ -22,6 +22,8 @@ export default async function handler(
         return await handleGet(id, req, res);
       case 'POST':
         return await handlePost(id, req, res);
+      case 'DELETE':
+        return await handleDelete(id, req, res);
       default:
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -101,5 +103,45 @@ async function handlePost(agentId: string, req: NextApiRequest, res: NextApiResp
       });
     }
     throw error;
+  }
+}
+
+async function handleDelete(agentId: string, req: NextApiRequest, res: NextApiResponse) {
+  try {
+    const { ctAccountId } = req.query;
+
+    if (!ctAccountId || typeof ctAccountId !== 'string') {
+      return res.status(400).json({ error: 'ctAccountId query parameter is required' });
+    }
+
+    const agent = await prisma.agents.findUnique({
+      where: { id: agentId },
+    });
+
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    await prisma.agent_accounts.delete({
+      where: {
+        agent_id_ct_account_id: {
+          agent_id: agentId,
+          ct_account_id: ctAccountId,
+        },
+      },
+    });
+
+    console.log(`[API] Unlinked CT account ${ctAccountId} from agent ${agentId}`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'CT account unlinked from agent',
+    });
+  } catch (error: any) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Link not found' });
+    }
+    console.error(`[API /agents/${agentId}/accounts DELETE] Error:`, error.message);
+    return res.status(500).json({ error: error.message || 'Internal server error' });
   }
 }

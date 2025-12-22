@@ -14,7 +14,10 @@ import { setupGracefulShutdown, registerCleanup } from "@maxxit/common";
 import { checkDatabaseHealth } from "@maxxit/database";
 import { venue_t } from "@prisma/client";
 import { makeTradeDecision } from "./lib/llm-trade-decision";
-import { getLunarCrushRawData, canUseLunarCrush } from "./lib/lunarcrush-wrapper";
+import {
+  getLunarCrushRawData,
+  canUseLunarCrush,
+} from "./lib/lunarcrush-wrapper";
 
 dotenv.config();
 
@@ -40,7 +43,9 @@ app.get("/health", async (req, res) => {
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`🏥 Signal Generator Worker with LLM health check on port ${PORT}`);
+  console.log(
+    `🏥 Signal Generator Worker with LLM health check on port ${PORT}`
+  );
 });
 
 /**
@@ -49,13 +54,15 @@ const server = app.listen(PORT, () => {
  */
 async function generateAllSignals() {
   if (isCycleRunning) {
-    console.log("[SignalGenerator] ⏭️ Skipping cycle - previous cycle still running");
+    console.log(
+      "[SignalGenerator] ⏭️ Skipping cycle - previous cycle still running"
+    );
     return;
   }
 
   isCycleRunning = true;
   console.log("[SignalGenerator] ⏰ Running signal generation cycle...");
-  
+
   try {
     // Get all telegram posts with signal classification that haven't been processed
     const pendingPosts = await prisma.telegram_posts.findMany({
@@ -69,7 +76,9 @@ async function generateAllSignals() {
       take: 20, // Process 20 posts per run
     });
 
-    console.log(`[SignalGenerator] 📊 Found ${pendingPosts.length} telegram posts to process`);
+    console.log(
+      `[SignalGenerator] 📊 Found ${pendingPosts.length} telegram posts to process`
+    );
 
     if (pendingPosts.length === 0) {
       console.log("[SignalGenerator] ✅ No pending telegram posts to process");
@@ -79,34 +88,178 @@ async function generateAllSignals() {
     // Process each post
     for (const post of pendingPosts) {
       try {
-        console.log(`[SignalGenerator] 🔄 Processing post ${post.id.substring(0, 8)}...`);
-        console.log(`[SignalGenerator]    Content: "${post.message_text.substring(0, 100)}..."`);
+        console.log(
+          `[SignalGenerator] 🔄 Processing post ${post.id.substring(0, 8)}...`
+        );
+        console.log(
+          `[SignalGenerator]    Content: "${post.message_text.substring(
+            0,
+            100
+          )}..."`
+        );
         console.log(`[SignalGenerator]    Signal: ${post.signal_type}`);
-        console.log(`[SignalGenerator]    Confidence: ${(post.confidence_score || 0).toFixed(2)}`);
+        console.log(
+          `[SignalGenerator]    Confidence: ${(
+            post.confidence_score || 0
+          ).toFixed(2)}`
+        );
 
-        // Get all active agents for this signal
-        const agents = await prisma.agents.findMany({
-          where: {
-            status: { in: ["PUBLIC", "PRIVATE"] },
-            agent_deployments: {
-              some: {
-                status: "ACTIVE",
+        // Get agents based on the source of the post
+        let agents: any[] = [];
+
+        if (post.alpha_user_id) {
+          // For Telegram Alpha Users: find agents linked via agent_telegram_users
+          // This is the proper way - only agents explicitly subscribed to this alpha user
+          const alphaUser = await prisma.telegram_alpha_users.findUnique({
+            where: { id: post.alpha_user_id },
+          });
+
+          if (!alphaUser) {
+            console.log(`[SignalGenerator] ⚠️  Alpha user not found for post`);
+            continue;
+          }
+
+          // Get the source user's flags
+          const isLazyTrader = (alphaUser as any)?.lazy_trader === true;
+          const isPublicSource = (alphaUser as any)?.public_source === true;
+
+          console.log(
+            `[SignalGenerator]    Source: @${
+              alphaUser.telegram_username || alphaUser.first_name
+            }`
+          );
+          console.log(
+            `[SignalGenerator]    Flags: lazy_trader=${isLazyTrader}, public_source=${isPublicSource}`
+          );
+
+          // Skip if source is neither lazy_trader nor public_source (invalid signal source)
+          if (!isLazyTrader && !isPublicSource) {
+            console.log(
+              `[SignalGenerator] ⏭️  Skipping - source is neither lazy_trader nor public_source`
+            );
+            continue;
+          }
+
+          // Get agents linked to this telegram alpha user
+          const agentLinks = await prisma.agent_telegram_users.findMany({
+            where: { telegram_alpha_user_id: post.alpha_user_id },
+            include: {
+              agents: {
+                include: {
+                  agent_deployments: {
+                    where: {
+                      status: "ACTIVE",
+                    },
+                  },
+                },
               },
             },
-          },
-          include: {
-            agent_deployments: {
-              where: {
-                status: "ACTIVE",
+          });
+
+          // Filter agents based on source user's flags and agent status:
+          //
+          // For PUBLIC agents: only include if source is public_source
+          // For PRIVATE agents: include if source is lazy_trader OR public_source
+          //   - lazy_trader=true: lazy trader agents receiving their own signals
+          //   - public_source=true: normal private agents subscribed to public alphas
+          // DRAFT agents: never include
+          agents = agentLinks
+            .map((link) => link.agents)
+            .filter((agent) => {
+              // Skip agents with no active deployments
+              if (
+                !agent.agent_deployments ||
+                agent.agent_deployments.length === 0
+              ) {
+                return false;
+              }
+
+              if (agent.status === "PUBLIC") {
+                if (!isPublicSource) {
+                  console.log(
+                    `[SignalGenerator]    ⏭️  Skipping PUBLIC agent ${agent.name}: source is not public_source`
+                  );
+                  return false;
+                }
+                return true;
+              }
+
+              if (agent.status === "PRIVATE") {
+                if (isLazyTrader || isPublicSource) {
+                  return true;
+                }
+                console.log(
+                  `[SignalGenerator]    ⏭️  Skipping PRIVATE agent ${agent.name}: source is neither lazy_trader nor public_source`
+                );
+                return false;
+              }
+
+              // DRAFT agents should never receive signals
+              return false;
+            });
+        } else if (post.source_id) {
+          // For Telegram Channels: find agents linked via research_institutes
+          const telegramSource = await prisma.telegram_sources.findUnique({
+            where: { id: post.source_id },
+            include: {
+              research_institutes: {
+                include: {
+                  agent_research_institutes: {
+                    include: {
+                      agents: {
+                        include: {
+                          agent_deployments: {
+                            where: {
+                              status: "ACTIVE",
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
-          },
-        });
+          });
 
-        if (agents.length === 0) {
-          console.log("[SignalGenerator] ⚠️  No active agents found");
+          if (telegramSource?.research_institutes) {
+            agents =
+              telegramSource.research_institutes.agent_research_institutes
+                .map((ari) => ari.agents)
+                .filter((agent) => {
+                  // Skip agents with no active deployments
+                  if (
+                    !agent.agent_deployments ||
+                    agent.agent_deployments.length === 0
+                  ) {
+                    return false;
+                  }
+                  // For telegram channels, only PUBLIC agents receive signals
+                  return agent.status === "PUBLIC";
+                });
+          }
+        } else {
+          console.log(
+            `[SignalGenerator] ⚠️  Post has no alpha_user_id or source_id, skipping`
+          );
           continue;
         }
+
+        if (agents.length === 0) {
+          console.log(
+            "[SignalGenerator] ⚠️  No eligible agents found for this source"
+          );
+          // Mark as processed even if no agents
+          await prisma.telegram_posts.update({
+            where: { id: post.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        console.log(
+          `[SignalGenerator] 🤖 Found ${agents.length} eligible agent(s)`
+        );
 
         // Extract tokens from classified post
         const extractedTokens = post.extracted_tokens || [];
@@ -116,7 +269,9 @@ async function generateAllSignals() {
           continue;
         }
 
-        console.log(`[SignalGenerator] 🪙 Tokens: ${extractedTokens.join(", ")}`);
+        console.log(
+          `[SignalGenerator] 🪙 Tokens: ${extractedTokens.join(", ")}`
+        );
 
         // Generate signal for each deployment, agent, and token combination
         // Each deployment has its own trading preferences, so we generate separate signals
@@ -130,15 +285,21 @@ async function generateAllSignals() {
                   deployment,
                   token
                 );
-                
+
                 if (success) {
                   console.log(
-                    `[SignalGenerator] ✅ Signal created for ${agent.name} (deployment ${deployment.id.substring(0, 8)}): ${token}`
+                    `[SignalGenerator] ✅ Signal created for ${
+                      agent.name
+                    } (deployment ${deployment.id.substring(0, 8)}): ${token}`
                   );
                 }
               } catch (error: any) {
                 console.error(
-                  `[SignalGenerator] ❌ Failed to generate signal for ${agent.name} (deployment ${deployment.id.substring(0, 8)}): ${token}: ${error.message}`
+                  `[SignalGenerator] ❌ Failed to generate signal for ${
+                    agent.name
+                  } (deployment ${deployment.id.substring(0, 8)}): ${token}: ${
+                    error.message
+                  }`
                 );
               }
             }
@@ -212,29 +373,33 @@ async function generateSignalForAgentAndToken(
         );
       } else {
         // Ostium not available, check Hyperliquid
-        const hyperliquidMarket = await prisma.venue_markets.findFirst({
-          where: {
-            token_symbol: token.toUpperCase(),
-            venue: "HYPERLIQUID",
-            is_active: true,
-          },
-        });
+        // const hyperliquidMarket = await prisma.venue_markets.findFirst({
+        //   where: {
+        //     token_symbol: token.toUpperCase(),
+        //     venue: "HYPERLIQUID",
+        //     is_active: true,
+        //   },
+        // });
 
-        if (hyperliquidMarket) {
-          venueMarket = hyperliquidMarket;
-          signalVenue = "HYPERLIQUID";
-          console.log(
-            `    ✅ ${token} available on HYPERLIQUID (not on OSTIUM, using HYPERLIQUID)`
-          );
-        } else {
-          console.log(
-            `    ⏭️  Skipping ${token} - not available on OSTIUM or HYPERLIQUID`
-          );
-          console.log(
-            `       (Multi-venue agents need token on at least one enabled venue)`
-          );
-          return false;
-        }
+        // if (hyperliquidMarket) {
+        //   venueMarket = hyperliquidMarket;
+        //   signalVenue = "HYPERLIQUID";
+        //   console.log(
+        //     `    ✅ ${token} available on HYPERLIQUID (not on OSTIUM, using HYPERLIQUID)`
+        //   );
+        // } else {
+        //   console.log(
+        //     `    ⏭️  Skipping ${token} - not available on OSTIUM or HYPERLIQUID`
+        //   );
+        //   console.log(
+        //     `       (Multi-venue agents need token on at least one enabled venue)`
+        //   );
+        //   return false;
+        // }
+
+        console.log(`    ⏭️  Skipping ${token} - not available on OSTIUM`);
+
+        return false;
       }
     } else {
       // For single-venue agents, check specific venue
@@ -265,7 +430,7 @@ async function generateSignalForAgentAndToken(
     // Determine side from post sentiment (already classified by LLM)
     const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
 
-    // Check for existing signal 
+    // Check for existing signal
     const now = new Date();
     const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
 
@@ -332,7 +497,7 @@ async function generateSignalForAgentAndToken(
         return false;
       }
     }
-    
+
     // Get trading preferences from the specific agent deployment (preferences are per deployment)
     const userTradingPreferences = {
       risk_tolerance: deployment.risk_tolerance,
@@ -346,7 +511,7 @@ async function generateSignalForAgentAndToken(
     let userBalance = 0;
     // Track venue/token-specific max leverage (used to inform the LLM)
     let venueMaxLeverage: number | undefined;
-    
+
     if (signalVenue === "HYPERLIQUID") {
       // Get Hyperliquid balance via service
       const userAddress = await prisma.user_agent_addresses.findUnique({
@@ -357,7 +522,10 @@ async function generateSignalForAgentAndToken(
       if (userAddress?.hyperliquid_agent_address) {
         try {
           const balanceResponse = await fetch(
-            `${process.env.HYPERLIQUID_SERVICE_URL || "https://hyperliquid-service.onrender.com"}/balance`,
+            `${
+              process.env.HYPERLIQUID_SERVICE_URL ||
+              "https://hyperliquid-service.onrender.com"
+            }/balance`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -368,7 +536,7 @@ async function generateSignalForAgentAndToken(
           );
 
           if (balanceResponse.ok) {
-            const balanceData = await balanceResponse.json() as any;
+            const balanceData = (await balanceResponse.json()) as any;
             if (balanceData.success) {
               userBalance = parseFloat(balanceData.withdrawable || "0");
             }
@@ -387,7 +555,9 @@ async function generateSignalForAgentAndToken(
       if (userAddress?.ostium_agent_address) {
         try {
           const balanceResponse = await fetch(
-            `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"}/balance`,
+            `${
+              process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
+            }/balance`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -398,7 +568,7 @@ async function generateSignalForAgentAndToken(
           );
 
           if (balanceResponse.ok) {
-            const balanceData = await balanceResponse.json() as any;
+            const balanceData = (await balanceResponse.json()) as any;
             if (balanceData.success) {
               userBalance = parseFloat(balanceData.usdcBalance || "0");
             }
@@ -414,7 +584,9 @@ async function generateSignalForAgentAndToken(
       let ostiumPair = null;
 
       for (const symbol of possibleSymbols) {
-        ostiumPair = await prisma.ostium_available_pairs.findFirst({ where: { symbol } });
+        ostiumPair = await prisma.ostium_available_pairs.findFirst({
+          where: { symbol },
+        });
         if (ostiumPair) break;
       }
 
@@ -429,18 +601,30 @@ async function generateSignalForAgentAndToken(
         });
       }
 
-      if (ostiumPair?.max_leverage !== undefined && ostiumPair?.max_leverage !== null) {
+      if (
+        ostiumPair?.max_leverage !== undefined &&
+        ostiumPair?.max_leverage !== null
+      ) {
         const numericLeverage = Number(ostiumPair.max_leverage);
-        venueMaxLeverage = Number.isFinite(numericLeverage) ? numericLeverage : undefined;
+        venueMaxLeverage = Number.isFinite(numericLeverage)
+          ? numericLeverage
+          : undefined;
       }
     }
 
     // Get raw LunarCrush data if available (for additional context)
-    let lunarcrushData: { data: Record<string, any>; descriptions: Record<string, string> } | null = null;
+    let lunarcrushData: {
+      data: Record<string, any>;
+      descriptions: Record<string, string>;
+    } | null = null;
     if (canUseLunarCrush()) {
       try {
         const rawDataResult = await getLunarCrushRawData(token);
-        if (rawDataResult.success && rawDataResult.data && rawDataResult.descriptions) {
+        if (
+          rawDataResult.success &&
+          rawDataResult.data &&
+          rawDataResult.descriptions
+        ) {
           lunarcrushData = {
             data: rawDataResult.data,
             descriptions: rawDataResult.descriptions,
@@ -504,15 +688,21 @@ async function generateSignalForAgentAndToken(
             llm_should_trade: tradeDecision.shouldTrade,
             llm_fund_allocation: tradeDecision.fundAllocation,
             llm_leverage: tradeDecision.leverage,
+            trade_executed: null,
           },
         });
 
-        console.log(`    ✅ Skipped signal stored for deployment ${deployment.id.substring(0, 8)}: ${side} ${token} on ${signalVenue}`);
+        console.log(
+          `    ✅ Skipped signal stored for deployment ${deployment.id.substring(
+            0,
+            8
+          )}: ${side} ${token} on ${signalVenue}`
+        );
         console.log(`    💭 Skipped reason: ${tradeDecision.reason}`);
       } catch (error) {
         console.error(`    ❌ Error storing skipped signal: ${error}`);
       }
-      
+
       return false;
     }
 
@@ -540,11 +730,17 @@ async function generateSignalForAgentAndToken(
           llm_should_trade: tradeDecision.shouldTrade,
           llm_fund_allocation: tradeDecision.fundAllocation,
           llm_leverage: tradeDecision.leverage,
+          trade_executed: null,
         },
       });
 
       console.log(
-        `    ✅ Signal created for deployment ${deployment.id.substring(0, 8)}: ${side} ${token} on ${signalVenue} (${tradeDecision.fundAllocation.toFixed(2)}% position)`
+        `    ✅ Signal created for deployment ${deployment.id.substring(
+          0,
+          8
+        )}: ${side} ${token} on ${signalVenue} (${tradeDecision.fundAllocation.toFixed(
+          2
+        )}% position)`
       );
       if (signalVenue === "OSTIUM") {
         console.log(
@@ -581,7 +777,9 @@ async function runWorker() {
     console.log("");
     console.log("📋 Signal Generation Flow with LLM:");
     console.log("   1. Tweet classified by LLM (in tweet-ingestion-worker)");
-    console.log("   2. LLM decision for trade execution, fund allocation, and leverage");
+    console.log(
+      "   2. LLM decision for trade execution, fund allocation, and leverage"
+    );
     console.log("   3. Signal created if LLM decides to trade");
     console.log("");
     console.log("🛡️  Risk Management (Hardcoded in Position Monitor):");
@@ -608,9 +806,11 @@ async function runWorker() {
       userBalance: 1000,
       venue: "OSTIUM",
       token: "BTC",
-      side: "LONG"
-    }).then(() => true).catch(() => false);
-    
+      side: "LONG",
+    })
+      .then(() => true)
+      .catch(() => false);
+
     if (await decisionMaker) {
       console.log("✅ LLM Decision Maker: AVAILABLE");
     } else {
@@ -630,7 +830,10 @@ async function runWorker() {
 
     console.log("✅ Signal Generator Worker with LLM started successfully");
   } catch (error: any) {
-    console.error("[SignalGenerator] ❌ Failed to start worker:", error.message);
+    console.error(
+      "[SignalGenerator] ❌ Failed to start worker:",
+      error.message
+    );
     console.error("[SignalGenerator] Stack:", error.stack);
     throw error; // Re-throw to be caught by caller
   }

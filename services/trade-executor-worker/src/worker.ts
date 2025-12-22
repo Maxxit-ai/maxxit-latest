@@ -63,9 +63,9 @@ async function executeAllPendingSignals() {
     const pendingSignals = await prisma.signals.findMany({
       where: {
         deployment_id: { not: null }, // Must have a designated deployment
-        // Include signals that are not skipped, OR signals that failed due to retryable errors
+        // Include signals that are not executed, OR signals that failed due to retryable errors
         OR: [
-          { skipped_reason: null }, // Not skipped
+          { trade_executed: null }, // Not executed yet
           {
             // Retryable errors: backend/service errors that should be retried
             // Only retry signals created in last 24 hours
@@ -301,6 +301,14 @@ async function executeSignal(signalId: string, deploymentId: string) {
           },
         });
 
+        await prisma.signals.update({
+          where: { id: signalId },
+          data: {
+            trade_executed: "SUCCESS",
+            execution_result: "Trade executed successfully: " + result.txHash,
+          },
+        });
+
         console.log(`[TradeExecutor]       ✅ Trade executed successfully`);
         console.log(`[TradeExecutor]       TX Hash: ${result.txHash || "N/A"}`);
         console.log(
@@ -327,6 +335,13 @@ async function executeSignal(signalId: string, deploymentId: string) {
           console.log(
             `[TradeExecutor]       Trade was executed but position record already created`
           );
+          await prisma.signals.update({
+            where: { id: signalId },
+            data: {
+              trade_executed: "SUCCESS",
+              execution_result: "Success",
+            },
+          });
         } else {
           throw dbError; // Re-throw other errors
         }
@@ -357,7 +372,8 @@ async function executeSignal(signalId: string, deploymentId: string) {
           await prisma.signals.update({
             where: { id: signalId },
             data: {
-              skipped_reason: `Retry timeout (signal older than 24h): ${errorMessage}`,
+              trade_executed: "FAILED",
+              execution_result: `Retry timeout (signal older than 24h): ${errorMessage}`,
               executor_agreement_error: null,
             },
           });
@@ -369,7 +385,8 @@ async function executeSignal(signalId: string, deploymentId: string) {
           await prisma.signals.update({
             where: { id: signalId },
             data: {
-              skipped_reason: `Max retries (${MAX_RETRIES}) exceeded: ${errorMessage}`,
+              trade_executed: "FAILED",
+              execution_result: `Max retries (${MAX_RETRIES}) exceeded: ${errorMessage}`,
               executor_agreement_error: null,
             },
           });
@@ -378,7 +395,6 @@ async function executeSignal(signalId: string, deploymentId: string) {
           );
         } else {
           // Store error in executor_agreement_error for retry tracking
-          // Don't mark as skipped - allow retry
           const existingError = signal?.executor_agreement_error || "";
           const retryError = existingError.includes("RETRYABLE")
             ? `${existingError} | RETRY #${retryCount}`
@@ -388,7 +404,6 @@ async function executeSignal(signalId: string, deploymentId: string) {
             where: { id: signalId },
             data: {
               executor_agreement_error: retryError,
-              skipped_reason: null, // Clear skip flag to allow retry
             },
           });
 
@@ -398,11 +413,11 @@ async function executeSignal(signalId: string, deploymentId: string) {
           console.log(`[TradeExecutor]       Will retry in next cycle`);
         }
       } else {
-        // Permanent failure - mark as skipped
         await prisma.signals.update({
           where: { id: signalId },
           data: {
-            skipped_reason: errorMessage,
+            trade_executed: "FAILED",
+            execution_result: errorMessage,
             executor_agreement_error: null, // Clear retry flag
           },
         });
@@ -425,7 +440,6 @@ async function executeSignal(signalId: string, deploymentId: string) {
           where: { id: signalId },
           data: {
             executor_agreement_error: `RETRYABLE: ${error.message}`,
-            skipped_reason: null, // Clear skip flag to allow retry
           },
         });
         console.log(
@@ -433,11 +447,11 @@ async function executeSignal(signalId: string, deploymentId: string) {
         );
         console.log(`[TradeExecutor]       Will retry in next cycle`);
       } else {
-        // Permanent failure - mark as skipped
         await prisma.signals.update({
           where: { id: signalId },
           data: {
-            skipped_reason: `Execution error: ${error.message}`,
+            trade_executed: "FAILED",
+            execution_result: `Execution error: ${error.message}`,
             executor_agreement_error: null,
           },
         });

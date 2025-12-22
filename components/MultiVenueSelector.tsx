@@ -203,7 +203,7 @@ export function MultiVenueSelector({
             <div>
               <h3 className="font-display text-xl mb-2">CONNECT WALLET</h3>
               <p className="text-[var(--text-secondary)] text-sm">
-                Connect your wallet to deploy {agentName}
+                Connect your wallet to join {agentName}
               </p>
             </div>
             <div className="space-y-3">
@@ -235,7 +235,7 @@ export function MultiVenueSelector({
             {creatingDeployments ? (
               <>
                 <CheckCircle className="h-16 w-16 mx-auto text-[var(--accent)]" />
-                <h3 className="font-display text-xl">DEPLOYED</h3>
+                <h3 className="font-display text-xl">JOINED!</h3>
                 <p className="text-[var(--text-secondary)] text-sm">
                   {agentName} is now active on both venues
                 </p>
@@ -260,7 +260,7 @@ export function MultiVenueSelector({
           <div className="border-b border-[var(--border)] p-4 flex items-center justify-between flex-shrink-0">
             <div>
               <h2 className="font-display text-xl">{agentName}</h2>
-              <p className="text-xs text-[var(--text-muted)] mt-1">Select a venue to deploy</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">Select a venue to join</p>
             </div>
             <button
               onClick={onClose}
@@ -359,7 +359,7 @@ export function MultiVenueSelector({
               <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-4 mt-6">
                 <p className="data-label mb-3">YOUR AGENT WALLETS</p>
                 <div className="space-y-3">
-                  {userAgentAddresses.hyperliquid && (
+                  {/* {userAgentAddresses.hyperliquid && (
                     <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="w-8 h-8 border-2 border-[var(--accent)]/60 flex items-center justify-center flex-shrink-0">
@@ -384,7 +384,7 @@ export function MultiVenueSelector({
                         )}
                       </button>
                     </div>
-                  )}
+                  )} */}
 
                   {userAgentAddresses.ostium && (
                     <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
@@ -463,7 +463,7 @@ export function MultiVenueSelector({
                       Approve Agent Delegation
                     </p>
                     <p className="text-xs text-[var(--text-secondary)]">
-                      Sign transactions to delegate trading permissions to your agent wallet. This allows the agent to execute trades on your behalf.
+                      Sign transactions to delegate trading permissions to your trading wallet. This allows the agent to execute trades on your behalf.
                     </p>
                   </div>
                 </div>
@@ -493,7 +493,7 @@ export function MultiVenueSelector({
                   <div className="flex-1">
                     <p className="text-sm font-bold text-[var(--text-primary)] mb-1">Agent Active</p>
                     <p className="text-xs text-[var(--text-secondary)]">
-                      Once all steps are complete, your agent will automatically execute trades based on signals.
+                      Once all steps are complete, the agent will automatically execute trades based on signals.
                     </p>
                   </div>
                 </div>
@@ -512,7 +512,7 @@ export function MultiVenueSelector({
                     Fund Agent with ETH
                   </p>
                   <p className="text-xs text-[var(--text-secondary)] mb-3">
-                    Send ETH to your agent address so it can pay for gas fees when executing trades.
+                    Send ETH to your trading address so it can pay for gas fees when executing trades.
                   </p>
                   <div className="flex gap-2">
                     <input
@@ -578,7 +578,7 @@ export function MultiVenueSelector({
                     </li>
                     <li>Connect your wallet and set a username</li>
                     <li>Deposit USDC to your account</li>
-                    <li>Your agent will trade using the USDC you deposit</li>
+                    <li>The agent will trade using the USDC you deposit</li>
                   </ol>
                   <a
                     href="https://app.ostium.com/trade"

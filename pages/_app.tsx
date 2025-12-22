@@ -15,7 +15,7 @@ export default function App({ Component, pageProps }: AppProps) {
       <>
         <Head>
           <title>Maxxit - Agentic DeFi Trading Platform</title>
-          <meta name="description" content="Deploy AI-powered trading agents that execute trades based on crypto Twitter signals" />
+          <meta name="description" content="Maxxit is a non-custodial AI trading platform that turns benchmarked alpha into automated execution." />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <link rel="icon" href="/favicon.ico" />
         </Head>
