@@ -159,27 +159,67 @@ export default async function handler(
       `[LazyTrading] Created agent ${agent.id} for wallet ${normalizedWallet}`
     );
 
-    // Now generate agent address using the standard flow
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.host}`;
+    // Check if wallet already has agent addresses assigned
+    // (Same pattern as normal club flow - reuse existing addresses)
+    const existingAgentAddress = await prisma.user_agent_addresses.findUnique({
+      where: { user_wallet: normalizedWallet },
+      select: {
+        ostium_agent_address: true,
+        hyperliquid_agent_address: true,
+      },
+    });
 
-    const addressResponse = await fetch(
-      `${baseUrl}/api/agents/${agent.id}/generate-deployment-address`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userWallet: normalizedWallet,
-          venue: "OSTIUM",
-        }),
+    let ostiumAgentAddress: string | null = existingAgentAddress?.ostium_agent_address || null;
+    let hyperliquidAgentAddress: string | null = existingAgentAddress?.hyperliquid_agent_address || null;
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.host}`;
+
+    // Generate Ostium address if wallet doesn't already have one
+    if (!ostiumAgentAddress) {
+      console.log(`[LazyTrading] No existing Ostium address for ${normalizedWallet}, generating new one`);
+
+      const addressResponse = await fetch(
+        `${baseUrl}/api/agents/${agent.id}/generate-deployment-address`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userWallet: normalizedWallet,
+            venue: "OSTIUM",
+          }),
+        }
+      );
+
+      if (addressResponse.ok) {
+        const addressData = await addressResponse.json();
+        ostiumAgentAddress = addressData.addresses?.ostium?.address || addressData.address;
       }
-    );
+    } else {
+      console.log(`[LazyTrading] Reusing existing Ostium address ${ostiumAgentAddress} for ${normalizedWallet}`);
+    }
 
-    let ostiumAgentAddress: string | null = null;
-    if (addressResponse.ok) {
-      const addressData = await addressResponse.json();
-      ostiumAgentAddress =
-        addressData.addresses?.ostium?.address || addressData.address;
+    // Generate Hyperliquid address if wallet doesn't already have one
+    if (!hyperliquidAgentAddress) {
+      console.log(`[LazyTrading] No existing Hyperliquid address for ${normalizedWallet}, generating new one`);
+
+      const hlAddressResponse = await fetch(
+        `${baseUrl}/api/agents/${agent.id}/generate-deployment-address`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userWallet: normalizedWallet,
+            venue: "HYPERLIQUID",
+          }),
+        }
+      );
+
+      if (hlAddressResponse.ok) {
+        const hlAddressData = await hlAddressResponse.json();
+        hyperliquidAgentAddress = hlAddressData.addresses?.hyperliquid?.address || hlAddressData.address;
+      }
+    } else {
+      console.log(`[LazyTrading] Reusing existing Hyperliquid address ${hyperliquidAgentAddress} for ${normalizedWallet}`);
     }
 
     // Create deployment using the standard flow
@@ -219,6 +259,7 @@ export default async function handler(
       },
       deployment,
       ostiumAgentAddress,
+      hyperliquidAgentAddress,
       needsDeployment: !deployment,
     });
   } catch (error: any) {
