@@ -77,9 +77,16 @@ export default function LazyTrading() {
 
   // Ostium state
   const [ostiumAgentAddress, setOstiumAgentAddress] = useState<string>("");
+  const [hyperliquidAgentAddress, setHyperliquidAgentAddress] = useState<string>("");
   const [delegationComplete, setDelegationComplete] = useState(false);
   const [allowanceComplete, setAllowanceComplete] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+
+  // ETH sending state (for funding agent address)
+  const [ethAmount, setEthAmount] = useState<string>("0.005");
+  const [sendingEth, setSendingEth] = useState(false);
+  const [ethTxHash, setEthTxHash] = useState<string | null>(null);
+  const [ethError, setEthError] = useState<string | null>(null);
 
   // Agent state
   const [agentId, setAgentId] = useState<string>("");
@@ -118,6 +125,9 @@ export default function LazyTrading() {
         }
         if (data.ostiumAgentAddress) {
           setOstiumAgentAddress(data.ostiumAgentAddress);
+        }
+        if (data.hyperliquidAgentAddress) {
+          setHyperliquidAgentAddress(data.hyperliquidAgentAddress);
         }
 
         // NEW: Pre-fill delegation and approval status from API
@@ -158,6 +168,9 @@ export default function LazyTrading() {
           if (data.hasUsdcApproval) {
             setAllowanceComplete(true);
           }
+        }
+        if (data.hyperliquidAgentAddress) {
+          setHyperliquidAgentAddress(data.hyperliquidAgentAddress);
         }
         setStep("telegram");
       }
@@ -337,6 +350,10 @@ export default function LazyTrading() {
           // Generate agent address if not returned
           await generateOstiumAddress();
           // checkOstiumStatus will be called via useEffect when address is set
+        }
+
+        if (data.hyperliquidAgentAddress) {
+          setHyperliquidAgentAddress(data.hyperliquidAgentAddress);
         }
 
         // NEW: Check if delegation and approval are already complete
@@ -596,6 +613,54 @@ export default function LazyTrading() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle sending ETH to agent address for gas fees
+  const handleSendETH = async () => {
+    if (!ostiumAgentAddress || !ethAmount || parseFloat(ethAmount) <= 0) {
+      setEthError("Please enter a valid ETH amount");
+      return;
+    }
+
+    setSendingEth(true);
+    setEthError(null);
+    setEthTxHash(null);
+
+    try {
+      const provider = (window as any).ethereum;
+      if (!provider) {
+        throw new Error("No wallet provider found.");
+      }
+
+      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      await ethersProvider.send("eth_requestAccounts", []);
+
+      const amountInWei = ethers.utils.parseEther(ethAmount);
+
+      const txHash = await provider.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: user?.wallet?.address,
+            to: ostiumAgentAddress,
+            value: amountInWei.toHexString(),
+          },
+        ],
+      });
+
+      setEthTxHash(txHash);
+      await ethersProvider.waitForTransaction(txHash);
+
+      console.log("[LazyTrading] ETH sent successfully:", txHash);
+    } catch (err: any) {
+      if (err.code === 4001 || err.message?.includes("rejected")) {
+        setEthError("Transaction rejected");
+      } else {
+        setEthError(err.message || "Failed to send ETH");
+      }
+    } finally {
+      setSendingEth(false);
     }
   };
 
@@ -1105,40 +1170,166 @@ export default function LazyTrading() {
 
           {/* Step 5: Complete */}
           {step === "complete" && (
-            <div className="text-center space-y-6 py-8">
-              <div className="w-20 h-20 mx-auto border-2 border-[var(--accent)] bg-[var(--accent)] flex items-center justify-center">
-                <CheckCircle className="w-10 h-10 text-[var(--bg-deep)]" />
-              </div>
-              <div>
+            <div className="space-y-6 py-4">
+              {/* Success Header */}
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto border-2 border-[var(--accent)] bg-[var(--accent)] flex items-center justify-center mb-4">
+                  <CheckCircle className="w-10 h-10 text-[var(--bg-deep)]" />
+                </div>
                 <h2 className="font-display text-2xl mb-2">YOU'RE ALL SET!</h2>
                 <p className="text-[var(--text-secondary)]">
                   Your Lazy Trading agent is ready to execute trades
                 </p>
               </div>
 
-              <div className="border border-[var(--accent)] bg-[var(--accent)]/10 p-6 text-left space-y-3">
+              {/* Checklist */}
+              <div className="border border-[var(--accent)] bg-[var(--accent)]/10 p-4 text-left space-y-2">
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
-                  <span>Wallet connected</span>
+                  <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                  <span className="text-sm">Wallet connected</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
-                  <span>Telegram linked as signal source</span>
+                  <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                  <span className="text-sm">Telegram linked as signal source</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
-                  <span>Trading preferences configured</span>
+                  <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                  <span className="text-sm">Trading preferences configured</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
-                  <span>Ostium delegation approved</span>
+                  <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                  <span className="text-sm">Ostium delegation approved</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
-                  <span>USDC spending approved</span>
+                  <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                  <span className="text-sm">USDC spending approved</span>
                 </div>
               </div>
 
+              {/* Agent Address Display */}
+              {ostiumAgentAddress && (
+                <div className="border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+                  <p className="text-xs font-bold text-[var(--text-secondary)] mb-2">
+                    YOUR OSTIUM TRADING ADDRESS
+                  </p>
+                  <div className="flex items-center gap-2 bg-[var(--bg-deep)] p-3 border border-[var(--border)]">
+                    <code className="flex-1 text-xs font-mono text-[var(--text-primary)] break-all">
+                      {ostiumAgentAddress}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(ostiumAgentAddress);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="p-2 hover:bg-[var(--bg-elevated)] transition-colors"
+                      title="Copy address"
+                    >
+                      {copied ? (
+                        <Check className="w-4 h-4 text-[var(--accent)]" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-[var(--text-muted)]" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ETH Funding Section */}
+              {ostiumAgentAddress && (
+                <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-4">
+                  <p className="text-xs font-bold text-[var(--text-primary)] mb-2 flex items-center gap-2">
+                    <Send className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    Fund Agent with ETH
+                  </p>
+                  <p className="text-xs text-[var(--text-secondary)] mb-3">
+                    Send ETH to your trading address so it can pay for gas fees when executing trades.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      placeholder="0.005"
+                      value={ethAmount}
+                      onChange={(e) => setEthAmount(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+                    />
+                    <button
+                      onClick={handleSendETH}
+                      disabled={sendingEth || !ethAmount || parseFloat(ethAmount) <= 0}
+                      className="px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] font-bold text-xs hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {sendingEth ? (
+                        <>
+                          <Activity className="w-3.5 h-3.5 animate-pulse" />
+                          SENDING...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          SEND ETH
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {ethTxHash && (
+                    <p className="text-xs text-[var(--accent)] mt-2 font-mono">
+                      TX: <a
+                        href={`https://arbiscan.io/tx/${ethTxHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        {ethTxHash.slice(0, 20)}...
+                      </a>
+                    </p>
+                  )}
+                  {ethError && (
+                    <p className="text-xs text-red-500 mt-2">
+                      {ethError}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Ostium Registration */}
+              <div className="border border-[var(--border)] p-4">
+                <p className="text-xs font-bold text-[var(--text-primary)] mb-2 flex items-center gap-2">
+                  <ExternalLink className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  Register on Ostium Platform
+                </p>
+                <p className="text-xs text-[var(--text-secondary)] mb-3">
+                  To enable trading, you need to register on the Ostium platform and deposit USDC:
+                </p>
+                <ol className="space-y-1 text-xs text-[var(--text-secondary)] ml-4 list-decimal mb-3">
+                  <li>
+                    Visit{' '}
+                    <a
+                      href="https://app.ostium.com/trade"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--accent)] hover:underline"
+                    >
+                      app.ostium.com/trade
+                    </a>
+                  </li>
+                  <li>Connect your wallet and set a username</li>
+                  <li>Deposit USDC to your account</li>
+                  <li>The agent will trade using the USDC you deposit</li>
+                </ol>
+                <a
+                  href="https://app.ostium.com/trade"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] font-bold text-xs hover:bg-[var(--accent-dim)] transition-colors"
+                >
+                  Open Ostium Platform
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+
+              {/* How to Send Signals */}
               <div className="border border-[var(--border)] p-4 text-sm text-[var(--text-secondary)]">
                 <p className="font-bold text-[var(--text-primary)] mb-2">
                   📱 How to Send Signals
@@ -1149,6 +1340,7 @@ export default function LazyTrading() {
                 </p>
               </div>
 
+              {/* Action Buttons */}
               <div className="flex gap-4">
                 <button
                   onClick={() => router.push("/my-deployments")}

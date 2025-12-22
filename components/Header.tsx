@@ -69,15 +69,15 @@ export function Header() {
 
     try {
       setIsLoadingBalance(true);
-      
+
       // Get provider from connected wallet
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const contract = new ethers.Contract(USDC_CONTRACT_ADDRESS, USDC_ABI, provider);
-      
+
       // Direct contract call to get balance
       const balance = await contract.balanceOf(walletAddress);
       const formattedBalance = ethers.utils.formatUnits(balance, 6); // USDC has 6 decimals
-      
+
       setUsdcBalance(parseFloat(formattedBalance).toFixed(2));
     } catch (error) {
       console.error('Failed to fetch USDC balance:', error);
@@ -101,9 +101,10 @@ export function Header() {
   }, [authenticated, isOnArbitrum, user?.wallet?.address]);
 
   const navLinks = [
-    { href: '/', label: 'Home', icon: Home, testId: 'nav-home' },
+    // { href: '/', label: 'Home', icon: Home, testId: 'nav-home' },
     { href: '/my-deployments', label: 'My Clubs', icon: Wallet, testId: 'nav-deployments' },
     { href: '/my-trades', label: 'My Trades', icon: TrendingUp, testId: 'nav-my-trades' },
+    { href: '/lazy-trading', label: 'Lazy Trading', icon: Bot, testId: 'nav-lazy-trading' },
     { href: '/creator', label: 'Create Club', icon: User, testId: 'nav-my-agents' },
     { href: '/blog', label: 'Blog', icon: BookOpen, testId: 'nav-blog' },
     { href: '/docs', label: 'Docs', icon: FileText, testId: 'nav-docs' },
@@ -233,8 +234,8 @@ export function Header() {
 
   return (
     <header className="sticky py-4 top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-lg">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex h-14 items-center justify-between">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="flex h-14 items-center justify-between">
           {/* Logo/Brand */}
           <Link href="/" className="flex items-center gap-2">
             {/* <div className="w-8 h-8 border border-[var(--accent)] flex items-center justify-center">
