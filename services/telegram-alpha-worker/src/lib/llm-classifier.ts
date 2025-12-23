@@ -62,25 +62,27 @@ export class LLMTweetClassifier {
   }
 
   /**
-   * Classify a tweet and extract trading signals
+   * Classify a tweet for a specific token
+   * Evaluates if the message is a trading signal FOR THIS SPECIFIC TOKEN
    */
-  async classifyTweet(tweetText: string): Promise<ClassificationResult> {
-    // Extract token and fetch market data once (used for both providers)
-    const tokenSymbol = this.extractTokenSymbol(tweetText);
-    console.log("[LLMClassifier] Extracted token:", tokenSymbol);
+  async classifyTweetForToken(
+    tweetText: string,
+    tokenSymbol: string
+  ): Promise<ClassificationResult> {
+    console.log(`[LLMClassifier] Classifying for token: ${tokenSymbol}`);
 
-    const marketData = tokenSymbol
-      ? await this.fetchLunarCrushData(tokenSymbol)
-      : null;
+    // Fetch market data for THIS specific token
+    const marketData = await this.fetchLunarCrushData(tokenSymbol);
 
-    console.log("marketData", marketData);
     console.log(
-      "[LLMClassifier] Fetched market data:",
+      `[LLMClassifier] Fetched market data for ${tokenSymbol}:`,
       marketData ? "YES" : "NO"
     );
 
-    const { prompt, marketContext } = this.buildPromptWithMarketData(
+    // Build token-specific prompt
+    const { prompt, marketContext } = this.buildPromptForSpecificToken(
       tweetText,
+      tokenSymbol,
       marketData
     );
 
@@ -99,6 +101,10 @@ export class LLMTweetClassifier {
       result.fullPrompt = fullPrompt;
       result.tokenPrice =
         typeof marketData?.price === "number" ? marketData.price : null;
+      
+      // Override extracted tokens to ensure only this token
+      result.extractedTokens = result.isSignalCandidate ? [tokenSymbol] : [];
+      
       return result;
     } catch (primaryError: any) {
       // If EigenAI fails, automatically fallback to OpenAI
@@ -108,7 +114,7 @@ export class LLMTweetClassifier {
           console.warn(
             "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           );
-          console.warn("⚠️  EigenAI failed, falling back to OpenAI");
+          console.warn(`⚠️  EigenAI failed for ${tokenSymbol}, falling back to OpenAI`);
           console.warn(
             `   EigenAI Error: ${primaryError.message}`
           );
@@ -126,6 +132,7 @@ export class LLMTweetClassifier {
             result.fullPrompt = fullPrompt;
             result.tokenPrice =
               typeof marketData?.price === "number" ? marketData.price : null;
+            result.extractedTokens = result.isSignalCandidate ? [tokenSymbol] : [];
             return result;
           } catch (fallbackError: any) {
             this.logError("openai", fallbackError);
@@ -140,6 +147,65 @@ export class LLMTweetClassifier {
         throw primaryError;
       }
     }
+  }
+
+  /**
+   * Classify a tweet and extract trading signals for ALL tokens mentioned
+   * Returns array of classifications (one per token)
+   */
+  async classifyTweet(tweetText: string): Promise<ClassificationResult[]> {
+    // Step 1: Regex/keyword extraction (fast path)
+    const seedTokens = this.extractAllTokenSymbols(tweetText);
+    console.log(`[LLMClassifier] Extracted ${seedTokens.length} token(s) via regex:`, seedTokens);
+
+    // Step 2: LLM fallback to catch missed tokens and filter out comparison-only mentions
+    let llmTokens: string[] = [];
+    try {
+      llmTokens = await this.extractTokensWithLLM(tweetText, seedTokens);
+      console.log(`[LLMClassifier] Extracted ${llmTokens.length} token(s) via LLM filter:`, llmTokens);
+    } catch (error: any) {
+      console.error("[LLMClassifier] LLM token extraction failed, using regex tokens only:", error.message);
+    }
+    // LLM has already excluded comparison-only tokens
+    const tokens = llmTokens.length > 0 
+      ? llmTokens.slice(0, 5)  // Use LLM-filtered tokens only
+      : seedTokens.slice(0, 5); // Fallback to regex tokens if LLM fails
+
+    console.log(`[LLMClassifier] Final tokens to classify:`, tokens);
+
+    if (tokens.length === 0) {
+      // Not a signal - no actionable tokens found
+      console.log("[LLMClassifier] No actionable tokens found, not a signal");
+      return [{
+        isSignalCandidate: false,
+        extractedTokens: [],
+        sentiment: "neutral",
+        confidence: 0,
+      }];
+    }
+
+    // Classify each token separately with its own market data
+    const results: ClassificationResult[] = [];
+
+    for (const token of tokens) {
+      try {
+        const classification = await this.classifyTweetForToken(
+          tweetText,
+          token
+        );
+        results.push(classification);
+        
+        console.log(
+          `[LLMClassifier] ${token}: ${classification.isSignalCandidate ? 'SIGNAL' : 'NOT SIGNAL'} ` +
+          `(${classification.sentiment}, confidence: ${(classification.confidence * 100).toFixed(0)}%)`
+        );
+      } catch (error: any) {
+        console.error(`[LLMClassifier] Failed to classify for token ${token}:`, error.message);
+        // Continue with other tokens - don't let one failure stop all
+      }
+    }
+
+    return results;
   }
 
   /**
@@ -225,37 +291,118 @@ export class LLMTweetClassifier {
   }
 
   /**
-   * Extract the primary token symbol from tweet text (fast & simple)
+   * Extract ALL token symbols from tweet text (returns array of unique tokens)
+   * 1) $TOKEN regex
+   * 2) Extended known token list (if no $ hits)
+   * 3) Shortword heuristic (fallback)
    */
-  private extractTokenSymbol(tweetText: string): string | null {
-    // Step 1: Check for $TOKEN (most common: $BTC, $ETH)
-    const dollarMatch = tweetText.match(/\$([A-Z]{2,6})\b/i);
-    if (dollarMatch) {
-      return dollarMatch[1].toUpperCase();
+  private extractAllTokenSymbols(tweetText: string): string[] {
+    const tokens = new Set<string>();
+    if (!tweetText) return [];
+  
+    const text = tweetText.toUpperCase();
+  
+    // Step 1: $TOKEN mentions (highest priority)
+    const dollarMatches = text.matchAll(/\$([A-Z]{2,6})\b/g);
+    for (const match of dollarMatches) {
+      tokens.add(match[1]);
     }
-
-    // Step 2: Check for known tokens (BTC, ETH, SOL, etc.)
-    const knownTokens =
-      /\b(BTC|ETH|SOL|USDT|USDC|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK|UNI|ATOM|LTC|BCH|XLM|ALGO|VET|FIL|TRX|ETC|AAVE|MKR|THETA|XTZ|RUNE|NEAR|FTM|SAND|MANA|AXS|GALA|ENJ|CHZ|APE|LDO|ARB|OP)\b/i;
-    const knownMatch = tweetText.match(knownTokens);
-    if (knownMatch) {
-      return knownMatch[1].toUpperCase();
+  
+    // Step 2: Known tokens (only if no $TOKEN found)
+    if (tokens.size === 0) {
+      const knownTokens =
+        /\b(BTC|ETH|SOL|USDT|USDC|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK|UNI|ATOM|LTC|BCH|XLM|ALGO|VET|FIL|TRX|ETC|AAVE|MKR|THETA|XTZ|RUNE|NEAR|FTM|SAND|MANA|AXS|GALA|ENJ|CHZ|APE|LDO|ARB|OP|INJ|GMX|IMX|WLD|SEI|TIA|PEPE|SHIB|HBAR|EGLD|ICP|XMR|DASH|ZEC|SNX|CRV|COMP|YFI|SUSHI|1INCH|RPL|ENS|BLUR|KAVA|KSM|ROSE|HNT|FLOW|CFX|STX|ORDI|JTO|PYTH|AERO|JUP|WIF|DOGS)\b/g;
+  
+      for (const match of text.matchAll(knownTokens)) {
+        tokens.add(match[1]);
+      }
     }
-
-    // Step 3: Fallback - short uppercase words (2-5 chars), skip common words
-    const stopWords =
-      /\b(THE|AND|FOR|NOT|BUT|ARE|WAS|CAN|ALL|HAS|HAD|ITS|ONE|TWO|NEW|NOW|WAY|MAY|DAY|GET|GOT|SEE|SAY|USE|HER|HIS|HOW|MAN|OLD|TOO|ANY|SAME|BEEN|FROM|THEY|KNOW|WANT|BEEN|MORE|SOME|TIME|VERY|WHEN|YOUR|MAKE|THAN|INTO|YEAR|GOOD|TAKE|COME|WORK|ALSO|BACK|CALL|GIVE|MOST|OVER|THINK|WELL|EVEN|FIND|TELL|FEEL|HELP|HIGH|KEEP|LAST|LIFE|LONG|MEAN|MOVE|MUCH|NAME|NEED|OPEN|PART|PLAY|READ|REAL|SAME|SEEM|SHOW|SIDE|SUCH|SURE|TALK|TELL|THAT|THIS|TURN|WAIT|WALK|WANT|WEEK|WHAT|WHEN|WITH|WORD|WORK|WOULD|WRITE|YEAR|ABOUT|AFTER|AGAIN|COULD|EVERY|FIRST|FOUND|GREAT|HOUSE|LARGE|LATER|LEARN|LEAVE|MIGHT|NEVER|OTHER|PLACE|POINT|RIGHT|SMALL|SOUND|STILL|STUDY|THEIR|THERE|THESE|THING|THINK|THREE|UNDER|UNTIL|WATCH|WHERE|WHICH|WHILE|WORLD|WOULD|WRITE|YOUNG|CRYPTO|COINS|TOKEN|MARKET|PRICE|CHART|TRADE|LOOKING|THINKING|BUYING|SELLING)\b/i;
-
-    const shortWords = tweetText.match(/\b[A-Z]{2,5}\b/g);
-    if (shortWords) {
+  
+    // Step 3: Fallback – uppercase short words (only if still empty)
+    if (tokens.size === 0) {
+      const stopWords =
+        /\b(THE|AND|FOR|NOT|BUT|ARE|WAS|CAN|ALL|HAS|HAD|ITS|ONE|TWO|NEW|NOW|WAY|MAY|DAY|GET|GOT|SEE|SAY|USE|HER|HIS|HOW|MAN|OLD|TOO|ANY|SAME|BEEN|FROM|THEY|KNOW|WANT|MORE|SOME|TIME|VERY|WHEN|YOUR|MAKE|THAN|INTO|YEAR|GOOD|TAKE|COME|WORK|ALSO|BACK|CALL|GIVE|MOST|OVER|THINK|WELL|EVEN|FIND|TELL|FEEL|HELP|HIGH|KEEP|LAST|LIFE|LONG|MEAN|MOVE|MUCH|NAME|NEED|OPEN|PART|PLAY|READ|REAL|SEEM|SHOW|SIDE|SUCH|SURE|TALK|THAT|THIS|TURN|WAIT|WALK|WEEK|WHAT|WITH|WORD|WOULD|WRITE|ABOUT|AFTER|AGAIN|COULD|EVERY|FIRST|FOUND|GREAT|HOUSE|LARGE|LATER|LEARN|LEAVE|MIGHT|NEVER|OTHER|PLACE|POINT|RIGHT|SMALL|SOUND|STILL|STUDY|THEIR|THERE|THESE|THING|THREE|UNDER|UNTIL|WATCH|WHERE|WHICH|WHILE|WORLD|YOUNG|CRYPTO|COINS|TOKEN|MARKET|PRICE|CHART|TRADE|LOOKING|THINKING|BUYING|SELLING)\b/i;
+  
+      const shortWords = text.match(/\b[A-Z]{2,5}\b/g) || [];
       for (const word of shortWords) {
         if (!stopWords.test(word)) {
-          return word;
+          tokens.add(word);
         }
       }
     }
+  
+    // Limit to max 5 tokens per signal
+    return Array.from(tokens).slice(0, 5);
+  }
 
-    return null;
+  /**
+   * LLM fallback to extract up to 5 actionable tokens
+   * - Captures tokens missed by regex
+   * - Filters out comparison-only mentions
+   */
+  private async extractTokensWithLLM(
+    tweetText: string,
+    seedTokens: string[]
+  ): Promise<string[]> {
+    const SYSTEM = "You are a precise crypto token extractor. Output ONLY valid JSON.";
+    const prompt = `${SYSTEM}
+
+Goal: Return up to 5 TOKEN SYMBOLS (uppercase, no $) that have CLEAR trading insights in the message.
+Rules (must obey all):
+- For EVERY seed token: keep it ONLY if the message gives explicit, actionable trading insight for that token (direction, bias, momentum, setup, TP/SL, or clear strength/weakness). If seed token is only comparison/background, EXCLUDE it.
+- You MAY add new tokens not in seeds if the message provides clear trading insight for them.
+- EXCLUDE tokens that are just comparisons/context (e.g., "$BTC drops but $ETH is strong" => keep ETH, drop BTC).
+- Prefer precision over recall (better to miss than add noise).
+- Output at most 5 symbols.
+
+Message:
+"${tweetText}"
+
+Seed symbols seen: ${seedTokens.join(", ") || "NONE"}
+
+Return JSON (example format only, use actual tokens from the message):
+{ "tokens": ["ETH","SOL"] }`;
+
+    // Helper to call provider and parse tokens
+    const tryProvider = async (provider: LLMProvider): Promise<string[]> => {
+      const response = provider === "openai"
+        ? await this.callOpenAI(prompt)
+        : await this.callEigenAI(prompt);
+
+      const content = response.content.trim();
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed && Array.isArray(parsed.tokens)) {
+          return parsed.tokens
+            .map((t: string) => (t || "").toString().toUpperCase().replace(/[^A-Z0-9]/g, ""))
+            .filter((t: string) => t.length >= 2 && t.length <= 6)
+            .slice(0, 5);
+        }
+      } catch (err) {
+        console.error("[LLMClassifier] Failed to parse token JSON:", content);
+      }
+      return [];
+    };
+
+    // Try primary provider
+    try {
+      const primaryTokens = await tryProvider(this.provider);
+      if (primaryTokens.length > 0) return primaryTokens;
+    } catch (err: any) {
+      console.warn("[LLMClassifier] Primary provider token extraction failed:", err.message);
+    }
+
+    // Fallback to OpenAI if primary is EigenAI and OpenAI key is present
+    if (this.provider === "eigenai" && process.env.OPENAI_API_KEY) {
+      try {
+        const fallbackTokens = await tryProvider("openai");
+        if (fallbackTokens.length > 0) return fallbackTokens;
+      } catch (err: any) {
+        console.warn("[LLMClassifier] Fallback OpenAI token extraction failed:", err.message);
+      }
+    }
+
+    return [];
   }
 
   /**
@@ -348,16 +495,18 @@ export class LLMTweetClassifier {
   }
 
   /**
-   * Build enhanced prompt with market data for EigenAI
+   * Build token-specific prompt with market data for EigenAI
+   * CRITICAL: Asks if message is a trading signal FOR THIS SPECIFIC TOKEN
    */
-  private buildPromptWithMarketData(
+  private buildPromptForSpecificToken(
     tweetText: string,
+    tokenSymbol: string,
     marketData: any | null
   ): { prompt: string; marketContext: string } {
     let marketContext = 'NO MARKET DATA';
   
     if (marketData) {
-      console.log('[LLMClassifier] Market data:', JSON.stringify(marketData, null, 2));
+      console.log(`[LLMClassifier] Market data for ${tokenSymbol}:`, JSON.stringify(marketData, null, 2));
       
       const pct24h = marketData.percent_change_24h ?? 0;
       const pct7d = marketData.percent_change_7d ?? 0;
@@ -370,51 +519,71 @@ export class LLMTweetClassifier {
   Galaxy=${marketData.galaxy_score} | Rank=${marketData.alt_rank} | Vol=${marketData.volatility?.toFixed(4)}`;
     }
   
-  const prompt = `Elite crypto risk analyst. GOAL: Protect users from losses, identify real opportunities.
+  const prompt = `Elite crypto risk analyst. ${tokenSymbol} was PRE-SELECTED as having trading insight.
   
-  SIGNAL: "${tweetText}"
-  MARKET: ${marketContext}
+  MESSAGE: "${tweetText}"
+  TARGET TOKEN: ${tokenSymbol}
+  ${tokenSymbol} MARKET DATA: ${marketContext}
   
-  DATA GUIDE:
-  • Vol>50M=liquid, <10M=risky, 0=danger | Galaxy>70=strong, <50=weak | Rank<100=excellent, >500=weak
-  • Volatility<0.02=stable, >0.05=risky | 24h/7d/30d %=momentum trend
+  TASK:
+  Provide trading analysis for ${tokenSymbol}. Since ${tokenSymbol} was PRE-SELECTED, it HAS trading insight.
+  **Always set isSignalCandidate=true** and derive direction/confidence from the message context.
   
-  ANALYSIS PRIORITY:
-  1. Extract tokens, direction (bullish/bearish), TP/SL if mentioned, timeline if stated
-  2. Check signal-market alignment: BULLISH+positive momentum=STRONG (0.7-1.0), BULLISH+negative=CONTRADICTION (0.1-0.3)
-  3. Risk penalties: low vol (<10M), high volatility (>0.05), poor rank (>1000), zero data (max 0.4)
+  DATA MEANING:
+  • Price/MCap: Size & liquidity (larger = safer exits)
+  • 24h/7d/30d %: Momentum (consistent = stronger, mixed = uncertain)
+  • Vol: Liquidity (>50M good, <10M risky, 0 = red flag)
+  • GalaxyScore: Strength 0-100 (>70 strong, 50-70 moderate, <50 weak)
+  • AltRank: Performance (1-100 excellent, 100-500 average, >500 weak)
+  • Volatility: Stability (<0.02 stable, 0.02-0.05 normal, >0.05 risky)
   
-  TP/SL EXTRACTION:
-  • TP: "target $X", "TP at X%", "take profit X", "sell at X" → extract as number/percentage
-  • SL: "stop loss X", "SL at X%", "cut at X", "invalidation X" → extract as number/percentage
-  • If not mentioned, set null
+  DIRECTION DERIVATION:
+  • Explicit: "buy", "long", "enter", "target X" → use stated direction
+  • Implicit strength: "best performing", "strongest", "momentum building", "accumulation" → BULLISH
+  • Implicit weakness: "worst performing", "weakest", "losing momentum", "distribution" → BEARISH
+  • Neutral mention: no clear strength/weakness → NEUTRAL (low confidence)
   
-  TIMELINE EXTRACTION:
-  • Explicit: "by Friday", "this week", "before Jan 31", "in 24h" → extract as string
-  • Implicit or none → null
+  ANALYSIS FOR ${tokenSymbol}:
+  1. Extract trading direction (bullish/bearish) - can be explicit OR implicit
+  2. Check ${tokenSymbol} market alignment with signal direction
+  3. Risk penalties: low vol (<10M), high volatility (>0.05), poor rank (>1000)
   
-  CONFIDENCE BANDS:
-  0.8-1.0: Clear signal + aligned market + low risk
-  0.6-0.8: Good signal + supportive data
-  0.4-0.6: Decent OR mixed signals
-  0.2-0.4: Poor signal OR contradicts market
-  0.0-0.2: High risk (reject)
+  TP/SL EXTRACTION (for ${tokenSymbol} only):
+  ⚠️  CRITICAL: Only extract if SPECIFICALLY mentioned for ${tokenSymbol}
+  • If message says "BTC target $100k in 1 month, SOL is strong" → SOL gets NULL (target is for BTC, not SOL)
+  • TP: "target $X", "TP at X%", "take profit X" → extract ONLY if for ${tokenSymbol}
+  • SL: "stop loss X", "SL at X%", "cut at X" → extract ONLY if for ${tokenSymbol}
+  • If not mentioned FOR ${tokenSymbol}, set null
+  
+  TIMELINE EXTRACTION (for ${tokenSymbol} only):
+  ⚠️  CRITICAL: Only extract if SPECIFICALLY mentioned for ${tokenSymbol}
+  • If message says "BTC to $100k in 1 month, SOL is best" → SOL gets NULL (timeline is for BTC, not SOL)
+  • If a deadline is implied FOR ${tokenSymbol} (e.g., "SOL by next week", "${tokenSymbol} this week"), return concrete date in DD-MM-YYYY (UTC)
+  • If no clear deadline FOR ${tokenSymbol}, set timelineWindow to null
+  
+  CONFIDENCE BANDS FOR ${tokenSymbol}:
+  0.8-1.0: Explicit ${tokenSymbol} signal + aligned market + low risk + clear TP/SL/timeline
+  0.6-0.8: Good ${tokenSymbol} signal (explicit direction OR strong implicit) + supportive data
+  0.4-0.6: Decent ${tokenSymbol} signal (implicit strength/weakness indicator like "best performing")
+  0.2-0.4: Weak ${tokenSymbol} signal OR contradicts market OR very limited context
+  0.1-0.2: Minimal ${tokenSymbol} mention but pre-selected (use lowest confidence)
   
   CRITICAL RULES:
-  • isSignalCandidate=true if ANY token extracted (even with contradictions)
-  • isSignalCandidate=false ONLY if NO token found
-  • Contradictions → lower confidence, NOT false signal
-  • Conservative > aggressive (better miss than lose)
+  • **isSignalCandidate ALWAYS = true** (token was pre-selected by extraction phase)
+  • **extractedTokens ALWAYS = ["${tokenSymbol}"]** (never empty array)
+  • Derive direction from explicit OR implicit context
+  • Use confidence score to reflect signal quality (explicit = high, implicit = moderate, weak = low)
+  • Conservative confidence scores (better to be cautious)
   
   JSON OUTPUT:
   {
     "isSignalCandidate": boolean,
-    "extractedTokens": ["SYMBOL"],
+    "extractedTokens": ["${tokenSymbol}"] or [],
     "sentiment": "bullish"|"bearish"|"neutral",
     "confidence": 0.XX,
     "takeProfit": number|string|null,
     "stopLoss": number|string|null,
-    "reasoning": "Direction: [LONG/SHORT] TOKEN. Signal: [clear/vague]. Momentum: [24h/7d/30d]. Alignment: [supports/contradicts]. Risks: [vol/volatility/rank]. Confidence X.XX: [why].",
+    "reasoning": "${tokenSymbol} analysis: [explicit or implicit?]. Direction: [LONG/SHORT/NONE]. Signal source: [clear statement/strength indicator/weakness indicator]. Momentum: [24h/7d/30d]. Alignment: [supports/contradicts]. Risks: [vol/volatility/rank]. Confidence X.XX: [why].",
     "timelineWindow": string|null
   }
   
@@ -650,6 +819,7 @@ export class LLMTweetClassifier {
         sentiment: parsed.sentiment || "neutral",
         confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
         reasoning: parsed.reasoning || "",
+        // Trust LLM to return DD-MM-YYYY or null per prompt
         timelineWindow:
           typeof parsed.timelineWindow === "string"
             ? parsed.timelineWindow
@@ -671,6 +841,7 @@ export class LLMTweetClassifier {
       };
     }
   }
+
 }
 
 /**
@@ -733,10 +904,11 @@ export function createLLMClassifier(): LLMTweetClassifier | null {
 
 /**
  * Classify a single tweet (convenience function)
+ * Returns array of classifications (one per token)
  */
 export async function classifyTweet(
   tweetText: string
-): Promise<ClassificationResult> {
+): Promise<ClassificationResult[]> {
   const classifier = createLLMClassifier();
 
   if (!classifier) {

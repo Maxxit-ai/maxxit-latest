@@ -1,5 +1,8 @@
 /**
- * Impact Factor Worker (24-Hour Cycle)
+ * Impact Factor Worker - Blockchain Version (24-Hour Cycle)
+ * 
+ * Same logic as worker.ts but uses Solidity smart contract on Arbitrum L2
+ * instead of MongoDB/PostgreSQL database.
  * 
  * Contains ALL business logic and calculations:
  * - MFE/MAE calculations
@@ -7,31 +10,34 @@
  * - Impact factor computation
  * - Trade state determination
  * 
- * API endpoints handle:
- * - Fetching signals from DB (DATABASE_URL)
- * - Fetching OHLC from CoinGecko (COINGECKO_API_KEY)
- * - Updating DB with results (DATABASE_URL)
+ * Uses smart contract for:
+ * - Fetching signals (instead of DB API)
+ * - Updating signal data (instead of DB API)
  * 
- * Smart contract stores:
- * - Impact factor calculation results (MFE, MAE, impact_factor, pnl)
- * - Data integrity hashes for verification
+ * Still uses API for:
+ * - Fetching OHLC from CoinGecko (COINGECKO_API_KEY)
  */
 
 import dotenv from "dotenv";
 import express from "express";
+import { ethers } from "ethers";
 import {
   setupGracefulShutdown,
   registerCleanup,
   createHealthCheckHandler,
 } from "@maxxit/common";
-import { updateImpactFactorInContract } from "../../../lib/impact-factor-contract";
 
 dotenv.config();
 
-const PORT = process.env.PORT || 5009;
+const PORT = process.env.PORT || 5010;
 const INTERVAL = parseInt(process.env.IMPACT_FACTOR_INTERVAL || "86400000"); // 24 hours default
 
-// API base URL (Next.js app on Vercel)
+// Smart contract configuration
+const CONTRACT_ADDRESS = process.env.IMPACT_FACTOR_CONTRACT_ADDRESS || "0x690911de7cb5BDA427b363437caa930dB6aB7773";
+const ARBITRUM_RPC_URL = process.env.ARBITRUM_RPC_URL || process.env.ARBITRUM_RPC;
+const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || process.env.EXECUTOR_PRIVATE_KEY || "";
+
+// API base URL for OHLC data (still using API for CoinGecko)
 const API_BASE_URL =
   process.env.IMPACT_FACTOR_API_URL ||
   "http://localhost:5000/api/admin/impact-factor-worker";
@@ -40,6 +46,10 @@ const API_BASE_URL =
 const DEFAULT_TAKE_PROFIT_PCT = 10; // 10%
 const DEFAULT_STOP_LOSS_PCT = 5; // 5%
 const DEFAULT_TIMELINE_DAYS = 7; // 7 days
+
+// Scaling factors for blockchain (use 1e4 for percentages, 1e18 for prices)
+const SCALE_PERCENTAGE = 10000; // 4 decimal places
+const SCALE_PRICE = ethers.parseEther("1"); // 18 decimal places
 
 // Trade states
 type TradeState =
@@ -51,38 +61,84 @@ type TradeState =
 
 let workerInterval: NodeJS.Timeout | null = null;
 
-// Health check server
-const app = express();
-app.get(
-  "/health",
-  createHealthCheckHandler("impact-factor-worker", async () => {
-    return {
-      interval: INTERVAL,
-      isRunning: workerInterval !== null,
-      apiBaseUrl: API_BASE_URL,
-    };
-  })
-);
+// Initialize provider and contract
+let provider: ethers.Provider;
+let signer: ethers.Wallet;
+let contract: ethers.Contract;
 
-const server = app.listen(PORT, () => {
-  console.log(`🏥 Impact Factor Worker health check on port ${PORT}`);
-});
+// ABI for ImpactFactorStorage contract
+const CONTRACT_ABI = [
+  "function getActiveSignals(uint256 limit, uint256 offset) view returns (string[])",
+  "function getSignal(string memory signalIdStr) view returns (string id, string[] extractedTokens, uint256 tokenPrice, string signalType, int256 pnl, uint256 messageCreatedAt, uint256 takeProfit, uint256 stopLoss, string timelineWindow, int256 maxFavorableExcursion, int256 maxAdverseExcursion, int256 impactFactor, bool impactFactorFlag, bool isSignalCandidate)",
+  "function updateSignal(string memory signalIdStr, int256 pnl, int256 maxFavorableExcursion, int256 maxAdverseExcursion, int256 impactFactor, bool impactFactorFlag)",
+];
 
 /**
- * Fetch active signals from API
+ * Initialize blockchain connection
  */
-async function fetchSignals() {
+async function initializeBlockchain() {
+  if (!CONTRACT_ADDRESS) {
+    throw new Error("IMPACT_FACTOR_CONTRACT_ADDRESS environment variable is required");
+  }
+  
+  if (!PRIVATE_KEY) {
+    throw new Error("DEPLOYER_PRIVATE_KEY or EXECUTOR_PRIVATE_KEY environment variable is required");
+  }
+
+  provider = new ethers.JsonRpcProvider(ARBITRUM_RPC_URL);
+  signer = new ethers.Wallet(PRIVATE_KEY, provider);
+  contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+  console.log(`🔗 Connected to Arbitrum`);
+  console.log(`📝 Contract: ${CONTRACT_ADDRESS}`);
+  console.log(`👤 Signer: ${signer.address}`);
+}
+
+
+/**
+ * Convert scaled percentage from blockchain to number
+ */
+function scaleFromPercentage(scaled: bigint): number {
+  return Number(scaled) / SCALE_PERCENTAGE;
+}
+
+/**
+ * Convert percentage to scaled int256 for blockchain
+ */
+function scaleToPercentage(value: number): bigint {
+  return BigInt(Math.round(value * SCALE_PERCENTAGE));
+}
+
+/**
+ * Convert scaled price from blockchain to number
+ */
+function scaleFromPrice(scaled: bigint): number {
+  return Number(ethers.formatEther(scaled));
+}
+
+/**
+ * Convert price to scaled uint256 for blockchain
+ */
+function scaleToPrice(value: number): bigint {
+  return ethers.parseEther(value.toString());
+}
+
+/**
+ * Fetch active signals from API (NeonDB is source of truth for signal data)
+ * Contract only stores hashes and calculation results, NOT signal details
+ */
+async function fetchSignals(): Promise<any[]> {
   const response = await fetch(`${API_BASE_URL}/signals`);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to fetch signals: ${response.status} - ${errorText}`);
-}
+  }
   const data = await response.json() as { signals: any[] };
   return data.signals || [];
 }
 
 /**
- * Fetch OHLC data from API for a token
+ * Fetch OHLC data from API for a token (still using API for CoinGecko)
  */
 async function fetchOHLCData(
   tokenSymbol: string,
@@ -110,8 +166,7 @@ async function fetchOHLCData(
 }
 
 /**
- * Update signal with calculated results
- * Updates both DB (via API) and smart contract
+ * Update signal in smart contract
  */
 async function updateSignal(
   signalId: string,
@@ -121,47 +176,43 @@ async function updateSignal(
   impactFactor?: number,
   impactFactorFlag?: boolean
 ) {
-  // Update DB via API
-  const response = await fetch(`${API_BASE_URL}/update`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      signalId,
-      pnl,
-      maxFavorableExcursion,
-      maxAdverseExcursion,
-      impactFactor,
-      impactFactorFlag,
-    }),
-  });
+  const pnlScaled = scaleToPercentage(pnl);
+  const mfeScaled = scaleToPercentage(maxFavorableExcursion);
+  const maeScaled = scaleToPercentage(maxAdverseExcursion);
+  const impactFactorScaled = impactFactor !== undefined ? scaleToPercentage(impactFactor) : BigInt(0);
+  const flag = impactFactorFlag !== undefined ? impactFactorFlag : true;
 
-    if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to update signal in DB: ${response.status} - ${errorText}`);
-  }
+  const tx = await contract.updateSignal(
+    signalId,
+    pnlScaled,
+    mfeScaled,
+    maeScaled,
+    impactFactorScaled,
+    flag
+  );
   
-  // Also update smart contract with impact factor results
-  // For closed trades: use provided impactFactor and flag
-  // For open trades: use 0 for impactFactor and true for flag (keep monitoring)
-  const contractImpactFactor = impactFactor !== undefined ? impactFactor : 0;
-  const contractImpactFactorFlag = impactFactorFlag !== undefined ? impactFactorFlag : true;
-  
-  try {
-    await updateImpactFactorInContract(
-      signalId,
-      pnl,
-      maxFavorableExcursion,
-      maxAdverseExcursion,
-      contractImpactFactor,
-      contractImpactFactorFlag
-    );
-  } catch (error: any) {
-    console.error(`[ImpactFactorWorker] Failed to update contract (non-fatal):`, error.message);
-    // Continue - DB update succeeded
-  }
+  console.log(`📝 Transaction submitted: ${tx.hash}`);
+  const receipt = await tx.wait();
+  console.log(`✅ Transaction confirmed in block ${receipt.blockNumber}`);
 }
+
+// Health check server
+const app = express();
+app.get(
+  "/health",
+  createHealthCheckHandler("impact-factor-worker-blockchain", async () => {
+    return {
+      interval: INTERVAL,
+      isRunning: workerInterval !== null,
+      contractAddress: CONTRACT_ADDRESS,
+      network: "Arbitrum",
+    };
+  })
+);
+
+const server = app.listen(PORT, () => {
+  console.log(`🏥 Impact Factor Worker (Blockchain) health check on port ${PORT}`);
+});
 
 /**
  * Calculate MFE (Maximum Favorable Excursion) as percentage
@@ -175,7 +226,6 @@ function calculateMFE(
   if (isLong) {
     return ((highestPrice - entryPrice) / entryPrice) * 100;
   } else {
-    // For SHORT: favorable if price goes down
     return ((entryPrice - lowestPrice) / entryPrice) * 100;
   }
 }
@@ -190,10 +240,8 @@ function calculateMAE(
   isLong: boolean
 ): number {
   if (isLong) {
-    // For LONG: adverse if price goes down
     return ((entryPrice - lowestPrice) / entryPrice) * 100;
   } else {
-    // For SHORT: adverse if price goes up
     return ((highestPrice - entryPrice) / entryPrice) * 100;
   }
 }
@@ -202,20 +250,20 @@ function calculateMAE(
  * Get MFE bonus based on standardized table
  */
 function getMFEBonus(mfePct: number): number {
-  if (mfePct >= 15) return 0.5; // ≥ +15%
-  if (mfePct >= 8) return 0.3; // 8-15%
-  if (mfePct >= 4) return 0.1; // 4-8%
-  return 0; // <4%
+  if (mfePct >= 15) return 0.5;
+  if (mfePct >= 8) return 0.3;
+  if (mfePct >= 4) return 0.1;
+  return 0;
 }
 
 /**
  * Get MAE penalty based on standardized table
  */
 function getMAEPenalty(maePct: number): number {
-  if (maePct > 6) return 0.5; // >6%
-  if (maePct >= 4) return 0.3; // 4-6%
-  if (maePct >= 2) return 0.1; // 2-4%
-  return 0; // <2%
+  if (maePct > 6) return 0.5;
+  if (maePct >= 4) return 0.3;
+  if (maePct >= 2) return 0.1;
+  return 0;
 }
 
 /**
@@ -225,15 +273,13 @@ function getTOS(pnlPct: number, state: TradeState, tpPct: number): number {
   if (state === "CLOSED_TP") return 1.0;
   if (state === "CLOSED_SL") return -1.0;
 
-  // Partial TP (≥ +6% but didn't hit full TP)
   if (state === "CLOSED_PARTIAL_TP" || (pnlPct >= 6 && pnlPct < tpPct)) {
     return 0.5;
   }
 
-  // Time-stopped trades
   if (state === "CLOSED_TIME") {
-    if (pnlPct >= -3 && pnlPct <= 3) return 0; // Breakeven
-    if (pnlPct < -3 && pnlPct >= -5) return -0.5; // Time stop loss
+    if (pnlPct >= -3 && pnlPct <= 3) return 0;
+    if (pnlPct < -3 && pnlPct >= -5) return -0.5;
   }
 
   return 0;
@@ -241,8 +287,6 @@ function getTOS(pnlPct: number, state: TradeState, tpPct: number): number {
 
 /**
  * Determine trade state based on high/low prices vs TP/SL and time
- * - Checks TP/SL over ENTIRE trade duration (path-dependent via high/low)
- * - Then checks timeline expiry (7 days by default)
  */
 function determineTradeState(
   high: number,
@@ -259,17 +303,16 @@ function determineTradeState(
   const expiryDate = new Date(messageDate);
   expiryDate.setDate(expiryDate.getDate() + timelineDays);
 
-  const tpPrice = isLong 
+  const tpPrice = isLong
     ? entryPrice * (1 + tpPct / 100)
     : entryPrice * (1 - tpPct / 100);
-  
+
   const slPrice = isLong
     ? entryPrice * (1 - slPct / 100)
     : entryPrice * (1 + slPct / 100);
 
   const isExpired = now >= expiryDate;
 
-  // PRIORITY 1: Check if TP/SL hit during ENTIRE period
   if (isLong) {
     if (high >= tpPrice) return "CLOSED_TP";
     if (low <= slPrice) return "CLOSED_SL";
@@ -278,20 +321,17 @@ function determineTradeState(
     if (high >= slPrice) return "CLOSED_SL";
   }
 
-  // PRIORITY 2: If neither TP/SL hit, check if timeline expired
   if (isExpired) {
     const finalPnl = isLong
       ? ((currentPrice - entryPrice) / entryPrice) * 100
       : ((entryPrice - currentPrice) / entryPrice) * 100;
 
-    // Check if current price at expiry itself satisfies TP
     if (isLong) {
       if (currentPrice >= tpPrice) return "CLOSED_TP";
     } else {
       if (currentPrice <= tpPrice) return "CLOSED_TP";
     }
 
-    // Partial TP at expiry
     if (finalPnl >= 6 && finalPnl < tpPct) {
       return "CLOSED_PARTIAL_TP";
     }
@@ -330,14 +370,14 @@ async function processImpactFactor() {
   console.log(
     "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   );
-  console.log("  📊 IMPACT FACTOR WORKER (24-Hour Cycle)");
+  console.log("  📊 IMPACT FACTOR WORKER (Blockchain) - 24-Hour Cycle");
   console.log(
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   );
   console.log(`Started at: ${new Date().toISOString()}\n`);
 
   try {
-    // Fetch signals from API (DB access via API)
+    // Fetch signals from smart contract
     const signals = await fetchSignals();
 
     if (signals.length === 0) {
@@ -375,7 +415,7 @@ async function processImpactFactor() {
           `[Signal ${signal.id}] ${primaryToken} | Entry: $${entryPrice} | TP: ${tpPct}% | SL: ${slPct}% | Timeline: ${timelineDays}d`
         );
 
-        // Fetch OHLC data from API (CoinGecko access via API)
+        // Fetch OHLC data from API (still using API for CoinGecko)
         const messageDate = new Date(signal.message_created_at);
         const ohlcData = await fetchOHLCData(
           primaryToken,
@@ -396,25 +436,17 @@ async function processImpactFactor() {
         const mfe = calculateMFE(entryPrice, high, low, isLong);
         const mae = calculateMAE(entryPrice, low, high, isLong);
 
-        const prevMaxMFE = signal.max_favorable_excursion
-          ? parseFloat(signal.max_favorable_excursion.toString())
-          : 0;
-        const prevMaxMAE = signal.max_adverse_excursion
-          ? parseFloat(signal.max_adverse_excursion.toString())
-          : 0;
+        const prevMaxMFE = signal.max_favorable_excursion || 0;
+        const prevMaxMAE = signal.max_adverse_excursion || 0;
 
         const lifetimeMFE = Math.max(mfe, prevMaxMFE);
         const lifetimeMAE = Math.max(mae, prevMaxMAE);
 
         console.log(
-          `[Signal ${signal.id}] Current MFE: ${mfe.toFixed(
-            2
-          )}% | Lifetime MFE: ${lifetimeMFE.toFixed(2)}%`
+          `[Signal ${signal.id}] Current MFE: ${mfe.toFixed(2)}% | Lifetime MFE: ${lifetimeMFE.toFixed(2)}%`
         );
         console.log(
-          `[Signal ${signal.id}] Current MAE: ${mae.toFixed(
-            2
-          )}% | Lifetime MAE: ${lifetimeMAE.toFixed(2)}%`
+          `[Signal ${signal.id}] Current MAE: ${mae.toFixed(2)}% | Lifetime MAE: ${lifetimeMAE.toFixed(2)}%`
         );
 
         // Determine trade state (ALL LOGIC IN WORKER)
@@ -447,9 +479,7 @@ async function processImpactFactor() {
         }
 
         console.log(
-          `[Signal ${signal.id}] MFE: ${mfe.toFixed(2)}% | MAE: ${mae.toFixed(
-            2
-          )}% | P&L: ${pnlPct.toFixed(2)}% | State: ${state}`
+          `[Signal ${signal.id}] MFE: ${mfe.toFixed(2)}% | MAE: ${mae.toFixed(2)}% | P&L: ${pnlPct.toFixed(2)}% | State: ${state}`
         );
 
         // Calculate impact factor if trade is closed (ALL LOGIC IN WORKER)
@@ -460,16 +490,10 @@ async function processImpactFactor() {
           const impactFactor = tos + mfeBonus - maePenalty;
 
           console.log(
-            `[Signal ${signal.id}] ✅ CLOSED | TOS: ${tos.toFixed(
-              2
-            )} | MFE Bonus: ${mfeBonus.toFixed(
-              2
-            )} | MAE Penalty: ${maePenalty.toFixed(
-              2
-            )} | Impact Factor: ${impactFactor.toFixed(2)}`
+            `[Signal ${signal.id}] ✅ CLOSED | TOS: ${tos.toFixed(2)} | MFE Bonus: ${mfeBonus.toFixed(2)} | MAE Penalty: ${maePenalty.toFixed(2)} | Impact Factor: ${impactFactor.toFixed(2)}`
           );
 
-          // Update via API (DB access via API)
+          // Update via smart contract (blockchain storage)
           await updateSignal(
             signal.id,
             pnlPct,
@@ -481,14 +505,13 @@ async function processImpactFactor() {
 
           totalClosed++;
         } else {
-          // Update via API (DB access via API) - keep monitoring
+          // Update via smart contract (blockchain storage) - keep monitoring
           await updateSignal(
             signal.id,
             pnlPct,
             lifetimeMFE,
-            lifetimeMAE,
-            undefined, // impact_factor not calculated yet for open trades
-            undefined // keep monitoring flag unchanged
+            lifetimeMAE
+            // No impact_factor or flag update for open trades
           );
 
           console.log(
@@ -498,7 +521,7 @@ async function processImpactFactor() {
 
         totalProcessed++;
 
-        // Rate limiting delay (CoinGecko free tier)
+        // Rate limiting delay (CoinGecko free tier + blockchain transactions)
         await new Promise((resolve) => setTimeout(resolve, 1500));
       } catch (error: any) {
         totalErrors++;
@@ -526,79 +549,33 @@ async function processImpactFactor() {
 }
 
 /**
- * Update user-level impact factors by averaging all their completed signals
- * Called after processImpactFactor to aggregate per-signal results
- */
-async function updateUserImpactFactors() {
-  try {
-    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("👥 UPDATING USER IMPACT FACTORS");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
-    const response = await fetch(`${API_BASE_URL}/users/update-impact-factors`, {
-      method: "POST",
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to update user impact factors: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json() as { 
-      usersUpdated: number; 
-      errors: number;
-      users: Array<{ id: string; username: string; impact_factor: number; signal_count: number }>;
-    };
-
-    console.log(`✅ Updated ${result.usersUpdated} users`);
-    if (result.errors > 0) {
-      console.log(`⚠️  Errors: ${result.errors}`);
-    }
-
-    // Log top performers
-    if (result.users && result.users.length > 0) {
-      console.log("\n📊 Top Performers:");
-      const topUsers = result.users
-        .sort((a, b) => b.impact_factor - a.impact_factor)
-        .slice(0, 5);
-      
-      topUsers.forEach((user, idx) => {
-        console.log(
-          `  ${idx + 1}. ${user.username || "Unknown"}: ${user.impact_factor.toFixed(4)} ` +
-          `(${user.signal_count} signals)`
-        );
-      });
-    }
-
-    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-  } catch (error: any) {
-    console.error("[UpdateUserImpactFactors] ❌ Error:", error.message);
-  }
-}
-
-/**
  * Main worker loop
  */
 async function runWorker() {
-  console.log("🚀 Impact Factor Worker starting...");
+  console.log("🚀 Impact Factor Worker (Blockchain) starting...");
   console.log(`⏱️  Interval: ${INTERVAL}ms (${INTERVAL / 1000 / 60 / 60}h)`);
-  console.log(`🌐 API Base URL: ${API_BASE_URL}`);
+  console.log(`🔗 Network: Arbitrum L2`);
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-  // Run immediately on startup
-  await processImpactFactor();
-  // await updateUserImpactFactors(); // Aggregate user-level impact factors
+  try {
+    await initializeBlockchain();
 
-  // Then run on interval (24 hours)
-  workerInterval = setInterval(async () => {
+    // Run immediately on startup
     await processImpactFactor();
-    // await updateUserImpactFactors(); // Aggregate user-level impact factors
-  }, INTERVAL);
+
+    // Then run on interval (24 hours)
+    workerInterval = setInterval(async () => {
+      await processImpactFactor();
+    }, INTERVAL);
+  } catch (error: any) {
+    console.error("[ImpactFactorWorker] ❌ Failed to initialize:", error);
+    process.exit(1);
+  }
 }
 
 // Register cleanup
 registerCleanup(async () => {
-  console.log("🛑 Stopping Impact Factor Worker interval...");
+  console.log("🛑 Stopping Impact Factor Worker (Blockchain) interval...");
   if (workerInterval) {
     clearInterval(workerInterval);
     workerInterval = null;
@@ -606,7 +583,7 @@ registerCleanup(async () => {
 });
 
 // Setup graceful shutdown
-setupGracefulShutdown("Impact Factor Worker", server);
+setupGracefulShutdown("Impact Factor Worker (Blockchain)", server);
 
 // Start worker
 if (require.main === module) {

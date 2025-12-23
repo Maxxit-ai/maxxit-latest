@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/prisma';
 import { createTelegramBot, type TelegramUpdate } from '../../../lib/telegram-bot';
 import { createCommandParser } from '../../../lib/telegram-command-parser';
 import { TradeExecutor } from '../../../lib/trade-executor';
+import { initializeSignalInContract } from '../../../lib/impact-factor-contract';
 const bot = createTelegramBot();
 const parser = createCommandParser();
 
@@ -104,7 +105,9 @@ async function handleTextMessage(update: TelegramUpdate) {
       await bot.sendMessage(
         chatId,
         '👋 *Welcome to Maxxit Alpha Bot!*\n\n' +
-        '💡 *Share Alpha:* Send me your trading insights and signals. Agent creators can subscribe to your alpha!\n\n' +
+        '💡 *Share Alpha:* Send me your trading insights and signals.\n' +
+        '⚠️ _Note: Max 5 tokens per message. Excess tokens are ignored._\n\n' +
+        'Agent creators can subscribe to your alpha!\n\n' +
         '📊 *Want to trade yourself?*\n' +
         '1. Create an agent at Maxxit\n' +
         '2. Deploy it\n' +
@@ -234,6 +237,9 @@ async function handleAlphaMessage(message: any, telegramUserId: string, chatId: 
         chatId,
         '🎉 *Welcome to Maxxit Alpha!*\n\n' +
         'Your trading insights are now live! Agent creators can subscribe to your signals.\n\n' +
+        '⚠️ *Important Rule:*\n' +
+        'Each message can contain a *maximum of 5 tokens*.\n' +
+        'If you mention more than 5, only the first 5 tokens will be processed.\n\n' +
         '📊 Keep sharing quality alpha to build your reputation and following!',
         { parse_mode: 'Markdown' }
       );
@@ -250,7 +256,7 @@ async function handleAlphaMessage(message: any, telegramUserId: string, chatId: 
     // This ensures consistent classification logic in one place
     const messageKey = `alpha_${telegramUserId}_${message.message_id}`;
     
-    await prisma.telegram_posts.create({
+    const createdSignal = await prisma.telegram_posts.create({
       data: {
         alpha_user_id: alphaUser.id,
         source_id: null, // Not from a channel, from individual user
@@ -270,12 +276,31 @@ async function handleAlphaMessage(message: any, telegramUserId: string, chatId: 
     });
 
     console.log('[Alpha] Stored message (awaiting classification by worker)');
+    
+    // Store hash in smart contract for data integrity verification
+    try {
+      await initializeSignalInContract(createdSignal.id, {
+        alpha_user_id: createdSignal.alpha_user_id,
+        source_id: createdSignal.source_id,
+        message_id: createdSignal.message_id,
+        message_text: createdSignal.message_text,
+        message_created_at: createdSignal.message_created_at,
+        sender_id: createdSignal.sender_id,
+        sender_username: createdSignal.sender_username,
+      });
+    } catch (error: any) {
+      console.error('[Alpha] Failed to initialize signal in contract (non-fatal):', error.message);
+      // Continue execution - DB operation succeeded
+    }
 
     // Give user feedback that message was received
     await bot.sendMessage(
       chatId,
       '✅ *Message received!*\n\n' +
-      'Your alpha is being processed and will be available to agents following you shortly.',
+      'Your alpha is being processed and will be available to agents following you shortly.\n\n' +
+      '⚠️ _Note: Max 5 tokens processed per signal. Excess tokens will be ignored._ we will process the first 5 tokens in the message if there are more than 5.\n\n' + 
+      'If you want to process more tokens, please send a new message with the additional tokens.\n\n' +
+      'Thank you for sharing your alpha!',
       { parse_mode: 'Markdown' }
     );
 
