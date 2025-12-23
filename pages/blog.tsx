@@ -30,7 +30,7 @@ export default function BlogPage() {
           <div>
             <p className="font-medium-sans text-sm font-medium text-black">Maxxit Team</p>
             <div className="flex items-center gap-2 text-gray-500 text-sm font-medium-sans">
-              <span>Dec 23, 2024</span>
+              <span>Dec 23, 2025</span>
               <span>·</span>
               <span className="flex items-center gap-1">
                 <Clock className="h-3.5 w-3.5" />
@@ -280,7 +280,7 @@ export default function BlogPage() {
           </ul>
 
           <p className="text-gray-500 italic">
-            So you're not copying someone's exact trade. You're copying their <strong>edge</strong> — then trading it like you.
+            So you're not copying someone's exact trade. You're copying their <strong>edge,</strong> then trading it like you.
           </p>
 
           <h3>Step 3: WHERE to Trade (Best Venue + 24/7 Monitoring)</h3>
@@ -289,7 +289,7 @@ export default function BlogPage() {
 
           <div className="my-8 p-6 bg-gray-50 border-l-4 border-black">
             <p className="mb-0">
-              <strong>AGENT WHERE</strong> routes to the best venue available and monitors positions continuously — protecting exits and preventing "I forgot to check" liquidations.
+              <strong>AGENT WHERE</strong> routes to the best venue available and monitors positions continuously, protecting exits and preventing "I forgot to check" liquidations.
                   </p>
                 </div>
                 
@@ -322,7 +322,7 @@ export default function BlogPage() {
                 </div>
 
           <p>
-            We benchmarked performance in the exact way a user experiences the product — by "turning on" agents step-by-step:
+            We benchmarked performance in the exact way a user experiences the product, by "turning on" agents step-by-step:
           </p>
 
           <div className="space-y-4 my-8">
@@ -375,7 +375,7 @@ export default function BlogPage() {
 
           <div className="my-10 p-8 bg-gray-50 border-l-4 border-black">
             <p className="mb-0">
-              <strong>Takeaway:</strong> Performance improves when the system does what humans struggle with most — source selection + disciplined sizing, continuously.
+              <strong>Takeaway:</strong> Performance improves when the system does what humans struggle with most: source selection + disciplined sizing, continuously.
               </p>
             </div>
 
@@ -408,7 +408,7 @@ export default function BlogPage() {
           <div className="my-10 p-8 bg-gray-900 text-white rounded-xl">
             <h4 className="text-white font-medium-sans font-semibold mb-4">The "Lazy Trader" Example</h4>
             <p className="text-white">
-                  You are watching a football game and your friend shares that BTC is gonna go up because blah blah blah. You trust your friend but still want a second opinion — and if that opinion turns out the same, you also want to take the trade.
+                  You are watching a football game and your friend shares that BTC is gonna go up because blah blah blah. You trust your friend but still want a second opinion, and if that opinion turns out the same, you also want to take the trade.
                 </p>
             <p className="text-white">
                   So what you could do is text Maxxit listener agent on Telegram:
@@ -434,14 +434,14 @@ export default function BlogPage() {
           <h2>Why Delegate Your Trades to Maxxit</h2>
 
           <p>
-            Maxxit gives you back your <strong>time, energy, and focus</strong> — without giving up custody.
+            Maxxit gives you back your <strong>time, energy, and focus,</strong> without giving up custody.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-8">
             <div className="p-5 border border-gray-200 rounded-lg hover:border-black transition-colors">
               <h4 className="font-medium-sans font-semibold text-black mb-2">Stop Paying for Noise</h4>
               <p className="text-sm text-gray-600 mb-0">
-                  Instead of subscribing to 20 Telegram groups, subscribe once to Maxxit's Alpha Clubs — a compilation of benchmarked, proven sources.
+                  Instead of subscribing to 20 Telegram groups, subscribe once to Maxxit's Alpha Clubs, a compilation of benchmarked, proven sources.
                 </p>
               </div>
             <div className="p-5 border border-gray-200 rounded-lg hover:border-black transition-colors">
@@ -459,7 +459,7 @@ export default function BlogPage() {
             <div className="p-5 border border-gray-200 rounded-lg hover:border-black transition-colors">
               <h4 className="font-medium-sans font-semibold text-black mb-2">Stop Rushing to Execute</h4>
               <p className="text-sm text-gray-600 mb-0">
-                  No more opening charts in panic — Maxxit acts as your always-on trading butler, executing 24/7.
+                  No more opening charts in panic. Maxxit acts as your always-on trading butler, executing 24/7.
                 </p>
               </div>
             <div className="p-5 border border-gray-200 rounded-lg hover:border-black transition-colors">
@@ -471,7 +471,7 @@ export default function BlogPage() {
             <div className="p-5 border border-gray-200 rounded-lg hover:border-black transition-colors">
               <h4 className="font-medium-sans font-semibold text-black mb-2">Stop Losing Sleep for Exits</h4>
               <p className="text-sm text-gray-600 mb-0">
-                  Go offline — Maxxit monitors positions and manages exits timely, including liquidation prevention.
+                  Go offline while Maxxit monitors positions and manages exits timely, including liquidation prevention.
                 </p>
               </div>
             </div>
@@ -513,7 +513,7 @@ export default function BlogPage() {
         {/* Footer */}
         <footer className="mt-16 pt-8 border-t border-gray-200">
           <div className="flex items-center justify-between text-sm text-gray-500 font-medium-sans">
-            <span>© 2024 Maxxit</span>
+            <span>© 2025 Maxxit</span>
             <div className="flex gap-6">
               <Link href="/" className="hover:text-black transition-colors">Home</Link>
               <Link href="/docs" className="hover:text-black transition-colors">Docs</Link>
