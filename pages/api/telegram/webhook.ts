@@ -58,13 +58,19 @@ async function handleTextMessage(update: TelegramUpdate) {
     },
   });
 
-  // Handle /start command with deep link parameter (for Lazy Trading)
+  // Handle /start command with deep link parameter (for Lazy Trading or Notifications)
   if (text.startsWith("/start ")) {
     const code = text.split(" ")[1]?.toUpperCase();
 
     // Check if this is a Lazy Trading link code (starts with "LT")
     if (code && code.startsWith("LT")) {
       await handleLazyTradingLink(message, telegramUserId, chatId, code);
+      return;
+    }
+
+    // Check if this is a Notification link code (starts with "NTF_")
+    if (code && code.startsWith("NTF_")) {
+      await handleNotificationLink(message, telegramUserId, chatId, code);
       return;
     }
 
@@ -776,6 +782,65 @@ async function handleLazyTradingLink(
       );
     }
 
+    // ========================================================================
+    // AUTO-SETUP NOTIFICATIONS: When connecting for lazy trading, also enable
+    // trade notifications so user doesn't need to connect separately
+    // ========================================================================
+    if (userWallet) {
+      try {
+        console.log(
+          "[Telegram] Auto-enabling notifications for lazy trading user:",
+          userWallet
+        );
+
+        // Check if notification entry already exists for this wallet
+        const existingNotification =
+          await prisma.user_telegram_notifications.findUnique({
+            where: { user_wallet: userWallet.toLowerCase() },
+          });
+
+        if (existingNotification) {
+          // Update existing entry with telegram details
+          await prisma.user_telegram_notifications.update({
+            where: { user_wallet: userWallet.toLowerCase() },
+            data: {
+              telegram_chat_id: chatId.toString(),
+              telegram_user_id: telegramUserId,
+              telegram_username: message.from?.username || null,
+              is_active: true,
+              linked_at: new Date(),
+              link_code: null, // Clear any pending link code
+            },
+          });
+          console.log(
+            "[Telegram] ✅ Updated existing notification connection for lazy trader"
+          );
+        } else {
+          // Create new notification entry
+          await prisma.user_telegram_notifications.create({
+            data: {
+              user_wallet: userWallet.toLowerCase(),
+              telegram_chat_id: chatId.toString(),
+              telegram_user_id: telegramUserId,
+              telegram_username: message.from?.username || null,
+              is_active: true,
+              linked_at: new Date(),
+            },
+          });
+          console.log(
+            "[Telegram] ✅ Created new notification connection for lazy trader"
+          );
+        }
+      } catch (notificationError: any) {
+        // Don't fail the lazy trading setup if notification setup fails
+        // User can still connect notifications separately later
+        console.error(
+          "[Telegram] ⚠️ Failed to auto-enable notifications (non-critical):",
+          notificationError.message
+        );
+      }
+    }
+
     // Send success message - wrap in try-catch to handle desktop app issues
     // Note: Don't include @ symbol in markdown messages as it can cause parsing errors
     const displayName =
@@ -786,6 +851,7 @@ async function handleLazyTradingLink(
         chatId,
         `✅ *Lazy Trading Connected!*\n\n` +
         `Hey ${displayName}! Your Telegram is now linked for Lazy Trading.\n\n` +
+        `📱 *Trade notifications are also enabled* - you'll receive alerts when positions open or close.\n\n` +
         `🔄 *Please return to the Maxxit website to complete setup:*\n` +
         `• Configure your trading preferences\n` +
         `• Approve Ostium delegation\n` +
@@ -800,7 +866,7 @@ async function handleLazyTradingLink(
       try {
         await bot.sendMessage(
           chatId,
-          `✅ Lazy Trading Connected!\n\nHey ${displayName}! Your Telegram is now linked for Lazy Trading.\n\nPlease return to the Maxxit website to complete setup.`
+          `✅ Lazy Trading Connected!\n\nHey ${displayName}! Your Telegram is now linked for Lazy Trading and trade notifications.\n\nPlease return to the Maxxit website to complete setup.`
         );
       } catch (simpleSendError) {
         console.error(
@@ -825,6 +891,108 @@ async function handleLazyTradingLink(
       await bot.sendMessage(
         chatId,
         "❌ Error connecting your Telegram for Lazy Trading. Please try again from the Maxxit website."
+      );
+    } catch (sendError) {
+      console.error(
+        "[Telegram] Failed to send error message to user:",
+        sendError
+      );
+    }
+  }
+}
+
+/**
+ * Handle Notification link - connects telegram for trade notifications
+ * This is called when user clicks a deep link with NTF_ prefix code
+ * (Previously handled by separate telegram-notifications/webhook.ts)
+ */
+async function handleNotificationLink(
+  message: any,
+  telegramUserId: string,
+  chatId: number,
+  linkCode: string
+) {
+  try {
+    console.log(
+      "[Telegram] Processing Notification link:",
+      linkCode,
+      "for user:",
+      telegramUserId
+    );
+
+    // Find user by link code
+    const pendingLink = await prisma.user_telegram_notifications.findFirst({
+      where: {
+        link_code: linkCode,
+        is_active: false,
+      },
+    });
+
+    if (!pendingLink) {
+      await bot.sendMessage(
+        chatId,
+        "❌ Invalid or expired link code. Please generate a new link from the Maxxit platform.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    // Check if this Telegram account is already linked to another wallet
+    const existingLink = await prisma.user_telegram_notifications.findUnique({
+      where: { telegram_chat_id: chatId.toString() },
+    });
+
+    if (existingLink && existingLink.user_wallet !== pendingLink.user_wallet) {
+      await bot.sendMessage(
+        chatId,
+        "⚠️ This Telegram account is already linked to another wallet. Please disconnect first or use a different Telegram account.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    // Update the pending link with actual Telegram details
+    await prisma.user_telegram_notifications.update({
+      where: { id: pendingLink.id },
+      data: {
+        telegram_chat_id: chatId.toString(),
+        telegram_user_id: telegramUserId,
+        telegram_username: message.from?.username || null,
+        is_active: true,
+        linked_at: new Date(),
+        link_code: null, // Clear link code after successful link
+      },
+    });
+
+    console.log(
+      `[Telegram Notifications] ✅ Linked user ${pendingLink.user_wallet
+      } to Telegram @${message.from?.username || telegramUserId}`
+    );
+
+    await bot.sendMessage(
+      chatId,
+      `✅ *Successfully Connected!*\n\n` +
+      `Your Telegram account is now linked to your Maxxit wallet.\n\n` +
+      `You will receive notifications for:\n` +
+      `• New positions opened\n` +
+      `• Updates on your trades\n\n`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (error: any) {
+    console.error("[Telegram] Error handling notification link:", error);
+    console.error("[Telegram] Error details:", {
+      message: error.message,
+      stack: error.stack,
+      telegramUserId,
+      linkCode,
+      chatId,
+    });
+
+    // Try to send error message
+    try {
+      await bot.sendMessage(
+        chatId,
+        "❌ Error connecting your Telegram for notifications. Please try again from the Maxxit platform."
       );
     } catch (sendError) {
       console.error(

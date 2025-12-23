@@ -25,11 +25,14 @@ dotenv.config();
 
 const PORT = process.env.PORT || 5010;
 const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds default
-const BOT_TOKEN = process.env.TELEGRAM_NOTIFICATION_BOT_TOKEN;
+
+// Use the main bot token (same as lazy trading)
+// This allows both features to share a single bot
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 if (!BOT_TOKEN) {
   console.error(
-    "❌ TELEGRAM_NOTIFICATION_BOT_TOKEN environment variable is required"
+    "❌ TELEGRAM_BOT_TOKEN environment variable is required"
   );
   process.exit(1);
 }
@@ -282,8 +285,7 @@ async function processNotifications() {
         }
 
         console.log(
-          `   ✅ Telegram connected (@${
-            userTelegram.telegram_username || userTelegram.telegram_user_id
+          `   ✅ Telegram connected (@${userTelegram.telegram_username || userTelegram.telegram_user_id
           })`
         );
 

@@ -178,9 +178,9 @@ const HeroSection = memo(
             />
           </h1>
 
-          <p className="max-w-4xl mx-auto mb-8  md:text-xl text-[var(--text-secondary)] leading-relaxed">
-          Join an Alpha Club to automate your trading. Three AI agents work together to find signals, execute with your risk style, and route to the best venue — all while your funds stay in your wallet.
-        </p>
+          {/* <p className="max-w-4xl mx-auto mb-8  md:text-xl text-[var(--text-secondary)] leading-relaxed">
+            Join an Alpha Club to automate your trading. Three AI agents work together to find signals, execute with your risk style, and route to the best venue — all while your funds stay in your wallet.
+          </p> */}
 
           <div className="flex flex-wrap justify-center gap-4 mb-16">
             <button
