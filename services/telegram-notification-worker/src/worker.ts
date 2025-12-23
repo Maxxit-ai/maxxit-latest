@@ -482,35 +482,42 @@ function formatSignalNotTradedMessage(
   message += `${venueEmoji} Venue: ${venue}\n`;
   message += `🤖 Agent: ${escapeTelegramMarkdown(agentName)}\n\n`;
 
-  // Status and reason
+  // For failed trades: show status and error
+  // For not traded: show only the agent decision (which contains the full reasoning)
   if (isFailed) {
     message += `⚠️ *Status:* Trade attempted but execution failed\n\n`;
     if (reason) {
       message += `❌ *Error:*\n${escapeTelegramMarkdown(reason)}\n`;
     }
+    // Include LLM decision for context on failed trades
+    if (signal.llm_decision) {
+      message += `\n💭 *Agent Decision:*\n${escapeTelegramMarkdown(
+        signal.llm_decision
+      )}\n`;
+    }
   } else {
-    message += `ℹ️ *Status:* Signal generated but not traded\n\n`;
-    if (reason) {
-      message += `⚠️ *Reason:*\n${escapeTelegramMarkdown(reason)}\n`;
+    // For "not traded" signals, only show the agent decision
+    // (skipped_reason and llm_decision usually contain the same explanation)
+    if (signal.llm_decision) {
+      message += `💭 *Why Not Traded:*\n${escapeTelegramMarkdown(
+        signal.llm_decision
+      )}\n`;
+    } else if (reason) {
+      // Fallback to reason if no llm_decision available
+      message += `💭 *Why Not Traded:*\n${escapeTelegramMarkdown(reason)}\n`;
     }
   }
 
-  // LLM decision (useful context)
-  if (signal.llm_decision) {
-    message += `\n💭 *Agent Decision:*\n${escapeTelegramMarkdown(
-      signal.llm_decision
-    )}\n`;
-  }
+  // Trade parameters that were considered (only show if allocation > 0)
+  const hasAllocation = signal.llm_fund_allocation !== null && signal.llm_fund_allocation > 0;
+  const hasLeverage = signal.llm_leverage !== null && signal.llm_leverage > 0;
 
-  // Trade parameters that were considered
-  if (signal.llm_fund_allocation !== null || signal.llm_leverage !== null) {
+  if (hasAllocation || hasLeverage) {
     message += `\n📊 *Parameters Considered:*`;
-    if (signal.llm_fund_allocation !== null) {
-      message += `\n• Fund Allocation: ${signal.llm_fund_allocation.toFixed(
-        2
-      )}%`;
+    if (hasAllocation) {
+      message += `\n• Fund Allocation: ${signal.llm_fund_allocation.toFixed(2)}%`;
     }
-    if (signal.llm_leverage !== null) {
+    if (hasLeverage) {
       message += `\n• Leverage: ${signal.llm_leverage.toFixed(1)}x`;
     }
   }

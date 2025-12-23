@@ -94,8 +94,15 @@ export class LLMTradeDecisionMaker {
    * Build the prompt for the LLM
    */
   private buildPrompt(input: TradeDecisionInput): string {
-    // Format LunarCrush data with descriptions
-    let lunarcrushSection = "Not available";
+    // Format analytics data with descriptions
+    let analyticsSection = "Not available";
+
+    // Field name mapping to use user-friendly terminology in reasoning
+    const fieldNameMapping: Record<string, string> = {
+      galaxy_score: "Momentum Index",
+      alt_rank: "Relative Market Position",
+    };
+
     if (input.lunarcrushData && input.lunarcrushData.data && input.lunarcrushData.descriptions) {
       const formattedData: string[] = [];
       const { data, descriptions } = input.lunarcrushData;
@@ -103,13 +110,15 @@ export class LLMTradeDecisionMaker {
       // Only include fields that have values (not null)
       for (const [key, value] of Object.entries(data)) {
         if (value !== null && value !== undefined) {
-          const description = descriptions[key] || `Raw ${key} value from LunarCrush API`;
-          formattedData.push(`${key}: ${value} - ${description}`);
+          // Use mapped field name if available, otherwise use original key
+          const displayName = fieldNameMapping[key] || key;
+          const description = descriptions[key] || `${displayName} metric`;
+          formattedData.push(`${displayName}: ${value} - ${description}`);
         }
       }
 
       if (formattedData.length > 0) {
-        lunarcrushSection = formattedData.join("\n");
+        analyticsSection = formattedData.join("\n");
       }
     }
 
@@ -120,8 +129,8 @@ MESSAGE/SIGNAL:
 
 CONFIDENCE SCORE (from Agent What): ${input.confidenceScore} (0.0 to 1.0)
 
-LUNARCRUSH DATA:
-${lunarcrushSection}
+ANALYTICS DATA:
+${analyticsSection}
 
 USER TRADING PREFERENCES:
 ${JSON.stringify(input.userTradingPreferences || "Not available", null, 2)}
@@ -153,7 +162,7 @@ Respond with a JSON object containing:
 
 GUIDELINES:
 1. Consider the user's trading preferences when making decisions
-2. Account for the confidence score and LunarCrush metrics
+2. Account for the confidence score and analytics metrics
 3. Be conservative with high-risk trades
 4. Fund allocation and leverage should be proportional to confidence, user's trading preferences and market conditions
 6. Always provide a clear reason for your decision
