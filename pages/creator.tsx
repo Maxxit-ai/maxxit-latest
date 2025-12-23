@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { db } from "../client/src/lib/db";
 import type {
   Agent,
@@ -23,8 +24,10 @@ import { Header } from "@components/Header";
 import { usePrivy } from "@privy-io/react-auth";
 import { useToast } from "@/hooks/use-toast";
 import { MultiVenueSelector } from "@components/MultiVenueSelector";
+import { Settings } from "lucide-react";
 
 export default function Creator() {
+  const router = useRouter();
   const { authenticated, user, login } = usePrivy();
   const { toast } = useToast();
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -215,6 +218,10 @@ export default function Creator() {
     }
   }
 
+  const handleEditAgent = (agentId: string) => {
+    router.push(`/edit-agent/${agentId}`);
+  };
+
   function handleDeployAgent(agent: Agent) {
     setDeployingAgent(agent);
     setShowDeploymentModal(true);
@@ -323,10 +330,10 @@ export default function Creator() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-background border border-[var(--border)]">
         <Header />
         <div className="max-w-7xl mx-auto px-6 py-12">
-          <h1 className="font-display text-4xl font-bold text-foreground mb-8 uppercase">
+          <h1 className="font-display text-5xl font-bold text-foreground mb-8 uppercase">
             Creator Dashboard
           </h1>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -523,6 +530,16 @@ export default function Creator() {
                           {agent.status}
                         </span>
 
+                        {/* Edit button */}
+                        <button
+                          onClick={() => handleEditAgent(agent.id)}
+                          className="flex items-center gap-1 px-3 py-1 border border-border text-xs rounded-md hover:border-primary transition-all"
+                          data-testid={`button-edit-${agent.id}`}
+                        >
+                          <Settings className="h-3 w-3" />
+                          Edit
+                        </button>
+
                         {/* Deploy button - available for all agent statuses */}
                         <button
                           onClick={() => handleDeployAgent(agent)}
@@ -533,31 +550,24 @@ export default function Creator() {
                           Deploy
                         </button>
 
-                        {(agent.status === "DRAFT" ||
-                          agent.status === "PRIVATE") && (
-                          <button
-                            onClick={() => activateAgent(agent.id)}
-                            disabled={activatingAgentId === agent.id}
-                            className="flex items-center gap-1 px-3 py-1 bg-primary text-primary-foreground text-xs rounded-md hover-elevate active-elevate-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                            data-testid={`button-activate-${agent.id}`}
-                          >
-                            <CheckCircle className="h-3 w-3" />
-                            {activatingAgentId === agent.id
-                              ? "Activating..."
-                              : "Activate"}
-                          </button>
-                        )}
-                        {agent.status === "PUBLIC" && (
+                        {/* Status toggle buttons */}
+                        {agent.status === "PUBLIC" ? (
                           <button
                             onClick={() => deactivateAgent(agent.id)}
                             disabled={deactivatingAgentId === agent.id}
-                            className="flex items-center gap-1 px-3 py-1 bg-yellow-500 text-white text-xs rounded-md hover:bg-yellow-600 active:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                            data-testid={`button-deactivate-${agent.id}`}
+                            className="flex items-center gap-1 px-3 py-1 bg-yellow-500 text-white text-xs rounded-md hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             <Pause className="h-3 w-3" />
-                            {deactivatingAgentId === agent.id
-                              ? "Deactivating..."
-                              : "Deactivate"}
+                            {deactivatingAgentId === agent.id ? "Switching..." : "Private"}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => activateAgent(agent.id)}
+                            disabled={activatingAgentId === agent.id}
+                            className="flex items-center gap-1 px-3 py-1 bg-primary text-primary-foreground text-xs rounded-md hover-elevate disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                          >
+                            <CheckCircle className="h-3 w-3" />
+                            {activatingAgentId === agent.id ? "Switching..." : "Public"}
                           </button>
                         )}
                       </div>

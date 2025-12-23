@@ -30,7 +30,7 @@ const PORT = process.env.PORT || 5006;
 const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds default
 
 let workerInterval: NodeJS.Timeout | null = null;
-
+let isCycleRunning = false;
 // Health check server
 const app = express();
 app.get("/health", createHealthCheckHandler("telegram-alpha-worker", async () => {
@@ -39,6 +39,7 @@ app.get("/health", createHealthCheckHandler("telegram-alpha-worker", async () =>
     database: dbHealthy ? "connected" : "disconnected",
     interval: INTERVAL,
     isRunning: workerInterval !== null,
+    isCycleRunning,
   };
 }));
 
@@ -50,6 +51,13 @@ const server = app.listen(PORT, () => {
  * Process and classify Telegram alpha messages
  */
 async function processTelegramAlphaMessages() {
+  if (isCycleRunning) {
+    console.log("[TelegramAlpha] ⏭️ Skipping cycle - previous cycle still running");
+    return;
+  }
+
+  isCycleRunning = true;
+
   console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("  📱 TELEGRAM ALPHA INGESTION WORKER");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -277,6 +285,8 @@ async function processTelegramAlphaMessages() {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
   } catch (error: any) {
     console.error("[TelegramAlpha] ❌ Fatal error:", error.message);
+  } finally {
+    isCycleRunning = false;
   }
 }
 

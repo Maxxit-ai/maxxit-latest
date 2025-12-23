@@ -26,6 +26,8 @@ interface Trade {
   qty: string;
   entryPrice: string;
   currentPrice: string | null;
+  exitPrice: string | null;
+  pnl: string | null;
   unrealizedPnl: string | null;
   unrealizedPnlPercent: string | null;
   stopLoss: string | null;
@@ -349,7 +351,7 @@ export default function MyTrades() {
   const showingEnd = total === 0 ? 0 : Math.min(page * pageSize, total);
 
   return (
-    <div className="min-h-screen bg-[var(--bg-deep)]">
+    <div className="min-h-screen bg-[var(--bg-deep)] border border-[var(--border)]">
       <Header />
 
       <div className="max-w-7xl mx-auto px-6 py-12">
@@ -530,7 +532,7 @@ export default function MyTrades() {
             </div>
 
             {loading ? (
-              <div className="space-y-4">
+              <div className="space-y-4 border border-[var(--border)] bg-[var(--bg-surface)] p-4">
                 {[1, 2, 3].map((idx) => (
                   <div
                     key={idx}
@@ -575,7 +577,7 @@ export default function MyTrades() {
                     Try adjusting filters.
                   </p>
                   <a
-                    href="/"
+                    href="/#agents"
                     className="px-8 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
                   >
                     BROWSE AGENTS
@@ -714,6 +716,43 @@ export default function MyTrades() {
                                     {trade.status}
                                   </p>
                                 </div>
+
+                                {/* PNL and Exit Price - Only show if present */}
+                                {(trade.pnl !== null ||
+                                  trade.exitPrice !== null) && (
+                                  <>
+                                    {trade.exitPrice && (
+                                      <div className="border border-[var(--border)] p-3">
+                                        <p className="data-label mb-1">
+                                          EXIT PRICE
+                                        </p>
+                                        <p className="font-mono">
+                                          ${trade.exitPrice}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {trade.pnl && (
+                                      <div className="border border-[var(--border)] p-3">
+                                        <p className="data-label mb-1">
+                                          REALIZED PNL
+                                        </p>
+                                        <p
+                                          className={`font-mono text-sm font-bold ${
+                                            parseFloat(trade.pnl) >= 0
+                                              ? "text-green-400"
+                                              : "text-red-400"
+                                          }`}
+                                        >
+                                          {parseFloat(trade.pnl) >= 0
+                                            ? "+"
+                                            : ""}
+                                          ${trade.pnl}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
 
                                 <div className="border border-[var(--border)] p-3">
                                   <p className="data-label mb-1">STOP LOSS</p>

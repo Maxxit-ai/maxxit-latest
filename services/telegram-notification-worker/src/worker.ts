@@ -2,6 +2,17 @@
  * Telegram Notification Worker
  * Sends Telegram notifications for ALL signals (both traded and untraded)
  * Interval: 30 seconds
+ *
+ * Flow:
+ * 1. Fetch signals from last 24h with deployment_id (only user-specific signals)
+ * 2. For each signal:
+ *    - If already notified for THIS user + signal → skip
+ *    - If llm_should_trade = false → SIGNAL_NOT_TRADED with skipped_reason
+ *    - If llm_should_trade = true:
+ *      - trade_executed = NULL → wait (not executed yet)
+ *      - trade_executed = "SUCCESS" → SIGNAL_EXECUTED with position data
+ *      - trade_executed = "FAILED" → SIGNAL_NOT_TRADED with execution_result error
+ * 3. Notify ONLY the specific deployment's user (no fan-out to all agent deployers)
  */
 
 import dotenv from "dotenv";
@@ -14,11 +25,14 @@ dotenv.config();
 
 const PORT = process.env.PORT || 5010;
 const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds default
-const BOT_TOKEN = process.env.TELEGRAM_NOTIFICATION_BOT_TOKEN;
+
+// Use the main bot token (same as lazy trading)
+// This allows both features to share a single bot
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 if (!BOT_TOKEN) {
   console.error(
-    "❌ TELEGRAM_NOTIFICATION_BOT_TOKEN environment variable is required"
+    "❌ TELEGRAM_BOT_TOKEN environment variable is required"
   );
   process.exit(1);
 }
@@ -26,6 +40,7 @@ if (!BOT_TOKEN) {
 let workerInterval: NodeJS.Timeout | null = null;
 let notificationsSent = 0;
 let notificationsFailed = 0;
+let isCycleRunning = false;
 
 // Health check server
 const app = express();
@@ -40,6 +55,7 @@ app.get("/health", async (req, res) => {
     notificationsSent,
     notificationsFailed,
     timestamp: new Date().toISOString(),
+    isCycleRunning,
   });
 });
 
@@ -47,7 +63,26 @@ const server = app.listen(PORT, () => {
   console.log(`🏥 Telegram Notification Worker health check on port ${PORT}`);
 });
 
+/**
+ * Escape Telegram Markdown special characters in dynamic text
+ * so that LLM explanations and reasons don't break parsing.
+ */
+function escapeTelegramMarkdown(text: string): string {
+  if (!text) return text;
+  // For classic "Markdown" mode, the main special chars are: _, *, [, ], `
+  return text.replace(/([_*[\]`])/g, "\\$1");
+}
+
 async function processNotifications() {
+  if (isCycleRunning) {
+    console.log(
+      "[TelegramNotification] ⏭️ Skipping cycle - previous cycle still running"
+    );
+    return;
+  }
+
+  isCycleRunning = true;
+
   console.log(
     "\n╔═══════════════════════════════════════════════════════════════╗"
   );
@@ -85,7 +120,7 @@ async function processNotifications() {
             agents: true,
           },
         },
-        positions: true, // Check if signal resulted in position
+        positions: true, // For position data when trade_executed = SUCCESS
       },
       orderBy: {
         created_at: "desc",
@@ -102,17 +137,37 @@ async function processNotifications() {
     let sent = 0;
     let skipped = 0;
     let failed = 0;
+    let waiting = 0;
 
     for (const signal of recentSignals) {
       try {
         console.log(`\n[Signal ${signal.id.slice(0, 8)}...] Processing...`);
 
+        // Validate deployment exists
+        if (!signal.agent_deployments) {
+          console.log(`   ⚠️  No deployment found - skipping`);
+          skipped++;
+          continue;
+        }
+
+        const deployment = signal.agent_deployments;
+        const userWallet = deployment.user_wallet;
+        const agentName = deployment.agents?.name || "Unknown Agent";
+
+        console.log(
+          `   👤 User: ${userWallet.slice(0, 6)}...${userWallet.slice(-4)}`
+        );
+        console.log(`   🤖 Agent: ${agentName}`);
+
+        // Check if THIS user was already notified for THIS signal
         const existingNotification = await prisma.notification_logs.findFirst({
           where: {
             signal_id: signal.id,
+            user_wallet: userWallet.toLowerCase(),
             notification_type: {
               in: ["SIGNAL_EXECUTED", "SIGNAL_NOT_TRADED"],
             },
+            status: "SENT", // Only consider successfully sent notifications
           },
         });
 
@@ -125,197 +180,177 @@ async function processNotifications() {
         }
 
         const llmShouldTrade = signal.llm_should_trade;
+        // Cast to any for fields that might not be in generated Prisma types yet
+        const signalAny = signal as any;
+        const tradeExecuted = signalAny.trade_executed as string | null; // NULL, "SUCCESS", "FAILED"
         const skippedReason = signal.skipped_reason;
-        const positionExists = signal.positions?.length > 0;
-        const position = positionExists ? signal.positions[0] : null;
+        const executionResult = signalAny.execution_result as string | null;
 
-        let notificationType: string | null = null;
+        let notificationType: "SIGNAL_EXECUTED" | "SIGNAL_NOT_TRADED" | null =
+          null;
         let statusIcon = "";
         let shouldSendNotification = true;
+        let position: any = null;
+        let failureReason: string | null = null;
 
-        if (llmShouldTrade === true) {
-          // Agent decided to trade
-          if (positionExists) {
-            // Position exists → Trade was executed
-            notificationType = "SIGNAL_EXECUTED";
-            statusIcon = "🎯";
-            console.log(
-              `   ${statusIcon} ${signal.token_symbol} ${signal.side} - EXECUTED`
-            );
-          } else {
-            // Position doesn't exist yet → Trade might still be executing, wait
-            console.log(
-              `   ⏳ ${signal.token_symbol} ${signal.side} - SHOULD TRADE but position not created yet, waiting...`
-            );
-            shouldSendNotification = false;
-          }
-        } else if (llmShouldTrade === false) {
+        // Determine notification type based on llm_should_trade and trade_executed
+        if (llmShouldTrade === false) {
           // Agent decided NOT to trade
           notificationType = "SIGNAL_NOT_TRADED";
           statusIcon = "📊";
+          failureReason = skippedReason || "Agent decided not to trade";
           console.log(
             `   ${statusIcon} ${signal.token_symbol} ${signal.side} - NOT TRADED (llm_should_trade=false)`
           );
-        } else {
-          // llm_should_trade is null/undefined - treat as not traded
-          notificationType = "SIGNAL_NOT_TRADED";
-          statusIcon = "📊";
-          console.log(
-            `   ${statusIcon} ${signal.token_symbol} ${signal.side} - NOT TRADED (llm_should_trade=null)`
-          );
-        }
+          if (skippedReason) {
+            console.log(`   📝 Reason: ${skippedReason}`);
+          }
+        } else if (llmShouldTrade === true) {
+          // Agent decided to trade - check trade_executed status
+          if (tradeExecuted === null || tradeExecuted === undefined) {
+            // Trade not executed yet - wait
+            console.log(
+              `   ⏳ ${signal.token_symbol} ${signal.side} - WAITING (trade_executed=NULL)`
+            );
+            shouldSendNotification = false;
+            waiting++;
+          } else if (tradeExecuted === "SUCCESS") {
+            // Trade executed successfully
+            position =
+              signal.positions && signal.positions.length > 0
+                ? signal.positions[0]
+                : null;
 
-        // If signal was skipped (has a reason), definitely send NOT TRADED
-        if (skippedReason && skippedReason.trim()) {
-          notificationType = "SIGNAL_NOT_TRADED";
-          statusIcon = "🚫";
-          shouldSendNotification = true;
+            if (position) {
+              notificationType = "SIGNAL_EXECUTED";
+              statusIcon = "🎯";
+              console.log(
+                `   ${statusIcon} ${signal.token_symbol} ${signal.side} - EXECUTED`
+              );
+            } else {
+              // trade_executed = SUCCESS but no position found (edge case)
+              console.log(
+                `   ⚠️  trade_executed=SUCCESS but no position found - waiting`
+              );
+              shouldSendNotification = false;
+              waiting++;
+            }
+          } else if (tradeExecuted === "FAILED") {
+            // Trade execution failed
+            notificationType = "SIGNAL_NOT_TRADED";
+            statusIcon = "❌";
+            failureReason =
+              executionResult || "Trade execution failed (unknown error)";
+            console.log(
+              `   ${statusIcon} ${signal.token_symbol} ${signal.side} - FAILED`
+            );
+            console.log(`   📝 Error: ${failureReason}`);
+          } else {
+            // Unknown trade_executed value - treat as waiting
+            console.log(
+              `   ⏳ ${signal.token_symbol} ${signal.side} - WAITING (trade_executed=${tradeExecuted})`
+            );
+            shouldSendNotification = false;
+            waiting++;
+          }
+        } else {
+          // llm_should_trade is null/undefined - signal still processing, wait
           console.log(
-            `   ${statusIcon} ${signal.token_symbol} ${signal.side} - SKIPPED: ${skippedReason}`
+            `   ⏳ ${signal.token_symbol} ${signal.side} - WAITING (llm_should_trade=null)`
           );
+          shouldSendNotification = false;
+          waiting++;
         }
 
         // If we shouldn't send notification yet, skip this signal
-        if (!shouldSendNotification) {
+        if (!shouldSendNotification || !notificationType) {
           console.log(
             `   ⏭️  Skipping notification for now - will check again in next run`
           );
-          skipped++;
           continue;
         }
 
-        if (!signal.agent_deployments) {
-          console.log(`   ⚠️  No deployment found - skipping`);
+        // Get user's Telegram connection
+        const userTelegram =
+          await prisma.user_telegram_notifications.findUnique({
+            where: {
+              user_wallet: userWallet.toLowerCase(),
+            },
+          });
+
+        if (!userTelegram || !userTelegram.is_active) {
+          console.log(`   ⏭️  No active Telegram connection - skipping`);
           skipped++;
           continue;
-        }
-
-        // Get the agent_id from this deployment
-        const agentId = signal.agent_deployments.agent_id;
-
-        // Find ALL deployments for this agent (ALL users who deployed it)
-        const allDeployments = await prisma.agent_deployments.findMany({
-          where: {
-            agent_id: agentId,
-          },
-          include: {
-            agents: true,
-          },
-        });
-
-        console.log(
-          `   👥 Found ${allDeployments.length} users who deployed this agent`
-        );
-
-        if (allDeployments.length === 0) {
-          console.log(`   ⚠️  No deployments found for agent - skipping`);
-          skipped++;
-          continue;
-        }
-
-        let signalSent = 0;
-        let signalFailed = 0;
-
-        for (const deployment of allDeployments) {
-          const userWallet = deployment.user_wallet;
-
-          console.log(
-            `     └─ Processing user: ${userWallet.slice(
-              0,
-              6
-            )}...${userWallet.slice(-4)}`
-          );
-
-          const userTelegram =
-            await prisma.user_telegram_notifications.findUnique({
-              where: {
-                user_wallet: userWallet.toLowerCase(),
-              },
-            });
-
-          if (!userTelegram || !userTelegram.is_active) {
-            console.log(`       ⏭️  No Telegram connected - skipping`);
-            continue;
-          }
-
-          console.log(
-            `       ✅ Telegram connected (@${
-              userTelegram.telegram_username || userTelegram.telegram_user_id
-            })`
-          );
-
-          console.log(`       📝 Formatting ${notificationType} message...`);
-
-          const message =
-            notificationType === "SIGNAL_EXECUTED"
-              ? await formatSignalExecutedMessage(signal, position)
-              : await formatSignalNotTradedMessage(signal);
-
-          console.log(`       📤 Sending to Telegram...`);
-
-          const result = await sendTelegramMessage(
-            userTelegram.telegram_chat_id,
-            message
-          );
-
-          if (result.success) {
-            await prisma.notification_logs.create({
-              data: {
-                user_wallet: userWallet.toLowerCase(),
-                position_id: position?.id || null,
-                signal_id: signal.id,
-                notification_type: notificationType as any,
-                message_content: message,
-                telegram_message_id: result.messageId,
-                status: "SENT",
-                sent_at: new Date(),
-              },
-            });
-
-            await prisma.user_telegram_notifications.update({
-              where: { id: userTelegram.id },
-              data: { last_notified_at: new Date() },
-            });
-
-            signalSent++;
-            console.log(`       ✅ Sent successfully!`);
-          } else {
-            await prisma.notification_logs.create({
-              data: {
-                user_wallet: userWallet.toLowerCase(),
-                position_id: position?.id || null,
-                signal_id: signal.id,
-                notification_type: notificationType as any,
-                message_content: message,
-                status: "FAILED",
-                error_message: result.error,
-                sent_at: new Date(),
-              },
-            });
-
-            signalFailed++;
-            console.error(`       ❌ Failed: ${result.error}`);
-          }
-        }
-
-        // Update counters for this signal
-        sent += signalSent;
-        failed += signalFailed;
-
-        if (signalSent > 0) {
-          notificationsSent += signalSent;
-        }
-
-        if (signalFailed > 0) {
-          notificationsFailed += signalFailed;
         }
 
         console.log(
-          `   📊 Signal ${signal.id.slice(
-            0,
-            8
-          )}: Sent to ${signalSent} users, ${signalFailed} failed`
+          `   ✅ Telegram connected (@${userTelegram.telegram_username || userTelegram.telegram_user_id
+          })`
         );
+
+        // Format the appropriate message
+        console.log(`   📝 Formatting ${notificationType} message...`);
+
+        let message: string;
+        if (notificationType === "SIGNAL_EXECUTED" && position) {
+          message = formatSignalExecutedMessage(signal, position);
+        } else {
+          message = formatSignalNotTradedMessage(
+            signal,
+            failureReason,
+            tradeExecuted === "FAILED"
+          );
+        }
+
+        // Send the notification
+        console.log(`   📤 Sending to Telegram...`);
+
+        const result = await sendTelegramMessage(
+          userTelegram.telegram_chat_id,
+          message
+        );
+
+        if (result.success) {
+          await prisma.notification_logs.create({
+            data: {
+              user_wallet: userWallet.toLowerCase(),
+              position_id: position?.id || null,
+              signal_id: signal.id,
+              notification_type: notificationType,
+              message_content: message,
+              telegram_message_id: result.messageId,
+              status: "SENT",
+              sent_at: new Date(),
+            },
+          });
+
+          await prisma.user_telegram_notifications.update({
+            where: { id: userTelegram.id },
+            data: { last_notified_at: new Date() },
+          });
+
+          sent++;
+          notificationsSent++;
+          console.log(`   ✅ Sent successfully!`);
+        } else {
+          await prisma.notification_logs.create({
+            data: {
+              user_wallet: userWallet.toLowerCase(),
+              position_id: position?.id || null,
+              signal_id: signal.id,
+              notification_type: notificationType,
+              message_content: message,
+              status: "FAILED",
+              error_message: result.error,
+              sent_at: new Date(),
+            },
+          });
+
+          failed++;
+          notificationsFailed++;
+          console.error(`   ❌ Failed: ${result.error}`);
+        }
       } catch (error: any) {
         console.error(
           `   ❌ Error processing signal ${signal.id}:`,
@@ -329,6 +364,7 @@ async function processNotifications() {
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`\n[NotificationWorker] 📊 Summary:`);
     console.log(`   ✅ Sent: ${sent}`);
+    console.log(`   ⏳ Waiting: ${waiting} (trade not executed yet)`);
     console.log(`   ⏭️  Skipped: ${skipped} (already notified or no Telegram)`);
     console.log(`   ❌ Failed: ${failed}`);
     console.log(`   ⏱️  Duration: ${duration}s\n`);
@@ -336,6 +372,7 @@ async function processNotifications() {
     return {
       success: true,
       notificationsSent: sent,
+      notificationsWaiting: waiting,
       notificationsSkipped: skipped,
       notificationsFailed: failed,
     };
@@ -345,16 +382,15 @@ async function processNotifications() {
       success: false,
       error: error.message,
     };
+  } finally {
+    isCycleRunning = false;
   }
 }
 
 /**
- * Format message for EXECUTED signal (position was created)
+ * Format message for EXECUTED signal (position was created successfully)
  */
-async function formatSignalExecutedMessage(
-  signal: any,
-  position: any
-): Promise<string> {
+function formatSignalExecutedMessage(signal: any, position: any): string {
   const side = signal.side;
   const token = signal.token_symbol;
   const venue = signal.venue;
@@ -374,7 +410,7 @@ async function formatSignalExecutedMessage(
   let message = `🎯 *Position Opened*\n\n`;
   message += `${sideEmoji} *${side}* ${token}\n`;
   message += `${venueEmoji} Venue: ${venue}\n`;
-  message += `🤖 Agent: ${agentName}\n\n`;
+  message += `🤖 Agent: ${escapeTelegramMarkdown(agentName)}\n\n`;
   message += `📊 *Trade Details:*\n`;
   message += `• Entry Price: $${entryPrice}\n`;
   message += `• Quantity: ${qty}\n`;
@@ -393,7 +429,9 @@ async function formatSignalExecutedMessage(
 
   // LLM decision from signal
   if (signal.llm_decision) {
-    message += `\n💭 *Agent Decision:*\n${signal.llm_decision}`;
+    message += `\n💭 *Agent Decision:*\n${escapeTelegramMarkdown(
+      signal.llm_decision
+    )}`;
   }
 
   // Trade parameters
@@ -409,16 +447,19 @@ async function formatSignalExecutedMessage(
     }
   }
 
-  // message += `\n\n⏰ ${new Date(position.opened_at).toLocaleString()}`;
   message += `\n\n💡 Track this trade on your [Maxxit Dashboard](https://maxxit.ai/my-trades)`;
 
   return message;
 }
 
 /**
- * Format message for NOT TRADED signal (no position created)
+ * Format message for NOT TRADED signal (agent decided not to trade or trade failed)
  */
-async function formatSignalNotTradedMessage(signal: any): Promise<string> {
+function formatSignalNotTradedMessage(
+  signal: any,
+  reason: string | null,
+  isFailed: boolean
+): string {
   const side = signal.side;
   const token = signal.token_symbol;
   const venue = signal.venue;
@@ -428,38 +469,59 @@ async function formatSignalNotTradedMessage(signal: any): Promise<string> {
   const venueEmoji =
     venue === "HYPERLIQUID" ? "🔵" : venue === "OSTIUM" ? "🟢" : "⚪";
 
-  // Build message
-  let message = `📊 *Signal Generated (Not Traded)*\n\n`;
+  // Build message - different header for failed vs not traded
+  let message: string;
+
+  if (isFailed) {
+    message = `❌ *Trade Execution Failed*\n\n`;
+  } else {
+    message = `📊 *Signal Generated (Not Traded)*\n\n`;
+  }
+
   message += `${sideEmoji} ${side} ${token}\n`;
   message += `${venueEmoji} Venue: ${venue}\n`;
-  message += `🤖 Agent: ${agentName}\n\n`;
+  message += `🤖 Agent: ${escapeTelegramMarkdown(agentName)}\n\n`;
 
-  // Why not traded
-  message += `ℹ️ *Status:* Signal generated but position not created\n\n`;
-
-  if (signal.llm_should_trade === false) {
-    message += `⚠️ *Reason:* Agent decided not to trade\n\n`;
-  }
-
-  // LLM decision
-  if (signal.llm_decision) {
-    message += `💭 *Agent Decision:*\n${signal.llm_decision}\n`;
-  }
-
-  // Trade parameters that were considered
-  if (signal.llm_fund_allocation !== null || signal.llm_leverage !== null) {
-    message += `\n📊 *Parameters Considered:*`;
-    if (signal.llm_fund_allocation !== null) {
-      message += `\n• Fund Allocation: ${signal.llm_fund_allocation.toFixed(
-        2
-      )}%`;
+  // For failed trades: show status and error
+  // For not traded: show only the agent decision (which contains the full reasoning)
+  if (isFailed) {
+    message += `⚠️ *Status:* Trade attempted but execution failed\n\n`;
+    if (reason) {
+      message += `❌ *Error:*\n${escapeTelegramMarkdown(reason)}\n`;
     }
-    if (signal.llm_leverage !== null) {
+    // Include LLM decision for context on failed trades
+    if (signal.llm_decision) {
+      message += `\n💭 *Agent Decision:*\n${escapeTelegramMarkdown(
+        signal.llm_decision
+      )}\n`;
+    }
+  } else {
+    // For "not traded" signals, only show the agent decision
+    // (skipped_reason and llm_decision usually contain the same explanation)
+    if (signal.llm_decision) {
+      message += `💭 *Why Not Traded:*\n${escapeTelegramMarkdown(
+        signal.llm_decision
+      )}\n`;
+    } else if (reason) {
+      // Fallback to reason if no llm_decision available
+      message += `💭 *Why Not Traded:*\n${escapeTelegramMarkdown(reason)}\n`;
+    }
+  }
+
+  // Trade parameters that were considered (only show if allocation > 0)
+  const hasAllocation = signal.llm_fund_allocation !== null && signal.llm_fund_allocation > 0;
+  const hasLeverage = signal.llm_leverage !== null && signal.llm_leverage > 0;
+
+  if (hasAllocation || hasLeverage) {
+    message += `\n📊 *Parameters Considered:*`;
+    if (hasAllocation) {
+      message += `\n• Fund Allocation: ${signal.llm_fund_allocation.toFixed(2)}%`;
+    }
+    if (hasLeverage) {
       message += `\n• Leverage: ${signal.llm_leverage.toFixed(1)}x`;
     }
   }
 
-  // message += `\n\n⏰ ${new Date(signal.created_at).toLocaleString()}`;
   message += `\n\n💡 View all signals on your [Maxxit Dashboard](https://maxxit.ai/my-trades)`;
 
   return message;

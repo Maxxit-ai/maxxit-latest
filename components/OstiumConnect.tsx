@@ -18,7 +18,7 @@ interface OstiumConnectProps {
 }
 
 // Get Ostium configuration based on environment
-const { tradingContract: OSTIUM_TRADING_CONTRACT, usdcContract: USDC_TOKEN, storageContract: OSTIUM_STORAGE } = getOstiumConfig();
+const { tradingContract: OSTIUM_TRADING_CONTRACT, usdcContract: USDC_TOKEN, storageContract: OSTIUM_STORAGE, chainId: ARBITRUM_CHAIN_ID } = getOstiumConfig();
 const OSTIUM_TRADING_ABI = ['function setDelegate(address delegate) external'];
 const USDC_ABI = [
   'function approve(address spender, uint256 amount) public returns (bool)',
@@ -40,10 +40,13 @@ export function OstiumConnect({
   const [usdcApproved, setUsdcApproved] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string>('');
   const [step, setStep] = useState<'connect' | 'preferences' | 'agent' | 'delegate' | 'usdc' | 'complete'>('connect');
+  const [joiningAgent, setJoiningAgent] = useState(false);
 
   // Trading preferences stored locally until all approvals complete
   const [tradingPreferences, setTradingPreferences] = useState<TradingPreferences | null>(null);
   const tradingPreferencesRef = useRef<TradingPreferences | null>(null); // ensures latest prefs are used in async flows
+  const [firstDeploymentPreferences, setFirstDeploymentPreferences] = useState<TradingPreferences | null>(null);
+  const [loadingFirstDeploymentPreferences, setLoadingFirstDeploymentPreferences] = useState(false);
 
   // Guard refs to prevent duplicate API calls
   const isCheckingRef = useRef(false);
@@ -54,6 +57,15 @@ export function OstiumConnect({
     // If already authenticated when component mounts, go to preferences step first
     if (authenticated && user?.wallet?.address && step === 'connect' && !hasInitialized) {
       setHasInitialized(true);
+      // Load first deployment preferences if they exist
+      setLoadingFirstDeploymentPreferences(true);
+      loadFirstDeploymentPreferences().then((prefs) => {
+        if (prefs) {
+          setFirstDeploymentPreferences(prefs);
+          console.log('[OstiumConnect] Set first deployment preferences:', prefs);
+        }
+        setLoadingFirstDeploymentPreferences(false);
+      });
       // Always show preferences as first step for new deployments
       setStep('preferences');
     }
@@ -102,14 +114,13 @@ export function OstiumConnect({
 
             if (approvalData.hasApproval) {
               // User has valid USDC approval - they've done the flow before
-              // Skip ALL approval steps and just create the deployment
-              console.log('[OstiumConnect] ✅ Wallet already has approvals - skipping to deployment');
+              // Skip ALL approval steps and go to complete step
+              console.log('[OstiumConnect] ✅ Wallet already has approvals - skipping to complete step');
               setAgentAddress(setupData.addresses.ostium);
               setDelegateApproved(true);
               setUsdcApproved(true);
-
-              // Create deployment for this new agent with trading preferences
-              await createDeploymentDirectly(user.wallet.address);
+              setStep('complete');
+              setLoading(false);
               return;
             } else {
               // User has address but USDC approval was revoked - need to re-approve
@@ -152,52 +163,13 @@ export function OstiumConnect({
   };
 
   const createDeploymentDirectly = async (wallet: string) => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const requestBody: Record<string, unknown> = {
-        agentId,
-        userWallet: wallet,
-      };
-
-      // Include trading preferences if available (always use ref to avoid stale state)
-      if (tradingPreferencesRef.current) {
-        requestBody.tradingPreferences = tradingPreferencesRef.current;
-        console.log('[OstiumConnect] Creating deployment directly with preferences:', tradingPreferencesRef.current);
-      } else {
-        console.warn('[OstiumConnect] Creating deployment without preferences - will use defaults');
-      }
-
-      console.log('[OstiumConnect] Request body:', requestBody);
-
-      const response = await fetch('/api/ostium/create-deployment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create deployment');
-      }
-
-      const data = await response.json();
-      setDeploymentId(data.deployment.id);
-      setStep('complete');
-      setDelegateApproved(true);
-      setUsdcApproved(true);
-
-      // Call onSuccess immediately to refresh setup status, but don't auto-close
-      if (onSuccess) {
-        onSuccess();
-      }
-    } catch (err: any) {
-      console.error('Error creating deployment:', err);
-      setError(err.message || 'Failed to create deployment');
-    } finally {
-      setLoading(false);
-    }
+    // Skip deployment creation - just set up the UI state
+    // Deployment will be created when user clicks "Join Agent" in the complete step
+    console.log('[OstiumConnect] ✅ Wallet already has approvals - skipping to complete step without deployment');
+    setDelegateApproved(true);
+    setUsdcApproved(true);
+    setStep('complete');
+    setLoading(false);
   };
 
   const assignAgent = async () => {
@@ -238,35 +210,9 @@ export function OstiumConnect({
       console.log('[OstiumConnect] Agent address assigned:', agentAddr);
       setAgentAddress(agentAddr);
 
-      const deployRequestBody: Record<string, unknown> = {
-        agentId,
-        userWallet: user?.wallet?.address,
-      };
-
-      // Include trading preferences if available (use ref to avoid stale values)
-      if (tradingPreferencesRef.current) {
-        deployRequestBody.tradingPreferences = tradingPreferencesRef.current;
-        console.log('[OstiumConnect] Including trading preferences in deployment:', tradingPreferencesRef.current);
-      } else {
-        console.warn('[OstiumConnect] No trading preferences found - using defaults');
-      }
-
-      console.log('[OstiumConnect] Sending deployment request:', deployRequestBody);
-
-      const deployResponse = await fetch('/api/ostium/create-deployment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(deployRequestBody),
-      });
-
-      if (!deployResponse.ok) {
-        const errorData = await deployResponse.json();
-        throw new Error(errorData.error || 'Failed to create deployment');
-      }
-
-      const deployData = await deployResponse.json();
-      console.log('[OstiumConnect] Deployment created:', deployData.deployment.id);
-      setDeploymentId(deployData.deployment.id);
+      // Don't create deployment here - just assign the agent address
+      // Deployment will be created when user clicks "Join Agent" in the complete step
+      console.log('[OstiumConnect] Agent address assigned, skipping deployment creation');
       setStep('delegate');
     } catch (err: any) {
       console.error('[OstiumConnect] Failed to assign agent:', err);
@@ -274,6 +220,53 @@ export function OstiumConnect({
     } finally {
       setLoading(false);
       isAssigningRef.current = false;
+    }
+  };
+
+  const joinAgent = async () => {
+    setJoiningAgent(true);
+    setError('');
+
+    try {
+      const requestBody: Record<string, unknown> = {
+        agentId,
+        userWallet: user?.wallet?.address,
+      };
+
+      // Include trading preferences if available (always use ref to avoid stale state)
+      if (tradingPreferencesRef.current) {
+        requestBody.tradingPreferences = tradingPreferencesRef.current;
+        console.log('[OstiumConnect] Creating deployment with preferences:', tradingPreferencesRef.current);
+      } else {
+        console.warn('[OstiumConnect] Creating deployment without preferences - will use defaults');
+      }
+
+      console.log('[OstiumConnect] Creating deployment:', requestBody);
+
+      const response = await fetch('/api/ostium/create-deployment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create deployment');
+      }
+
+      const data = await response.json();
+      setDeploymentId(data.deployment.id);
+      console.log('[OstiumConnect] ✅ Deployment created successfully:', data.deployment.id);
+
+      // Call onSuccess to refresh setup status
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (err: any) {
+      console.error('Error creating deployment:', err);
+      setError(err.message || 'Failed to join agent');
+    } finally {
+      setJoiningAgent(false);
     }
   };
 
@@ -298,7 +291,6 @@ export function OstiumConnect({
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       const network = await ethersProvider.getNetwork();
 
-      const ARBITRUM_CHAIN_ID = 421614;
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
         try {
           await provider.request({
@@ -366,7 +358,6 @@ export function OstiumConnect({
       await ethersProvider.send('eth_requestAccounts', []);
 
       const network = await ethersProvider.getNetwork();
-      const ARBITRUM_CHAIN_ID = 421614;
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
         throw new Error('Please switch to Arbitrum');
       }
@@ -466,10 +457,8 @@ export function OstiumConnect({
       setUsdcApproved(true);
       setStep('complete');
 
-      // Call onSuccess but don't auto-close - let user close manually
-      if (onSuccess) {
-        onSuccess();
-      }
+      // Don't call onSuccess here - wait until deployment is actually created
+      // onSuccess will be called in joinAgent function
 
     } catch (err: any) {
       console.error('USDC approval error:', err);
@@ -498,6 +487,34 @@ export function OstiumConnect({
     // After preferences are set, proceed to check setup status with fresh prefs
     setLoading(true);
     checkSetupStatus();
+  };
+
+  const loadFirstDeploymentPreferences = async () => {
+    if (!user?.wallet?.address) return null;
+
+    try {
+      const response = await fetch(
+        `/api/user/first-deployment-preferences?userWallet=${user.wallet.address}&agentId=${agentId}`
+      );
+
+      if (!response.ok) {
+        console.warn('[OstiumConnect] Failed to load first deployment preferences');
+        return null;
+      }
+
+      const data = await response.json();
+
+      if (data.isFirstDeployment) {
+        console.log('[OstiumConnect] This is the first deployment - using default preferences');
+        return null;
+      }
+
+      console.log('[OstiumConnect] Loaded first deployment preferences:', data.preferences);
+      return data.preferences;
+    } catch (err) {
+      console.error('[OstiumConnect] Error loading first deployment preferences:', err);
+      return null;
+    }
   };
 
   const goBack = () => {
@@ -538,8 +555,8 @@ export function OstiumConnect({
               <Zap className="h-5 w-5 text-[var(--accent)]" />
             </div>
             <div>
-              <p className="data-label mb-1">OSTIUM JOURNEY</p>
-              <h2 className="font-display text-xl">Deploy {agentName} on Ostium</h2>
+              <p className="data-label mb-1">JOIN ALPHA CLUB</p>
+              <h2 className="font-display text-xl">Join {agentName}</h2>
             </div>
           </div>
           <button
@@ -557,7 +574,7 @@ export function OstiumConnect({
             <div>
               <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">Your setup journey</p>
               <p className="text-xs text-[var(--text-secondary)]">
-                Follow the steps to connect your wallet, tune how the agent trades, and approve Ostium to execute on your behalf.
+                Follow the steps to connect your wallet, set your trading style, and let the agent trade on your behalf.
               </p>
             </div>
 
@@ -602,8 +619,8 @@ export function OstiumConnect({
                   3
                 </span>
                 <div>
-                  <p className="font-semibold">Delegate access</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Whitelist the agent wallet.</p>
+                  <p className="font-semibold">Assign trading agent</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">Let the agent trade on your behalf.</p>
                 </div>
               </li>
 
@@ -617,8 +634,8 @@ export function OstiumConnect({
                   4
                 </span>
                 <div>
-                  <p className="font-semibold">Approve USDC spend</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Let Ostium use your USDC for trades.</p>
+                  <p className="font-semibold">Provide funds (non-custodial)</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">Funds stay in your wallet, only routed to Ostium.</p>
                 </div>
               </li>
 
@@ -629,11 +646,11 @@ export function OstiumConnect({
                     : 'border-[var(--border)] text-[var(--text-muted)]'
                     }`}
                 >
-                  ✓
+                  5
                 </span>
                 <div>
-                  <p className="font-semibold">Agent live</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Signals will start executing automatically.</p>
+                  <p className="font-semibold">Join Agent</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">Deploy the agent and start trading.</p>
                 </div>
               </li>
             </ol>
@@ -717,21 +734,29 @@ export function OstiumConnect({
                   <div>
                     <h3 className="font-display text-lg">Set Your Trading Preferences</h3>
                     <p className="text-xs text-[var(--text-muted)]">
-                      Configure how this agent should size and filter trades for you.
+                      {firstDeploymentPreferences
+                        ? 'Using values from your first deployment. Adjust as needed.'
+                        : 'Configure how this agent should size and filter trades for you.'}
                     </p>
                   </div>
                 </div>
 
                 <div className="border border-[var(--border)] bg-[var(--bg-deep)] flex flex-col max-h-[60vh]">
-                  <TradingPreferencesForm
-                    userWallet={user?.wallet?.address || ''}
-                    onClose={onClose}
-                    onBack={goBack}
-                    localOnly={true}
-                    onSaveLocal={handlePreferencesSet}
-                    primaryLabel={loading ? 'Saving...' : 'Save & Continue'}
-                    initialPreferences={tradingPreferences || undefined}
-                  />
+                  {loadingFirstDeploymentPreferences ? (
+                    <div className="flex items-center justify-center py-20">
+                      <Activity className="w-8 h-8 text-[var(--accent)] animate-spin" />
+                    </div>
+                  ) : (
+                    <TradingPreferencesForm
+                      userWallet={user?.wallet?.address || ''}
+                      onClose={onClose}
+                      onBack={goBack}
+                      localOnly={true}
+                      onSaveLocal={handlePreferencesSet}
+                      primaryLabel={loading ? 'Saving...' : 'Save & Continue'}
+                      initialPreferences={firstDeploymentPreferences || tradingPreferences || undefined}
+                    />
+                  )}
                 </div>
               </div>
             ) : step === 'agent' ? (
@@ -748,7 +773,7 @@ export function OstiumConnect({
               <>
                 <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4 space-y-2 rounded">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-[var(--accent)] font-semibold">Step 3 · Delegate access</p>
+                    <p className="text-sm text-[var(--accent)] font-semibold">Step 3 · Assign Agent to Trade for You</p>
                     {delegateApproved && (
                       <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
                         Completed
@@ -756,19 +781,19 @@ export function OstiumConnect({
                     )}
                   </div>
                   <p className="text-xs text-[var(--text-secondary)]">
-                    Whitelist the agent wallet so it can trade on your behalf. This step is permanent unless you revoke delegation.
+                    This assigns your Alpha Club's trading wallet to execute trades on your behalf. The agent can open and close positions, but <strong className="text-[var(--accent)]">cannot withdraw your funds</strong>.
                   </p>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-3 text-xs">
                   <div className="border border-[var(--border)] p-3 rounded">
-                    <p className="font-semibold text-[var(--text-primary)]">Agent wallet</p>
+                    <p className="font-semibold text-[var(--text-primary)]">Trading wallet assigned</p>
                     <p className="font-mono break-all text-[var(--text-secondary)] mt-1">{agentAddress}</p>
                   </div>
-                  <div className="border border-[var(--border)] p-3 rounded">
-                    <p className="font-semibold text-[var(--text-primary)]">What this allows</p>
+                  <div className="border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 rounded">
+                    <p className="font-semibold text-[var(--accent)]">🔒 Your funds stay safe</p>
                     <p className="text-[var(--text-secondary)] mt-1">
-                      Trading delegation only; funds remain in your wallet. USDC spending still needs approval in the next step.
+                      Agent can only trade. It cannot withdraw, transfer, or access any other tokens. Revoke anytime.
                     </p>
                   </div>
                 </div>
@@ -827,21 +852,9 @@ export function OstiumConnect({
               </>
             ) : step === 'usdc' ? (
               <>
-                {/* <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4 rounded">
+                <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4 space-y-3 text-sm rounded">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-[var(--accent)] font-semibold">Step 3 complete · Delegation approved</p>
-                    <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
-                      Done
-                    </span>
-                  </div>
-                  <p className="text-xs text-[var(--text-secondary)] mt-1">
-                    Agent wallet is whitelisted to trade on your behalf.
-                  </p>
-                </div> */}
-
-                <div className="border border-[var(--border)] p-4 space-y-3 text-sm rounded">
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold">STEP 4: APPROVE USDC SPENDING</p>
+                    <p className="font-bold text-[var(--accent)]">STEP 4: PROVIDE FUNDS TO AGENT (NON-CUSTODIAL)</p>
                     {!usdcApproved && (
                       <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
                         Required
@@ -854,19 +867,21 @@ export function OstiumConnect({
                     )}
                   </div>
                   <p className="text-[var(--text-secondary)]">
-                    Approve USDC so the agent can open and manage positions. Funds stay in your wallet; approval sets a spending limit.
+                    You're allowing the agent to use your USDC for trading on Ostium. This is <strong className="text-[var(--accent)]">100% non-custodial</strong>: your funds never leave your wallet — they're only routed to Ostium for position management.
                   </p>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-3 text-xs">
-                  <div className="border border-[var(--border)] p-3 rounded">
-                    <p className="font-semibold text-[var(--text-primary)]">Suggested allowance</p>
-                    <p className="text-[var(--text-secondary)] mt-1">1,000,000 USDC (to avoid repeated approvals)</p>
+                  <div className="border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 rounded">
+                    <p className="font-semibold text-[var(--accent)]">🔒 Non-custodial guarantee</p>
+                    <p className="text-[var(--text-secondary)] mt-1">
+                      Funds stay in YOUR wallet. Agent can only route USDC to Ostium for trades — cannot withdraw or transfer elsewhere.
+                    </p>
                   </div>
                   <div className="border border-[var(--border)] p-3 rounded">
-                    <p className="font-semibold text-[var(--text-primary)]">Why needed</p>
+                    <p className="font-semibold text-[var(--text-primary)]">Full control</p>
                     <p className="text-[var(--text-secondary)] mt-1">
-                      Lets the agent place and close trades. You can revoke or reduce allowance any time from your wallet.
+                      Revoke or reduce this allowance anytime from your wallet. Agent cannot access other tokens.
                     </p>
                   </div>
                 </div>
@@ -923,15 +938,15 @@ export function OstiumConnect({
                   )}
                 </div>
               </>
-            ) : (
+            ) : deploymentId ? (
               <div className="text-center space-y-6 py-4">
                 <div className="w-16 h-16 mx-auto border border-[var(--accent)] bg-[var(--accent)] flex items-center justify-center">
                   <CheckCircle className="w-10 h-10 text-[var(--bg-deep)]" />
                 </div>
                 <div>
-                  <h3 className="font-display text-xl mb-2">DEPLOYED</h3>
+                  <h3 className="font-display text-xl mb-2">AGENT DEPLOYED</h3>
                   <p className="text-sm text-[var(--text-secondary)]">
-                    Agent is ready to trade on Ostium
+                    Agent is now live and ready to trade on Ostium
                   </p>
                 </div>
 
@@ -957,6 +972,10 @@ export function OstiumConnect({
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                    <span>Agent deployed and active</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
                     <span>Ready to execute signals</span>
                   </div>
                 </div>
@@ -975,6 +994,63 @@ export function OstiumConnect({
                     type="button"
                   >
                     Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center space-y-6 py-4">
+                <div className="w-16 h-16 mx-auto border border-[var(--accent)] flex items-center justify-center">
+                  <Zap className="w-10 h-10 text-[var(--accent)]" />
+                </div>
+                <div>
+                  <h3 className="font-display text-xl mb-2">AGENT LIVE</h3>
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    All approvals complete. Ready to deploy the agent.
+                  </p>
+                </div>
+
+                <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4 space-y-2 text-sm text-left">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                    <span>Agent whitelisted</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                    <span>USDC approved</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border border-[var(--accent)] rounded-full flex items-center justify-center">
+                      <div className="w-2 h-2 bg-[var(--accent)] rounded-full animate-pulse" />
+                    </div>
+                    <span>Ready to deploy agent</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={goBack}
+                    className="px-4 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
+                    type="button"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={joinAgent}
+                    disabled={joiningAgent}
+                    className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center gap-2"
+                    type="button"
+                  >
+                    {joiningAgent ? (
+                      <>
+                        <Activity className="w-5 h-5 animate-spin" />
+                        JOINING AGENT...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-5 h-5" />
+                        JOIN AGENT
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

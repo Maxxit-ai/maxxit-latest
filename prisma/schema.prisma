@@ -357,6 +357,8 @@ model signals {
   llm_should_trade             Boolean?
   llm_fund_allocation          Float?
   llm_leverage                Float?
+  trade_executed               String?
+  execution_result             String?
   routing_history              Json?
   agent_routing_history        agent_routing_history[]
   impact_factor_history        impact_factor_history[]
@@ -378,6 +380,9 @@ model telegram_alpha_users {
   last_name             String?
   impact_factor         Float                   @default(0.5) @db.Real
   is_active             Boolean                 @default(true)
+  lazy_trader           Boolean                 @default(false)
+  public_source         Boolean                 @default(false)
+  user_wallet           String?                 // Wallet address for lazy traders (links telegram to wallet)
   last_message_at       DateTime?               @db.Timestamptz(6)
   created_at            DateTime                @default(now()) @db.Timestamptz(6)
   agent_telegram_users  agent_telegram_users[]
@@ -385,6 +390,9 @@ model telegram_alpha_users {
 
   @@index([is_active])
   @@index([telegram_user_id])
+  @@index([lazy_trader])
+  @@index([public_source])
+  @@index([user_wallet])
 }
 
 model telegram_sources {
@@ -633,6 +641,19 @@ model notification_logs {
   @@index([signal_id])
   @@index([notification_type, status])
   @@index([created_at])
+}
+
+/// Temporary cache table for lazy trading link codes
+/// Maps link codes to wallet addresses so the webhook knows which wallet the telegram belongs to
+/// Entries expire after 10 minutes
+model lazy_trading_link_cache {
+  link_code   String   @id @db.VarChar(50)
+  user_wallet String   @db.VarChar(255)
+  expires_at  DateTime @db.Timestamptz(6)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([expires_at])
+  @@index([user_wallet])
 }
 
 enum agent_status_t {

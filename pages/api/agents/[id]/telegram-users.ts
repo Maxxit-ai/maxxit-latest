@@ -16,12 +16,48 @@ export default async function handler(
     return res.status(400).json({ error: 'Invalid agent ID' });
   }
 
-  if (req.method === 'POST') {
+  if (req.method === 'GET') {
+    return handleGet(agentId, req, res);
+  } else if (req.method === 'POST') {
     return handleLink(agentId, req, res);
   } else if (req.method === 'DELETE') {
     return handleUnlink(agentId, req, res);
   } else {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+}
+
+async function handleGet(
+  agentId: string,
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  try {
+    const agent = await prisma.agents.findUnique({
+      where: { id: agentId }
+    });
+
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    // Get linked telegram alpha users
+    const links = await prisma.agent_telegram_users.findMany({
+      where: { agent_id: agentId },
+      include: {
+        telegram_alpha_users: true
+      }
+    });
+
+    const users = links.map(link => link.telegram_alpha_users);
+
+    return res.status(200).json({
+      success: true,
+      users,
+    });
+  } catch (error: any) {
+    console.error('[API] Error fetching telegram alpha users:', error);
+    return res.status(500).json({ error: error.message });
   }
 }
 

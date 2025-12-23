@@ -24,6 +24,8 @@ import {
   Zap,
   ExternalLink,
 } from "lucide-react";
+import { FaPlus } from "react-icons/fa6";
+import { useRouter } from "next/navigation";
 
 interface Deployment {
   id: string;
@@ -38,6 +40,16 @@ interface Deployment {
   status: string;
   telegramLinked?: boolean;
   enabledVenues?: string[];
+}
+
+interface DeploymentStatus {
+  subActive: boolean;
+  enabledVenues: string[];
+  riskTolerance: number;
+  tradeFrequency: number;
+  socialSentimentWeight: number;
+  priceMomentumFocus: number;
+  marketRankPriority: number;
 }
 
 export default function MyDeployments() {
@@ -86,6 +98,13 @@ export default function MyDeployments() {
     usdcAllowance: number;
     hasApproval: boolean;
   } | null>(null);
+  const [deploymentStatuses, setDeploymentStatuses] = useState<
+    Record<string, DeploymentStatus>
+  >({});
+  const [deploymentStatusesLoading, setDeploymentStatusesLoading] = useState<
+    Record<string, boolean>
+  >({});
+  const router = useRouter();
 
   useEffect(() => {
     if (authenticated && user?.wallet?.address) {
@@ -106,13 +125,61 @@ export default function MyDeployments() {
       if (!response.ok) throw new Error("Failed to fetch deployments");
 
       const data = await response.json();
-      setDeployments(Array.isArray(data) ? data : []);
+      const deploymentsList = Array.isArray(data) ? data : [];
+      setDeployments(deploymentsList);
+
+      if (deploymentsList.length > 0) {
+        fetchDeploymentStatuses(deploymentsList);
+      }
     } catch (error) {
       console.error("Failed to fetch deployments:", error);
       setDeployments([]);
     } finally {
       setDeploymentsLoading(false);
     }
+  };
+
+  const fetchDeploymentStatuses = async (deployments: Deployment[]) => {
+    if (!user?.wallet?.address) return;
+
+    const userWallet = user.wallet.address;
+
+    const statusPromises = deployments.map(async (deployment) => {
+      setDeploymentStatusesLoading((prev) => ({
+        ...prev,
+        [deployment.id]: true,
+      }));
+
+      try {
+        const response = await fetch(
+          `/api/agents/${deployment.agentId}/deployments?userWallet=${encodeURIComponent(userWallet)}`
+        );
+
+        if (response.ok) {
+          const statusData: DeploymentStatus = await response.json();
+          setDeploymentStatuses((prev) => ({
+            ...prev,
+            [deployment.id]: statusData,
+          }));
+        } else {
+          console.error(
+            `Failed to fetch deployment status for ${deployment.id}`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `Error fetching deployment status for ${deployment.id}:`,
+          error
+        );
+      } finally {
+        setDeploymentStatusesLoading((prev) => ({
+          ...prev,
+          [deployment.id]: false,
+        }));
+      }
+    });
+
+    await Promise.all(statusPromises);
   };
 
   const fetchAgents = async () => {
@@ -321,10 +388,11 @@ export default function MyDeployments() {
 
   if (deploymentsLoading) {
     return (
-      <div className="min-h-screen bg-[var(--bg-deep)]">
+      <div className="min-h-screen bg-[var(--bg-deep)] border border-[var(--border)]">
         <Header />
-        <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col gap-4 items-center justify-center h-96">
           <Activity className="w-8 h-8 animate-pulse text-[var(--accent)]" />
+          <p className="text-[var(--text-muted)]">Loading deployments...</p>
         </div>
       </div>
     );
@@ -339,34 +407,44 @@ export default function MyDeployments() {
         <div className="mb-12">
           <p className="data-label mb-2">DASHBOARD</p>
           <h1 className="font-display text-4xl md:text-5xl mb-4">
-            {activeTab === "deployments" ? "MY DEPLOYMENTS" : "LIVE AGENTS"}
+            {activeTab === "deployments" ? "MY DEPLOYMENTS" : "ALPHA CLUBS"}
           </h1>
-          <p className="text-[var(--text-secondary)] max-w-xl">
+          <p className="text-[var(--text-secondary)]">
             {activeTab === "deployments"
               ? "Manage your agent subscriptions and connect Telegram for manual trading"
-              : "Browse live agents and deploy directly from your dashboard"}
+              : "Browse alpha clubs and deploy directly from your dashboard"}
           </p>
         </div>
 
-        <div className="flex gap-3 mb-10">
-          <button
-            onClick={() => setActiveTab("deployments")}
-            className={`px-5 py-2 text-sm font-bold border ${activeTab === "deployments"
-              ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
-              : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
-              }`}
-          >
-            MY DEPLOYMENTS
-          </button>
-          <button
-            onClick={() => setActiveTab("agents")}
-            className={`px-5 py-2 text-sm font-bold border ${activeTab === "agents"
-              ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
-              : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
-              }`}
-          >
-            LIVE AGENTS
-          </button>
+        <div className="flex mb-10 justify-between items-center">
+          <div className="flex gap-3">
+            <button
+              onClick={() => setActiveTab("deployments")}
+              className={`px-5 py-2 text-sm font-bold border ${activeTab === "deployments"
+                ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
+                }`}
+            >
+              MY DEPLOYMENTS
+            </button>
+            <button
+              onClick={() => setActiveTab("agents")}
+              className={`px-5 py-2 text-sm font-bold border ${activeTab === "agents"
+                ? "bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
+                }`}
+            >
+              ALPHA CLUBS
+            </button>
+          </div>
+          {
+            activeTab === "agents" && (
+              <button className="flex items-center gap-2 uppercase px-5 py-2 text-sm font-bold border border-[var(--border)] text-[var(--text-primary)] hover:border-[var(--accent)]"
+                onClick={() => router.push("/create-agent")}>
+                <FaPlus className="w-4 h-4" /> Create Alpha Club
+              </button>
+            )
+          }
         </div>
 
         {activeTab === "agents" ? (
@@ -381,6 +459,7 @@ export default function MyDeployments() {
               agentDeployments={agentDeployments}
               ostiumDelegationStatus={ostiumDelegationStatus}
               ostiumUsdcAllowance={ostiumUsdcAllowance}
+              fromHome={false}
             />
           </div>
         ) : !authenticated ? (
@@ -435,14 +514,29 @@ export default function MyDeployments() {
                         {deployment.agent.name}
                       </h3>
                     </div>
-                    <span
-                      className={`text-xs px-2 py-1 font-bold ${deployment.status === "ACTIVE"
-                        ? "bg-[var(--accent)] text-[var(--bg-deep)]"
-                        : "border border-[var(--border)] text-[var(--text-muted)]"
-                        }`}
-                    >
-                      {deployment.status}
-                    </span>
+                    {deploymentStatusesLoading[deployment.id] ? (
+                      <Activity className="w-4 h-4 animate-pulse text-[var(--accent)]" />
+                    ) : deploymentStatuses[deployment.id] ? (
+                      <span
+                        className={`text-xs px-2 py-1 font-bold ${deploymentStatuses[deployment.id].subActive
+                          ? "bg-[var(--accent)] text-[var(--bg-deep)]"
+                          : "border border-[var(--border)] text-[var(--text-muted)]"
+                          }`}
+                      >
+                        {deploymentStatuses[deployment.id].subActive
+                          ? "ACTIVE"
+                          : "INACTIVE"}
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-xs px-2 py-1 font-bold ${deployment.status === "ACTIVE"
+                          ? "bg-[var(--accent)] text-[var(--bg-deep)]"
+                          : "border border-[var(--border)] text-[var(--text-muted)]"
+                          }`}
+                      >
+                        {deployment.status}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-[var(--text-muted)] border border-[var(--border)] px-2 py-0.5">
                     {deployment.agent.venue}

@@ -45,7 +45,7 @@ const CreateAgentSection = () => {
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
           {/* Left Column - Content */}
           <div className="lg:sticky lg:top-24">
-            <p className="data-label mb-4">CREATE YOUR AGENT</p>
+            <p className="data-label mb-4">CREATE YOUR ALPHA CLUB</p>
             <h2 className="font-display text-4xl md:text-5xl mb-6 leading-tight">
               COPY TRADING,<br />
               <span className="text-accent">EVOLVED.</span>
@@ -63,7 +63,7 @@ const CreateAgentSection = () => {
             </div>
             <Link href="/create-agent">
               <button className="group px-8 py-4 bg-accent text-[var(--bg-deep)] font-bold text-lg hover:bg-[var(--accent-dim)] transition-all hover:-translate-x-0.5 hover:-translate-y-0.5">
-                CREATE YOUR AGENT
+                CREATE YOUR CLUB
                 <ArrowRight className="inline-block ml-2 group-hover:translate-x-1 transition-transform" size={20} />
               </button>
             </Link>
