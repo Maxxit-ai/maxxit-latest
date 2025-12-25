@@ -1119,35 +1119,6 @@ export default function MyTrades() {
                                   {signal.llmDecision}
                                 </p>
                               )}
-                              <div className="flex flex-wrap gap-3 text-xs">
-                                {signal.llmFundAllocation !== null && (
-                                  <span className="border border-[var(--border)] px-2 py-1 font-mono text-[var(--accent)]">
-                                    Allocation:{" "}
-                                    {(signal.llmFundAllocation * 100).toFixed(
-                                      0
-                                    )}
-                                    %
-                                  </span>
-                                )}
-                                {signal.llmLeverage !== null && (
-                                  <span className="border border-[var(--border)] px-2 py-1 font-mono">
-                                    Leverage: {signal.llmLeverage.toFixed(1)}x
-                                  </span>
-                                )}
-                                {signal.llmShouldTrade !== null && (
-                                  <span
-                                    className={`border border-[var(--border)] px-2 py-1 font-mono ${
-                                      signal.llmShouldTrade
-                                        ? "text-green-400"
-                                        : "text-red-400"
-                                    }`}
-                                  >
-                                    {signal.llmShouldTrade
-                                      ? "Model: TRADE"
-                                      : "Model: DO NOT TRADE"}
-                                  </span>
-                                )}
-                              </div>
                             </div>
                           )}
 
@@ -1162,14 +1133,7 @@ export default function MyTrades() {
                                   </p>
                                   <p className="text-xs text-[var(--text-secondary)] italic">
                                     "
-                                    {signal.signatureData.messageText.substring(
-                                      0,
-                                      150
-                                    )}
-                                    {signal.signatureData.messageText.length >
-                                    150
-                                      ? "..."
-                                      : ""}
+                                    {signal.signatureData.messageText}
                                     "
                                   </p>
                                 </div>

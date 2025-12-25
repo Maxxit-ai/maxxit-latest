@@ -398,6 +398,50 @@ async function generateSignalForAgentAndToken(
         // }
 
         console.log(`    ⏭️  Skipping ${token} - not available on OSTIUM`);
+        console.log(
+          `    📝 Creating skipped signal - token not supported in venue_markets`
+        );
+
+        // Determine side from post sentiment
+        const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
+
+        try {
+          await prisma.signals.create({
+            data: {
+              agent_id: agent.id,
+              deployment_id: deployment.id,
+              token_symbol: token,
+              venue: "OSTIUM", // Default to OSTIUM for MULTI agents
+              side: side,
+              size_model: {
+                type: "balance-percentage",
+                value: 0,
+                impactFactor: 0,
+              },
+              risk_model: {
+                stopLoss: 0.1,
+                takeProfit: 0.05,
+                leverage: 1,
+              },
+              source_tweets: [post.message_id],
+              skipped_reason: `Token ${token} is not supported/available in Ostium pairs`,
+              llm_decision: `Token ${token} is not supported/available in Ostium pairs. Cannot proceed with trade.`,
+              llm_should_trade: false,
+              llm_fund_allocation: 0,
+              llm_leverage: 0,
+              trade_executed: null,
+            },
+          });
+
+          console.log(
+            `    ✅ Skipped signal stored for deployment ${deployment.id.substring(
+              0,
+              8
+            )}: ${token} - Token not supported in OSTIUM`
+          );
+        } catch (error) {
+          console.error(`    ❌ Error storing skipped signal: ${error}`);
+        }
 
         return false;
       }
@@ -418,6 +462,51 @@ async function generateSignalForAgentAndToken(
         console.log(
           `       (Only ${agent.venue}-supported tokens will generate signals)`
         );
+        console.log(
+          `    📝 Creating skipped signal - token not supported in venue_markets`
+        );
+
+        // Determine side from post sentiment
+        const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
+
+        try {
+          await prisma.signals.create({
+            data: {
+              agent_id: agent.id,
+              deployment_id: deployment.id,
+              token_symbol: token,
+              venue: agent.venue,
+              side: side,
+              size_model: {
+                type: "balance-percentage",
+                value: 0,
+                impactFactor: 0,
+              },
+              risk_model: {
+                stopLoss: 0.1,
+                takeProfit: 0.05,
+                leverage: 1,
+              },
+              source_tweets: [post.message_id],
+              skipped_reason: `Token ${token} is not supported/available in ${agent.venue} pairs`,
+              llm_decision: `Token ${token} is not supported/available in ${agent.venue} pairs. Cannot proceed with trade.`,
+              llm_should_trade: false,
+              llm_fund_allocation: 0,
+              llm_leverage: 0,
+              trade_executed: null,
+            },
+          });
+
+          console.log(
+            `    ✅ Skipped signal stored for deployment ${deployment.id.substring(
+              0,
+              8
+            )}: ${token} - Token not supported in ${agent.venue}`
+          );
+        } catch (error) {
+          console.error(`    ❌ Error storing skipped signal: ${error}`);
+        }
+
         return false;
       }
 
@@ -599,6 +688,19 @@ async function generateSignalForAgentAndToken(
             ],
           },
         });
+      }
+
+      // If token not found in ostium_available_pairs, log warning
+      // Note: This should theoretically not happen if venue_markets is properly synced
+      // The token should have been caught earlier in the venue_markets check
+      if (!ostiumPair) {
+        console.log(
+          `    ⚠️  Token ${token} not found in ostium_available_pairs (but was in venue_markets)`
+        );
+        console.log(
+          `    ⚠️  This indicates a sync issue between venue_markets and ostium_available_pairs`
+        );
+        // Continue anyway - we'll use default leverage
       }
 
       if (
