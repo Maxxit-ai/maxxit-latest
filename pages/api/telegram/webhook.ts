@@ -339,10 +339,7 @@ async function handleAlphaMessage(
     await bot.sendMessage(
       chatId,
       '✅ *Message received!*\n\n' +
-      'Your alpha is being processed and will be available to agents following you shortly.\n\n' +
-      '⚠️ _Note: Max 5 tokens processed per signal. Excess tokens will be ignored._ we will process the first 5 tokens in the message if there are more than 5.\n\n' + 
-      'If you want to process more tokens, please send a new message with the additional tokens.\n\n' +
-      'Thank you for sharing your alpha!',
+      'In a few minutes, Maxxit agents will analyze the asset, decide whether to trade, and set the right allocation. Grab a coffee Maxxit’s got you.',
       { parse_mode: 'Markdown' }
     );
   } catch (error: any) {
