@@ -112,6 +112,8 @@ async function generateAllSignals() {
 
         // Get agents based on the source of the post
         let agents: any[] = [];
+        let influencerImpactFactor = 50; // Default to 50 (neutral) - will be updated if alpha_user_id exists
+
 
         if (post.alpha_user_id) {
           // For Telegram Alpha Users: find agents linked via agent_telegram_users
@@ -128,6 +130,10 @@ async function generateAllSignals() {
           // Get the source user's flags
           const isLazyTrader = (alphaUser as any)?.lazy_trader === true;
           const isPublicSource = (alphaUser as any)?.public_source === true;
+          
+          // Get the influencer's impact factor (historical performance)
+          influencerImpactFactor = (alphaUser as any)?.impact_factor ?? 50; // Default to 50 (neutral) if not set
+          console.log(`[SignalGenerator]    Impact Factor of source: ${influencerImpactFactor}/100`);
 
           console.log(
             `[SignalGenerator]    Source: @${alphaUser.telegram_username || alphaUser.first_name
@@ -281,6 +287,27 @@ async function generateAllSignals() {
         // Generate signal for each deployment, agent, and token combination
         // Each deployment has its own trading preferences, so we generate separate signals
         for (const agent of agents) {
+          // Check if this is a Lazy Trader agent
+          // Lazy Trader agents are PRIVATE agents with names containing "Lazy" and "Trader" (case-insensitive)
+          // This handles variations like "Lazy Trader", "Lazyz rader", etc.
+          const isLazyTraderAgent =
+            agent.status === "PRIVATE" &&
+            agent.name &&
+            agent.name.toLowerCase().includes("lazy") &&
+            agent.name.toLowerCase().includes("trader");
+
+          console.log("checking lazy trader agent",agent.status + " " + agent.name + " " + isLazyTraderAgent)
+
+          console.log(
+            `[SignalGenerator]    🔍 Checking Lazy Trader agent: ${agent.name}, isLazyTraderAgent: ${isLazyTraderAgent}`
+          );
+
+          if (isLazyTraderAgent) {
+            console.log(
+              `[SignalGenerator]    🔍 Detected Lazy Trader agent: ${agent.name} - will deprioritize confidence score`
+            );
+          }
+
           for (const deployment of agent.agent_deployments) {
             for (const token of extractedTokens) {
               try {
@@ -288,7 +315,9 @@ async function generateAllSignals() {
                   post,
                   agent,
                   deployment,
-                  token
+                  token,
+                  isLazyTraderAgent,
+                  influencerImpactFactor
                 );
 
                 if (success) {
@@ -333,13 +362,17 @@ async function generateAllSignals() {
 
 /**
  * Generate a signal for a specific agent deployment and token using LLM decision making
+ * @param isLazyTraderAgent - True if this is a Lazy Trader agent (don't prioritize confidence score as much)
+ * @param influencerImpactFactor - Impact factor of the signal sender (0-100, 50=neutral)
  * @returns true if signal was created, false if skipped
  */
 async function generateSignalForAgentAndToken(
   post: any,
   agent: any,
   deployment: any,
-  token: string
+  token: string,
+  isLazyTraderAgent: boolean = false,
+  influencerImpactFactor: number = 50
 ) {
   try {
     // Stablecoins should NOT be traded (they are base currency)
@@ -754,6 +787,8 @@ async function generateSignalForAgentAndToken(
       token,
       side,
       maxLeverage: venueMaxLeverage,
+      isLazyTraderAgent,
+      influencerImpactFactor,
     });
 
     console.log(

@@ -22,6 +22,8 @@ interface TradeDecisionInput {
   token: string; // Token symbol
   side: string; // LONG or SHORT
   maxLeverage?: number; // Venue/token-specific max leverage (if known)
+  isLazyTraderAgent?: boolean; // True for Lazy Trader agents (don't prioritize confidence score as much)
+  influencerImpactFactor?: number; // Impact factor of the signal sender (0-100, 50=neutral)
 }
 
 interface TradeDecision {
@@ -122,7 +124,20 @@ export class LLMTradeDecisionMaker {
       }
     }
 
-    return `You are AGENT HOW (Trading-Style Clone). Turn the signal + analytics into a trade decision that feels like the user would trade (cadence + conviction + what they prioritize), while using controlled-risk sizing and (when allowed) modest leverage.
+    // Determine confidence instruction based on whether this is a Lazy Trader agent
+  const confidenceInstruction = input.isLazyTraderAgent
+    ? `CONFIDENCE SCORE: ${input.confidenceScore}
+This is a Lazy Trader agent - do NOT heavily weigh the confidence score. 
+Even if confidence is lower, you can proceed with the trade if analytics and market conditions are favorable.
+Focus primarily on market analytics, momentum, sentiment, and risk/reward rather than the confidence score.`
+    : `CONFIDENCE SCORE: ${input.confidenceScore}
+CRITICAL: Confidence score is a KEY factor in your decision. This represents the signal quality/strength.
+• High confidence (>0.7): Strong signal - can take larger positions if analytics support it
+• Medium confidence (0.4-0.7): Moderate signal - use conservative sizing, require supportive analytics
+• Low confidence (<0.4): Weak signal - SKIP trade unless analytics are exceptionally strong AND all conditions align perfectly
+Do NOT ignore low confidence scores. They indicate signal uncertainty and should heavily influence your decision to trade.`;
+
+  return `You are AGENT HOW (Trading-Style Clone). Turn the signal + analytics into a trade decision that feels like the user would trade (cadence + conviction + what they prioritize), while using controlled-risk sizing and (when allowed) modest leverage.
 
 Key constraints:
 	•	Do not quote user preference numbers/scales in the explanation.
@@ -132,11 +147,18 @@ Key constraints:
 SIGNAL:
 "${input.message}"
 
-CONFIDENCE (prior only): ${input.confidenceScore}
-Use as a starting hint, then override based on analytics. Do not size purely from this.
+${confidenceInstruction}
 
 ANALYTICS:
 ${analyticsSection}
+
+INFLUENCER IMPACT FACTOR: ${input.influencerImpactFactor ?? 50}/100
+This represents the historical performance of the signal sender (0=worst, 50=neutral, 100=best).
+• Excellent (>80): Strongly favor this signal, boost confidence significantly (exceptional historical success)
+• High (60-80): Weight historical success, moderately boost confidence
+• Neutral (40-60): No historical bias - proceed normally without favor/penalty
+• Low (20-40): More skeptical, require stronger signal evidence for high confidence
+• Very Poor (<20): Highly skeptical, require extremely strong signal evidence for any confidence
 
 USER STYLE INPUTS (use internally; don't echo numeric values):
 ${JSON.stringify(input.userTradingPreferences || "Not available", null, 2)}
