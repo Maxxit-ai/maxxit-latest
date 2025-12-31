@@ -108,7 +108,6 @@ async function executeAllPendingSignals() {
       orderBy: {
         created_at: "asc",
       },
-      take: 20, // Process 20 signals per run
     });
 
     // Filter out signals that already have a position for their designated deployment
@@ -232,8 +231,20 @@ async function executeSignal(signalId: string, deploymentId: string) {
       return;
     }
 
+    // Parse trade IDs to close (stored as JSON array or single string for backward compatibility)
+    let tradeIdsToClose: string[] = [];
     if (signal.llm_close_trade_id && signal.llm_net_position_change === "FLIP") {
-      console.log(`[TradeExecutor]       🔄 FLIP detected - closing position ${signal.llm_close_trade_id} first`);
+      try {
+        const parsed = JSON.parse(signal.llm_close_trade_id);
+        tradeIdsToClose = Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        // Backward compatibility: treat as single ID
+        tradeIdsToClose = [signal.llm_close_trade_id];
+      }
+    }
+
+    if (tradeIdsToClose.length > 0) {
+      console.log(`[TradeExecutor]       🔄 FLIP detected - closing ${tradeIdsToClose.length} position(s) first`);
 
       try {
         const userAddress = await prisma.user_agent_addresses.findUnique({
@@ -246,55 +257,54 @@ async function executeSignal(signalId: string, deploymentId: string) {
         } else {
           const userArbitrumWallet = deployment.safe_wallet || deployment.user_wallet;
 
-          console.log(`[TradeExecutor]       Closing position with:`);
-          console.log(`[TradeExecutor]         agentAddress: ${userAddress.ostium_agent_address}`);
-          console.log(`[TradeExecutor]         userAddress: ${userArbitrumWallet}`);
-          console.log(`[TradeExecutor]         market: ${signal.token_symbol}`);
-          console.log(`[TradeExecutor]         tradeId: ${signal.llm_close_trade_id}`);
+          // Close each position sequentially
+          for (const tradeId of tradeIdsToClose) {
+            console.log(`[TradeExecutor]       Closing position ${tradeId}...`);
 
-          const closeResponse = await fetch(
-            `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"}/close-position`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                agentAddress: userAddress.ostium_agent_address,
-                userAddress: userArbitrumWallet,
-                market: signal.token_symbol,
-                tradeId: signal.llm_close_trade_id,
-              }),
-            }
-          );
+            const closeResponse = await fetch(
+              `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"}/close-position`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  agentAddress: userAddress.ostium_agent_address,
+                  userAddress: userArbitrumWallet,
+                  market: signal.token_symbol,
+                  tradeId: tradeId,
+                }),
+              }
+            );
 
-          if (closeResponse.ok) {
-            const closeResult = (await closeResponse.json()) as any;
-            if (closeResult.success) {
-              console.log(`[TradeExecutor]       ✅ Position ${signal.llm_close_trade_id} closed successfully`);
-              console.log(`[TradeExecutor]       Close PnL: $${closeResult.closePnl || 0}`);
+            if (closeResponse.ok) {
+              const closeResult = (await closeResponse.json()) as any;
+              if (closeResult.success) {
+                console.log(`[TradeExecutor]       ✅ Position ${tradeId} closed successfully`);
+                console.log(`[TradeExecutor]       Close PnL: $${closeResult.closePnl || 0}`);
 
-              await prisma.positions.updateMany({
-                where: {
-                  ostium_trade_id: signal.llm_close_trade_id,
-                  deployment_id: deploymentId,
-                  status: "OPEN",
-                },
-                data: {
-                  status: "CLOSED",
-                  closed_at: new Date(),
-                  exit_reason: `FLIP to ${signal.side} - LLM decision`,
-                  pnl: closeResult.closePnl || null,
-                },
-              });
+                await prisma.positions.updateMany({
+                  where: {
+                    ostium_trade_id: tradeId,
+                    deployment_id: deploymentId,
+                    status: "OPEN",
+                  },
+                  data: {
+                    status: "CLOSED",
+                    closed_at: new Date(),
+                    exit_reason: `FLIP to ${signal.side} - LLM decision`,
+                    pnl: closeResult.closePnl || null,
+                  },
+                });
+              } else {
+                console.log(`[TradeExecutor]       ⚠️  Close position ${tradeId} returned: ${closeResult.message || "Unknown error"}`);
+              }
             } else {
-              console.log(`[TradeExecutor]       ⚠️  Close position returned: ${closeResult.message || "Unknown error"}`);
+              const errorText = await closeResponse.text();
+              console.log(`[TradeExecutor]       ⚠️  Failed to close position ${tradeId}: ${errorText}`);
             }
-          } else {
-            const errorText = await closeResponse.text();
-            console.log(`[TradeExecutor]       ⚠️  Failed to close position: ${errorText}`);
           }
         }
       } catch (closeError: any) {
-        console.log(`[TradeExecutor]       ⚠️  Error closing position: ${closeError.message}`);
+        console.log(`[TradeExecutor]       ⚠️  Error closing positions: ${closeError.message}`);
       }
     }
 

@@ -856,8 +856,8 @@ async function generateSignalForAgentAndToken(
     console.log(
       `    📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN NEW" : "SKIP"} | Net Position Change: ${tradeDecision.netPositionChange || "NONE"}`
     );
-    if (tradeDecision.closeExistingPositionId) {
-      console.log(`    🔄 Close Position: ${tradeDecision.closeExistingPositionId}`);
+    if (tradeDecision.closeExistingPositionIds.length > 0) {
+      console.log(`    🔄 Close Positions: ${tradeDecision.closeExistingPositionIds.join(', ')}`);
     }
     console.log(
       `    💰 Fund Allocation: ${tradeDecision.fundAllocation.toFixed(2)}%`
@@ -895,7 +895,9 @@ async function generateSignalForAgentAndToken(
             llm_should_trade: tradeDecision.shouldOpenNewPosition,
             llm_fund_allocation: tradeDecision.fundAllocation,
             llm_leverage: tradeDecision.leverage,
-            llm_close_trade_id: tradeDecision.closeExistingPositionId || null,
+            llm_close_trade_id: tradeDecision.closeExistingPositionIds.length > 0
+              ? JSON.stringify(tradeDecision.closeExistingPositionIds)
+              : null,
             llm_net_position_change: tradeDecision.netPositionChange || "NONE",
             trade_executed: null,
           },
@@ -939,7 +941,9 @@ async function generateSignalForAgentAndToken(
           llm_should_trade: tradeDecision.shouldOpenNewPosition,
           llm_fund_allocation: tradeDecision.fundAllocation,
           llm_leverage: tradeDecision.leverage,
-          llm_close_trade_id: tradeDecision.closeExistingPositionId || null,
+          llm_close_trade_id: tradeDecision.closeExistingPositionIds.length > 0
+            ? JSON.stringify(tradeDecision.closeExistingPositionIds)
+            : null,
           llm_net_position_change: tradeDecision.netPositionChange || "NONE",
           trade_executed: null,
         },

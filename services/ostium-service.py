@@ -190,6 +190,156 @@ def get_available_markets(refresh=False):
         return fallback
 
 
+def send_insufficient_funds_telegram_notification(user_address: str, market: str, collateral: float):
+    """
+    Send a Telegram notification to Lazy Trader users when position open fails due to insufficient funds.
+    Only sends if:
+    1. User has a wallet linked in telegram_alpha_users with lazy_trader=true
+    2. User has a Telegram connection in user_telegram_notifications
+    """
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    import requests
+    
+    try:
+        database_url = os.getenv('DATABASE_URL')
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        
+        logger.warning(f"   DATABASE_URL configured: {'✅ Yes' if database_url else '❌ No'}")
+        logger.warning(f"   TELEGRAM_BOT_TOKEN configured: {'✅ Yes' if bot_token else '❌ No'}")
+        
+        if not database_url or not bot_token:
+            logger.warning("❌ Cannot send Telegram notification: DATABASE_URL or TELEGRAM_BOT_TOKEN not configured")
+            return False
+        
+        logger.warning("   Connecting to database...")
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        logger.warning("   ✅ Database connected")
+        
+        # Normalize address for lookup
+        user_wallet_lower = user_address.lower() if user_address else None
+        
+        if not user_wallet_lower:
+            logger.warning("❌ Cannot send Telegram notification: No user address provided")
+            cur.close()
+            conn.close()
+            return False
+        
+        # Check if user is a lazy trader via telegram_alpha_users
+        logger.warning("   Checking telegram_alpha_users for lazy_trader...")
+        cur.execute(
+            """
+            SELECT id, telegram_user_id, telegram_username, first_name, user_wallet, lazy_trader
+            FROM telegram_alpha_users 
+            WHERE LOWER(user_wallet) = %s AND lazy_trader = true AND is_active = true
+            """,
+            (user_wallet_lower,)
+        )
+        lazy_trader = cur.fetchone()
+        
+        if not lazy_trader:
+            # Let's also check what records exist for this wallet
+            cur.execute(
+                """
+                SELECT id, telegram_username, user_wallet, lazy_trader, is_active
+                FROM telegram_alpha_users 
+                WHERE LOWER(user_wallet) = %s
+                """,
+                (user_wallet_lower,)
+            )
+            any_record = cur.fetchone()
+            
+            if any_record:
+                logger.warning(f"   Found telegram_alpha_users record but conditions not met:")
+                logger.warning(f"      - lazy_trader: {any_record.get('lazy_trader')}")
+                logger.warning(f"      - is_active: {any_record.get('is_active')}")
+            else:
+                logger.warning(f"   ❌ No telegram_alpha_users record found for wallet {user_wallet_lower[:10]}...")
+                
+            logger.warning(f"❌ User {user_wallet_lower[:10]}... is not a lazy trader - skipping Telegram notification")
+            cur.close()
+            conn.close()
+            return False
+        
+        logger.warning(f"   ✅ User is a Lazy Trader: @{lazy_trader.get('telegram_username') or lazy_trader.get('first_name')}")
+        logger.info(f"      - telegram_user_id: {lazy_trader.get('telegram_user_id')}")
+        
+        # Get the user's Telegram chat ID from user_telegram_notifications
+        logger.info("   Checking user_telegram_notifications for chat_id...")
+        cur.execute(
+            """
+            SELECT telegram_chat_id, telegram_username, is_active
+            FROM user_telegram_notifications 
+            WHERE LOWER(user_wallet) = %s
+            """,
+            (user_wallet_lower,)
+        )
+        telegram_info = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        if not telegram_info:
+            logger.warning(f"   ❌ No user_telegram_notifications record found for {user_wallet_lower[:10]}...")
+            return False
+            
+        logger.warning(f"   Found user_telegram_notifications record:")
+        logger.warning(f"      - telegram_chat_id: {telegram_info.get('telegram_chat_id')}")
+        logger.warning(f"      - telegram_username: {telegram_info.get('telegram_username')}")
+        logger.warning(f"      - is_active: {telegram_info.get('is_active')}")
+        
+        if not telegram_info.get('is_active'):
+            logger.warning(f"   ❌ Telegram notifications are not active for this user")
+            return False
+            
+        if not telegram_info.get('telegram_chat_id'):
+            logger.warning(f"   ❌ No telegram_chat_id found for {user_wallet_lower[:10]}...")
+            return False
+        
+        chat_id = telegram_info['telegram_chat_id']
+        
+        # Format the message
+        message = f"""⚠️ *Insufficient Funds Alert*
+
+Your position on *{market}* could not be opened due to insufficient balance.
+
+📊 *Details:*
+• Market: {market}
+• Attempted Collateral: ${collateral:.2f} USDC
+
+💡 *Action Required:*
+Please ensure you have at least *$5 USDC* in your wallet to open positions.
+"""        
+        # Send via Telegram Bot API
+        telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True
+        }
+        
+        response = requests.post(telegram_url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('ok'):
+                logger.warning(f"✅ Successfully sent insufficient funds notification to @{telegram_info.get('telegram_username') or chat_id}")
+                return True
+            else:
+                logger.error(f"❌ Telegram API returned ok=false: {result}")
+                return False
+        else:
+            logger.error(f"❌ Failed to send Telegram notification (HTTP {response.status_code}): {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Error sending Telegram notification: {e}")
+        logger.error(traceback.format_exc())
+        return False
+
+
 def validate_market(token_symbol: str):
     """
     Validate if a market is available on Ostium
@@ -828,15 +978,15 @@ def open_position():
                     if trade_entry_price > 0:
                         current_price = trade_entry_price
                 
-                logger.info(f"✅ Found newly opened trade!")
-                logger.info(f"   Trade Index: {actual_trade_index}")
-                logger.info(f"   Pair ID: {trade_pair_id}")
-                logger.info(f"   Entry Price: ${current_price:.4f}")
-                
-                # Verify it's the correct pair
-                if trade_pair_id != str(asset_index):
-                    logger.warning(f"⚠️  Pair mismatch! Expected {asset_index}, got {trade_pair_id}")
-                    logger.warning(f"   This might be a subgraph delay - position monitor will verify")
+                    logger.info(f"✅ Found newly opened trade!")
+                    logger.info(f"   Trade Index: {actual_trade_index}")
+                    logger.info(f"   Pair ID: {trade_pair_id}")
+                    logger.info(f"   Entry Price: ${current_price:.4f}")
+                    
+                    # Verify it's the correct pair
+                    if trade_pair_id != str(asset_index):
+                        logger.warning(f"⚠️  Pair mismatch! Expected {asset_index}, got {trade_pair_id}")
+                        logger.warning(f"   This might be a subgraph delay - position monitor will verify")
                 else:
                     logger.warning(f"⚠️  No matching open trade found yet - order may not be filled")
                     logger.warning(f"   Position monitor will update index once position is discovered")
@@ -896,13 +1046,28 @@ def open_position():
         })
     
     except Exception as e:
-        logger.error(f"Open position error: {str(e)}")
+        error_str = str(e)
+        logger.error(f"Open position error: {error_str}")
         try:
             import traceback as tb
             logger.error(tb.format_exc())
         except:
             logger.error("Could not format traceback")
-        return jsonify({"success": False, "error": str(e)}), 500
+        
+        # Check for BelowMinLevPos error (insufficient funds)
+        if 'eca695e1' in error_str.lower() or 'belowminlevpos' in error_str.lower():
+            logger.warning("⚠️  BelowMinLevPos error detected - user has insufficient funds")
+            if user_address and market and position_size:
+                try:
+                    logger.warning(f"Attempting to notify user {user_address[:10]}... via Telegram")
+                    send_insufficient_funds_telegram_notification(user_address, market, position_size)
+                except Exception as notif_err:
+                    logger.error(f"Failed to send Telegram notification: {notif_err}")
+                    logger.error(traceback.format_exc())
+            else:
+                logger.warning(f"   Cannot send notification - missing required data")
+        
+        return jsonify({"success": False, "error": error_str}), 500
 
 
 @app.route('/close-position', methods=['POST'])

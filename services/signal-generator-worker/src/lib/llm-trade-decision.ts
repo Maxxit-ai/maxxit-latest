@@ -40,7 +40,7 @@ interface OpenPosition {
 
 interface TradeDecision {
   shouldOpenNewPosition: boolean;
-  closeExistingPositionId: string | null;
+  closeExistingPositionIds: string[];
   fundAllocation: number; // Percentage of balance (0-100)
   leverage: number; // Leverage multiplier (1x-100x)
   reason: string; // Reason for the decision
@@ -99,7 +99,7 @@ export class LLMTradeDecisionMaker {
       // Return a conservative decision as fallback
       return {
         shouldOpenNewPosition: false,
-        closeExistingPositionId: null,
+        closeExistingPositionIds: [],
         fundAllocation: 0,
         leverage: 1,
         reason: `Failed to get LLM decision: ${error.message}`
@@ -167,7 +167,7 @@ For position changes:
 
 Your decision must include:
 1) shouldOpenNewPosition: boolean
-2) closeExistingPositionId: string | null (the tradeId to close if flipping)
+2) closeExistingPositionIds: string[] (array of tradeIds to close if flipping - can be multiple)
 3) fundAllocation: percentage of balance to use
 4) leverage: multiplier
 5) reason: detailed explanation of your decision
@@ -224,7 +224,7 @@ Return only this JSON object:
 
 {
 "shouldOpenNewPosition": boolean,
-"closeExistingPositionId": string | null,
+"closeExistingPositionIds": string[],
 "fundAllocation": number,
 "leverage": number,
 "marketEvidence": {
@@ -340,7 +340,9 @@ RESPOND ONLY WITH THE JSON OBJECT.`;
       // Validate and sanitize the response
       return {
         shouldOpenNewPosition: Boolean(parsed.shouldOpenNewPosition),
-        closeExistingPositionId: parsed.closeExistingPositionId || null,
+        closeExistingPositionIds: Array.isArray(parsed.closeExistingPositionIds)
+          ? parsed.closeExistingPositionIds
+          : (parsed.closeExistingPositionId ? [parsed.closeExistingPositionId] : []),
         fundAllocation: Math.max(0, Math.min(100, Number(parsed.fundAllocation) || 0)),
         leverage: Math.max(1, Math.min(50, Number(parsed.leverage) || 1)),
         reason: parsed.reason || "No reason provided",
@@ -353,7 +355,7 @@ RESPOND ONLY WITH THE JSON OBJECT.`;
       // Return a conservative decision as fallback
       return {
         shouldOpenNewPosition: false,
-        closeExistingPositionId: null,
+        closeExistingPositionIds: [],
         fundAllocation: 0,
         leverage: 1,
         reason: "Failed to parse LLM response",
@@ -415,7 +417,7 @@ export async function makeTradeDecision(input: TradeDecisionInput): Promise<Trad
     // Return a conservative decision as fallback
     return {
       shouldOpenNewPosition: false,
-      closeExistingPositionId: null,
+      closeExistingPositionIds: [],
       fundAllocation: 0,
       leverage: 1,
       reason: "No LLM API key configured for trade decision making",
