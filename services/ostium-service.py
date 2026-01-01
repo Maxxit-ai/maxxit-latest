@@ -32,7 +32,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 try:
     from ostium_python_sdk import OstiumSDK
 except ImportError:
-    print("ERROR: ostium-python-sdk not installed. Run: pip install ostium-python-sdk")
+    print("ERROR: ostium-python-sdk-test not installed. Run: pip install ostium-python-sdk-test")
     exit(1)
 
 # Monkey-patch the SDK to fix raw_transaction bug
@@ -190,6 +190,156 @@ def get_available_markets(refresh=False):
         return fallback
 
 
+def send_insufficient_funds_telegram_notification(user_address: str, market: str, collateral: float):
+    """
+    Send a Telegram notification to Lazy Trader users when position open fails due to insufficient funds.
+    Only sends if:
+    1. User has a wallet linked in telegram_alpha_users with lazy_trader=true
+    2. User has a Telegram connection in user_telegram_notifications
+    """
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    import requests
+    
+    try:
+        database_url = os.getenv('DATABASE_URL')
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        
+        logger.warning(f"   DATABASE_URL configured: {'✅ Yes' if database_url else '❌ No'}")
+        logger.warning(f"   TELEGRAM_BOT_TOKEN configured: {'✅ Yes' if bot_token else '❌ No'}")
+        
+        if not database_url or not bot_token:
+            logger.warning("❌ Cannot send Telegram notification: DATABASE_URL or TELEGRAM_BOT_TOKEN not configured")
+            return False
+        
+        logger.warning("   Connecting to database...")
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        logger.warning("   ✅ Database connected")
+        
+        # Normalize address for lookup
+        user_wallet_lower = user_address.lower() if user_address else None
+        
+        if not user_wallet_lower:
+            logger.warning("❌ Cannot send Telegram notification: No user address provided")
+            cur.close()
+            conn.close()
+            return False
+        
+        # Check if user is a lazy trader via telegram_alpha_users
+        logger.warning("   Checking telegram_alpha_users for lazy_trader...")
+        cur.execute(
+            """
+            SELECT id, telegram_user_id, telegram_username, first_name, user_wallet, lazy_trader
+            FROM telegram_alpha_users 
+            WHERE LOWER(user_wallet) = %s AND lazy_trader = true AND is_active = true
+            """,
+            (user_wallet_lower,)
+        )
+        lazy_trader = cur.fetchone()
+        
+        if not lazy_trader:
+            # Let's also check what records exist for this wallet
+            cur.execute(
+                """
+                SELECT id, telegram_username, user_wallet, lazy_trader, is_active
+                FROM telegram_alpha_users 
+                WHERE LOWER(user_wallet) = %s
+                """,
+                (user_wallet_lower,)
+            )
+            any_record = cur.fetchone()
+            
+            if any_record:
+                logger.warning(f"   Found telegram_alpha_users record but conditions not met:")
+                logger.warning(f"      - lazy_trader: {any_record.get('lazy_trader')}")
+                logger.warning(f"      - is_active: {any_record.get('is_active')}")
+            else:
+                logger.warning(f"   ❌ No telegram_alpha_users record found for wallet {user_wallet_lower[:10]}...")
+                
+            logger.warning(f"❌ User {user_wallet_lower[:10]}... is not a lazy trader - skipping Telegram notification")
+            cur.close()
+            conn.close()
+            return False
+        
+        logger.warning(f"   ✅ User is a Lazy Trader: @{lazy_trader.get('telegram_username') or lazy_trader.get('first_name')}")
+        logger.info(f"      - telegram_user_id: {lazy_trader.get('telegram_user_id')}")
+        
+        # Get the user's Telegram chat ID from user_telegram_notifications
+        logger.info("   Checking user_telegram_notifications for chat_id...")
+        cur.execute(
+            """
+            SELECT telegram_chat_id, telegram_username, is_active
+            FROM user_telegram_notifications 
+            WHERE LOWER(user_wallet) = %s
+            """,
+            (user_wallet_lower,)
+        )
+        telegram_info = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        if not telegram_info:
+            logger.warning(f"   ❌ No user_telegram_notifications record found for {user_wallet_lower[:10]}...")
+            return False
+            
+        logger.warning(f"   Found user_telegram_notifications record:")
+        logger.warning(f"      - telegram_chat_id: {telegram_info.get('telegram_chat_id')}")
+        logger.warning(f"      - telegram_username: {telegram_info.get('telegram_username')}")
+        logger.warning(f"      - is_active: {telegram_info.get('is_active')}")
+        
+        if not telegram_info.get('is_active'):
+            logger.warning(f"   ❌ Telegram notifications are not active for this user")
+            return False
+            
+        if not telegram_info.get('telegram_chat_id'):
+            logger.warning(f"   ❌ No telegram_chat_id found for {user_wallet_lower[:10]}...")
+            return False
+        
+        chat_id = telegram_info['telegram_chat_id']
+        
+        # Format the message
+        message = f"""⚠️ *Insufficient Funds Alert*
+
+Your position on *{market}* could not be opened due to insufficient balance.
+
+📊 *Details:*
+• Market: {market}
+• Attempted Collateral: ${collateral:.2f} USDC
+
+💡 *Action Required:*
+Please ensure you have at least *$5 USDC* in your wallet to open positions.
+"""        
+        # Send via Telegram Bot API
+        telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True
+        }
+        
+        response = requests.post(telegram_url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('ok'):
+                logger.warning(f"✅ Successfully sent insufficient funds notification to @{telegram_info.get('telegram_username') or chat_id}")
+                return True
+            else:
+                logger.error(f"❌ Telegram API returned ok=false: {result}")
+                return False
+        else:
+            logger.error(f"❌ Failed to send Telegram notification (HTTP {response.status_code}): {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Error sending Telegram notification: {e}")
+        logger.error(traceback.format_exc())
+        return False
+
+
 def validate_market(token_symbol: str):
     """
     Validate if a market is available on Ostium
@@ -309,47 +459,11 @@ def get_positions():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        # Step 1: Get current open trades
-        open_trades_result = loop.run_until_complete(sdk.get_open_trades(trader_address=address))
-        
-        # Step 2: Get recent history to find TX hashes for matching
-        recent_history = loop.run_until_complete(
-            sdk.subgraph.get_recent_history(trader=address.lower(), last_n_orders=100)
-        )
+        open_trades = loop.run_until_complete(sdk.subgraph.get_open_trades(address))
         loop.close()
         
-        current_open_trades = []
-        if isinstance(open_trades_result, tuple) and len(open_trades_result) > 0:
-            current_open_trades = open_trades_result[0] if isinstance(open_trades_result[0], list) else []
-        
-        # Build a lookup map from history for TX hashes
-        tx_hash_lookup = {}
-        tx_hash_by_price = {}
-        
-        for history_item in recent_history:
-            order_action = history_item.get('orderAction', '').lower()
-            if order_action == 'open':
-                pair_info = history_item.get('pair', {})
-                pair_id = pair_info.get('id', '')
-                trade_index = history_item.get('index', '0')
-                tx_hash = history_item.get('executedTx', '')
-                
-                if not tx_hash:
-                    continue
-                
-                # Strategy 1: Match by (pair_id, trade_index)
-                lookup_key = f"{pair_id}_{trade_index}"
-                tx_hash_lookup[lookup_key] = tx_hash
-                
-                # Strategy 2: Match by tradeID
-                trade_id = history_item.get('tradeID', '')
-                if trade_id:
-                    tx_hash_lookup[f"trade_{trade_id}"] = tx_hash
-                
-        logger.info(f"Built TX hash lookup with {len(tx_hash_lookup)} index entries, {len(tx_hash_by_price)} price entries")
-        
         positions = []
-        for trade in current_open_trades:
+        for trade in open_trades:
             try:
                 pair_info = trade.get('pair', {})
                 pair_from = pair_info.get('from', 'UNKNOWN')
@@ -361,29 +475,11 @@ def get_positions():
                 trade_index = trade.get('index', '0')
                 trade_id = trade.get('tradeID', trade.get('index', '0'))
                 
-                lookup_key = f"{pair_id}_{trade_index}"
-                tx_hash = tx_hash_lookup.get(lookup_key, '')
-                
-                if not tx_hash:
-                    tx_hash = tx_hash_lookup.get(f"trade_{trade_id}", '')
-                
-                if not tx_hash:
-                    entry_price_usd = float(int(trade.get('openPrice', 0)) / 1e18)
-                    price_key = f"{pair_id}_{round(entry_price_usd, 6)}"
-                    tx_hash = tx_hash_by_price.get(price_key, '')
-                    if tx_hash:
-                        logger.info(f"Found TX hash by price match for {token_symbol}: {tx_hash[:16]}...")
-                
-                if tx_hash:
-                    logger.info(f"Found TX hash for {token_symbol} position: {tx_hash[:16]}...")
-                else:
-                    logger.warning(f"No TX hash found for {token_symbol} position (index={trade_index}, pair={pair_id})")
-                
                 collateral_usdc = float(int(trade.get('collateral', 0)) / 1e6)
                 entry_price_usd = float(int(trade.get('openPrice', 0)) / 1e18)
                 leverage = float(int(trade.get('leverage', 0)) / 100)
-                trade_notional_wei = int(trade.get('tradeNotional', 0))
-                position_size = float(trade_notional_wei / 1e18) if trade_notional_wei > 0 else 0.0
+                notional_wei = int(trade.get('notional', 0))
+                notional_usd = float(notional_wei / 1e6) if notional_wei > 0 else 0.0
                 
                 stop_loss_raw = trade.get('stopLossPrice', 0)
                 stop_loss_price = float(int(stop_loss_raw) / 1e18) if stop_loss_raw else 0.0
@@ -399,14 +495,11 @@ def get_positions():
                     "market": token_symbol,
                     "marketFull": market_symbol,
                     "side": "long" if trade.get('isBuy') else "short",
-                    "size": collateral_usdc,
+                    "collateral": collateral_usdc,
                     "entryPrice": entry_price_usd,
                     "leverage": leverage,
-                    "unrealizedPnl": 0.0,
                     "tradeId": str(trade_id),
-                    "txHash": tx_hash,
-                    "tradeNotional": trade_notional_wei,
-                    "positionSize": position_size,
+                    "notionalUsd": notional_usd,
                     "funding": funding_wei,
                     "rollover": rollover_wei,
                     "totalFees": total_fees_usd,
@@ -885,15 +978,15 @@ def open_position():
                     if trade_entry_price > 0:
                         current_price = trade_entry_price
                 
-                logger.info(f"✅ Found newly opened trade!")
-                logger.info(f"   Trade Index: {actual_trade_index}")
-                logger.info(f"   Pair ID: {trade_pair_id}")
-                logger.info(f"   Entry Price: ${current_price:.4f}")
-                
-                # Verify it's the correct pair
-                if trade_pair_id != str(asset_index):
-                    logger.warning(f"⚠️  Pair mismatch! Expected {asset_index}, got {trade_pair_id}")
-                    logger.warning(f"   This might be a subgraph delay - position monitor will verify")
+                    logger.info(f"✅ Found newly opened trade!")
+                    logger.info(f"   Trade Index: {actual_trade_index}")
+                    logger.info(f"   Pair ID: {trade_pair_id}")
+                    logger.info(f"   Entry Price: ${current_price:.4f}")
+                    
+                    # Verify it's the correct pair
+                    if trade_pair_id != str(asset_index):
+                        logger.warning(f"⚠️  Pair mismatch! Expected {asset_index}, got {trade_pair_id}")
+                        logger.warning(f"   This might be a subgraph delay - position monitor will verify")
                 else:
                     logger.warning(f"⚠️  No matching open trade found yet - order may not be filled")
                     logger.warning(f"   Position monitor will update index once position is discovered")
@@ -953,13 +1046,28 @@ def open_position():
         })
     
     except Exception as e:
-        logger.error(f"Open position error: {str(e)}")
+        error_str = str(e)
+        logger.error(f"Open position error: {error_str}")
         try:
             import traceback as tb
             logger.error(tb.format_exc())
         except:
             logger.error("Could not format traceback")
-        return jsonify({"success": False, "error": str(e)}), 500
+        
+        # Check for BelowMinLevPos error (insufficient funds)
+        if 'eca695e1' in error_str.lower() or 'belowminlevpos' in error_str.lower():
+            logger.warning("⚠️  BelowMinLevPos error detected - user has insufficient funds")
+            if user_address and market and position_size:
+                try:
+                    logger.warning(f"Attempting to notify user {user_address[:10]}... via Telegram")
+                    send_insufficient_funds_telegram_notification(user_address, market, position_size)
+                except Exception as notif_err:
+                    logger.error(f"Failed to send Telegram notification: {notif_err}")
+                    logger.error(traceback.format_exc())
+            else:
+                logger.warning(f"   Cannot send notification - missing required data")
+        
+        return jsonify({"success": False, "error": error_str}), 500
 
 
 @app.route('/close-position', methods=['POST'])
@@ -1542,6 +1650,120 @@ def get_order_by_id():
         logger.error(f"get_order_by_id error: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/trade-by-id', methods=['POST'])
+def get_trade_by_id():
+    """
+    Get trade details by trade ID (includes isOpen flag to check if position is still open)
+    Body: { "tradeId": "12345" }
+    """
+    try:
+        data = request.json
+        trade_id = data.get('tradeId')
+
+        if not trade_id:
+            return jsonify({"success": False, "error": "tradeId is required"}), 400
+
+        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        dummy_key = '0x' + '1' * 64
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        trade = loop.run_until_complete(sdk.subgraph.get_trade_by_id(trade_id))
+        loop.close()
+
+        if trade:
+            logger.info(f"Found trade {trade_id}: isOpen={trade.get('isOpen', False)}")
+        else:
+            logger.info(f"Trade {trade_id} not found")
+
+        return jsonify({
+            "success": True,
+            "tradeId": trade_id,
+            "trade": trade
+        })
+    except Exception as e:
+        logger.error(f"get_trade_by_id error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/closed-trade-by-id', methods=['POST'])
+def get_closed_trade_by_id():
+    """
+    Get closed orders for a specific trade ID (orderAction: "Close" and isCancelled: false)
+    Body: { "tradeId": "12345" }
+    """
+    try:
+        data = request.json
+        trade_id = data.get('tradeId')
+
+        if not trade_id:
+            return jsonify({"success": False, "error": "tradeId is required"}), 400
+
+        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        dummy_key = '0x' + '1' * 64
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        closed_orders = loop.run_until_complete(sdk.subgraph.get_closed_trade_by_trade_id(trade_id))
+        loop.close()
+
+        logger.info(f"Found {len(closed_orders)} closed orders for trade ID: {trade_id}")
+
+        return jsonify({
+            "success": True,
+            "tradeId": trade_id,
+            "orders": closed_orders,
+            "count": len(closed_orders)
+        })
+    except Exception as e:
+        logger.error(f"get_closed_trade_by_id error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/cancelled-orders-by-id', methods=['POST'])
+def get_cancelled_orders_by_id():
+    """
+    Get cancelled orders for a specific trade ID (isCancelled: true)
+    Body: { "tradeId": "12345" }
+    """
+    try:
+        data = request.json
+        trade_id = data.get('tradeId')
+
+        if not trade_id:
+            return jsonify({"success": False, "error": "tradeId is required"}), 400
+
+        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        dummy_key = '0x' + '1' * 64
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        cancelled_orders = loop.run_until_complete(sdk.subgraph.get_cancelled_orders_by_trade_id(trade_id))
+        loop.close()
+
+        logger.info(f"Found {len(cancelled_orders)} cancelled orders for trade ID: {trade_id}")
+
+        return jsonify({
+            "success": True,
+            "tradeId": trade_id,
+            "orders": cancelled_orders,
+            "count": len(cancelled_orders)
+        })
+    except Exception as e:
+        logger.error(f"get_cancelled_orders_by_id error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route('/approve-agent', methods=['POST'])
 def approve_agent():

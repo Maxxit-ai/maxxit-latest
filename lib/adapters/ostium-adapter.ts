@@ -356,3 +356,78 @@ export async function getOstiumOrderById(orderId: string) {
   }
 }
 
+/**
+ * Get trade details by trade ID
+ * Returns trade information including whether the position is still open
+ */
+export async function getOstiumTradeById(tradeId: string) {
+  try {
+    const response = await fetch(`${OSTIUM_SERVICE_URL}/trade-by-id`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tradeId }),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to get trade');
+    }
+
+    return data.trade;
+  } catch (error: any) {
+    console.error('[Ostium] Get trade by id failed:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get closed orders for a specific trade ID
+ * Returns closed orders with PnL information (orderAction: "Close" and isCancelled: false)
+ */
+export async function getOstiumClosedTradeById(tradeId: string) {
+  try {
+    const response = await fetch(`${OSTIUM_SERVICE_URL}/closed-trade-by-id`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tradeId }),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to get closed trade');
+    }
+
+    return data.orders || [];
+  } catch (error: any) {
+    console.error('[Ostium] Get closed trade by id failed:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get cancelled orders for a specific trade ID
+ * Returns cancelled orders
+ */
+export async function getOstiumCancelledOrdersById(tradeId: string) {
+  try {
+    const response = await fetch(`${OSTIUM_SERVICE_URL}/cancelled-orders-by-id`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tradeId }),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to get cancelled orders');
+    }
+
+    return data.orders || [];
+  } catch (error: any) {
+    console.error('[Ostium] Get cancelled orders by id failed:', error.message);
+    throw error;
+  }
+}
+

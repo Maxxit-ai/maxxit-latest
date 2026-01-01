@@ -7,7 +7,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { getOstiumOrderById, getOstiumClosedPositions } from '../lib/adapters/ostium-adapter';
+import { getOstiumTradeById, getOstiumClosedTradeById, getOstiumCancelledOrdersById } from '../lib/adapters/ostium-adapter';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
@@ -63,96 +63,198 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
   let syncedCount = 0;
 
   try {
-    const positionsNeedingSync = await prisma.positions.findMany({
+    const positionsToCheck = await prisma.positions.findMany({
       where: {
         deployment_id: deploymentId,
         venue: 'OSTIUM',
         OR: [
-          {
-            status: 'CLOSED',
-            OR: [
-              { pnl: null },
-              { pnl: 0 },
-              { exit_reason: 'CLOSED_EXTERNALLY' },
-            ],
-          },
-          {
-            status: 'CLOSING',
-          },
+          { status: 'CLOSED', OR: [{ pnl: null }, { pnl: 0 }, { exit_reason: 'CLOSED_EXTERNALLY' }] },
+          { status: 'CLOSING' },
+          { status: 'OPEN' },
         ],
       },
     });
 
-    if (positionsNeedingSync.length === 0) {
+    if (positionsToCheck.length === 0) {
       return 0;
     }
 
-    console.log(`   🔄 Found ${positionsNeedingSync.length} positions needing PnL sync (CLOSED + CLOSING)`);
-
-    const closedPositions = await getOstiumClosedPositions(safeWallet, 50);
-    const closeActions = ['close', 'takeprofit', 'stoploss', 'liquidation'];
-    const closedTrades = closedPositions.filter(p =>
-      closeActions.includes(p.orderAction.toLowerCase())
-    );
-
-    console.log(`   📊 Found ${closedTrades.length} closed trades from Ostium subgraph`);
+    console.log(`   🔄 Checking ${positionsToCheck.length} positions for PnL sync`);
 
     const syncedPositions = new Set<string>();
 
-    for (const dbPosition of positionsNeedingSync) {
+    for (const dbPosition of positionsToCheck) {
       const positionKey = `${dbPosition.deployment_id}_${dbPosition.token_symbol}_${dbPosition.ostium_trade_id || dbPosition.ostium_trade_index || dbPosition.qty.toString()}`;
 
       if (syncedPositions.has(positionKey)) {
-        console.log(`   ⏭️  Skipping duplicate position: ${dbPosition.token_symbol} (key: ${positionKey})`);
+        console.log(`   ⏭️  Skipping duplicate: ${dbPosition.token_symbol}`);
         continue;
       }
 
-      const dbTradeId = dbPosition.ostium_trade_id;
+      const tradeId = dbPosition.ostium_trade_id;
 
-      if (!dbTradeId) {
-        console.log(`   ⚠️  Skipping ${dbPosition.token_symbol}: No tradeID in database`);
+      if (!tradeId) {
+        console.log(`   ⚠️  Skipping ${dbPosition.token_symbol}: No tradeID`);
         continue;
       }
 
-      let openOrder: any = null;
+      let hasCancelledCloseOrders = false;
+      let cancelledOrdersCount = 0;
       try {
-        openOrder = await getOstiumOrderById(dbTradeId);
+        const cancelledOrders = await getOstiumCancelledOrdersById(tradeId);
+        if (cancelledOrders && cancelledOrders.length > 0) {
+          hasCancelledCloseOrders = true;
+          cancelledOrdersCount = cancelledOrders.length;
+          console.log(`   ⚠️  ${cancelledOrdersCount} cancelled close attempts for ${dbPosition.token_symbol}`);
+          console.log(`      Reason: ${cancelledOrders[0].cancelReason || 'Unknown'} (likely SLIPPAGE)`);
+        }
       } catch (err: any) {
-        console.log(`   ⚠️  Unable to fetch open order ${dbTradeId}: ${err.message || err}`);
+        console.log(`   ⚠️  Error checking cancelled orders: ${err.message}`);
+      }
+
+      // Check if trade is closed on-chain
+      let closedOrders: any[] = [];
+      try {
+        closedOrders = await getOstiumClosedTradeById(tradeId);
+      } catch (err: any) {
+        console.log(`   ⚠️  Error fetching closed trade ${tradeId}: ${err.message}`);
+      }
+
+      const isClosedOnChain = closedOrders && closedOrders.length > 0;
+
+      // Case 1: Closed on-chain but not in DB
+      if (isClosedOnChain && dbPosition.status !== 'CLOSED') {
+        const closeOrder = closedOrders[0];
+        const profitPercentRaw = Number(closeOrder.profitPercent || 0);
+        const profitPercent = profitPercentRaw / 1e6; // Convert from 10^6 scale
+        
+        // Get trade details to calculate collateral
+        let trade: any = null;
+        try {
+          trade = await getOstiumTradeById(tradeId);
+        } catch (err: any) {
+          console.log(`   ⚠️  Could not fetch trade for PnL calc: ${err.message}`);
+        }
+        
+        let pnlUsdc = 0;
+        if (trade && trade.collateral) {
+          const collateralRaw = Number(trade.collateral || 0);
+          const collateral = collateralRaw / 1e6;
+          pnlUsdc = collateral * profitPercent;
+        }
+        
+        const exitPriceRaw = Number(closeOrder.price || 0);
+        const exitPrice = exitPriceRaw / 1e18;
+        
+        console.log(`   ✅ OPEN → CLOSED: Position closed on-chain`);
+        console.log(`      ${dbPosition.token_symbol}: PnL = $${pnlUsdc.toFixed(2)} (${(profitPercent * 100).toFixed(2)}%)`);
+        if (hasCancelledCloseOrders) {
+          console.log(`      Note: Position closed after ${cancelledOrdersCount} cancelled close attempts`);
+        }
+        
+        await prisma.positions.update({
+          where: { id: dbPosition.id },
+          data: {
+            status: 'CLOSED',
+            closed_at: new Date(),
+            pnl: pnlUsdc,
+            exit_price: exitPrice > 0 ? exitPrice : null,
+            exit_reason: closeOrder.orderAction?.toUpperCase() || 'CLOSE',
+          },
+        });
+        
+        syncedCount++;
+        syncedPositions.add(positionKey);
         continue;
       }
 
-      if (!openOrder || !openOrder.pair) {
-        console.log(`   ⚠️  Open order ${dbTradeId} not found or invalid`);
-        continue;
+      // Case 2: Closed in DB but still open on-chain
+      if (!isClosedOnChain && dbPosition.status === 'CLOSED') {
+        // Check if trade still exists and is open
+        let isStillOpen = false;
+        try {
+          const trade = await getOstiumTradeById(tradeId);
+          // Check the isOpen flag
+          isStillOpen = trade && trade.isOpen === true;
+        } catch (err: any) {
+          // Trade doesn't exist anymore, keep as closed
+          isStillOpen = false;
+        }
+        
+        if (isStillOpen) {
+          console.log(`   ⚠️  CLOSED → OPEN: Position still open on-chain (DB was wrong)`);
+          console.log(`      ${dbPosition.token_symbol} (TradeID: ${tradeId})`);
+          if (hasCancelledCloseOrders) {
+            console.log(`      Note: Has cancelled close attempts - position couldn't be closed earlier`);
+          }
+          
+          await prisma.positions.update({
+            where: { id: dbPosition.id },
+            data: {
+              status: 'OPEN',
+              closed_at: null,
+              exit_price: null,
+              exit_reason: null,
+              pnl: null,
+            },
+          });
+          
+          syncedCount++;
+          syncedPositions.add(positionKey);
+          continue;
+        }
       }
 
-      const openSide = openOrder.isBuy ? 'long' : 'short';
-      const openToken = String(openOrder.pair.from || '').toUpperCase();
-      const openCollateralRaw = Number(openOrder.collateral || 0);
-      const openCollateral = openCollateralRaw / (10 ** 6); // Convert to USDC
-
-      const matchedCloseTrade = closedTrades.find(closeTrade => {
-        const closeToken = closeTrade.market.toUpperCase();
-        const closeSide = closeTrade.side.toLowerCase();
-        const closeCollateral = closeTrade.collateral;
-
-        const tokenMatch = closeToken === openToken;
-        const sideMatch = closeSide === openSide;
-        const collateralMatch = Math.abs(closeCollateral - openCollateral) / openCollateral < 0.01;
-
-        return tokenMatch && sideMatch && collateralMatch;
-      });
-
-      if (!matchedCloseTrade) {
-        if (dbPosition.status === 'CLOSING') {
+      // Case 3: CLOSING status - check if fulfilled
+      if (dbPosition.status === 'CLOSING') {
+        if (isClosedOnChain) {
+          const closeOrder = closedOrders[0];
+          const profitPercentRaw = Number(closeOrder.profitPercent || 0);
+          const profitPercent = profitPercentRaw / 1e6;
+          
+          let trade: any = null;
+          try {
+            trade = await getOstiumTradeById(tradeId);
+          } catch (err: any) {
+            console.log(`   ⚠️  Could not fetch trade: ${err.message}`);
+          }
+          
+          let pnlUsdc = 0;
+          if (trade && trade.collateral) {
+            const collateralRaw = Number(trade.collateral || 0);
+            const collateral = collateralRaw / 1e6;
+            pnlUsdc = collateral * profitPercent;
+          }
+          
+          const exitPriceRaw = Number(closeOrder.price || 0);
+          const exitPrice = exitPriceRaw / 1e18;
+          
+          console.log(`   ✅ CLOSING → CLOSED: Close order fulfilled`);
+          console.log(`      ${dbPosition.token_symbol}: PnL = $${pnlUsdc.toFixed(2)}`);
+          if (hasCancelledCloseOrders) {
+            console.log(`      Note: Closed after ${cancelledOrdersCount} failed attempts`);
+          }
+          
+          await prisma.positions.update({
+            where: { id: dbPosition.id },
+            data: {
+              status: 'CLOSED',
+              closed_at: new Date(),
+              pnl: pnlUsdc,
+              exit_price: exitPrice > 0 ? exitPrice : null,
+              exit_reason: closeOrder.orderAction?.toUpperCase() || 'CLOSE',
+            },
+          });
+          
+          syncedCount++;
+          syncedPositions.add(positionKey);
+        } else {
           const closingAge = Date.now() - (dbPosition.closed_at?.getTime() || dbPosition.opened_at.getTime());
           const minutesInClosing = Math.round(closingAge / 1000 / 60);
           
-          console.log(`   ⏳ CLOSING position not yet in closed trades: ${dbPosition.token_symbol} (waiting ${minutesInClosing} min)`);
-          
           if (minutesInClosing > 15) {
-            console.log(`   ⚠️  CLOSING → OPEN: Close order likely rejected by keeper (>15 min)`);
+            console.log(`   ⚠️  CLOSING → OPEN: Close order rejected (>15 min)`);
+            
             await prisma.positions.update({
               where: { id: dbPosition.id },
               data: {
@@ -160,37 +262,44 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
                 exit_reason: null,
               },
             });
+            
             syncedCount++;
           }
-        } else {
-          console.log(`   ⚠️  No matching close order found for ${dbPosition.token_symbol} (open order: ${dbTradeId})`);
         }
-        continue;
       }
 
-      const pnlUsdc = matchedCloseTrade.pnlUsdc;
-      const exitPrice = matchedCloseTrade.price;
-
-      await prisma.positions.update({
-        where: { id: dbPosition.id },
-        data: {
-          status: 'CLOSED',
-          closed_at: dbPosition.closed_at || new Date(),
-          pnl: pnlUsdc,
-          exit_price: exitPrice > 0 ? exitPrice : dbPosition.exit_price,
-          exit_reason: dbPosition.exit_reason || String(matchedCloseTrade.orderAction).toUpperCase(),
-        },
-      });
-
-      syncedPositions.add(positionKey);
-      
-      if (dbPosition.status === 'CLOSING') {
-        console.log(`   ✅ CLOSING → CLOSED: Synced PnL for ${dbPosition.token_symbol}: $${pnlUsdc.toFixed(2)} (tradeID: ${dbTradeId})`);
-      } else {
-        console.log(`   ✅ Synced PnL for ${dbPosition.token_symbol}: $${pnlUsdc.toFixed(2)} (tradeID: ${dbTradeId})`);
+      // Case 4: CLOSED with missing/zero PnL - update from on-chain data
+      if (dbPosition.status === 'CLOSED' && isClosedOnChain && (!dbPosition.pnl || dbPosition.pnl.toString() === '0')) {
+        const closeOrder = closedOrders[0];
+        const profitPercentRaw = Number(closeOrder.profitPercent || 0);
+        const profitPercent = profitPercentRaw / 1e6;
+        
+        let trade: any = null;
+        try {
+          trade = await getOstiumTradeById(tradeId);
+        } catch (err: any) {
+          console.log(`   ⚠️  Could not fetch trade: ${err.message}`);
+        }
+        
+        let pnlUsdc = 0;
+        if (trade && trade.collateral) {
+          const collateralRaw = Number(trade.collateral || 0);
+          const collateral = collateralRaw / 1e6;
+          pnlUsdc = collateral * profitPercent;
+        }
+        
+        console.log(`   ✅ Updated PnL for ${dbPosition.token_symbol}: $${pnlUsdc.toFixed(2)}`);
+        
+        await prisma.positions.update({
+          where: { id: dbPosition.id },
+          data: {
+            pnl: pnlUsdc,
+          },
+        });
+        
+        syncedCount++;
+        syncedPositions.add(positionKey);
       }
-      syncedCount++;
-
     }
 
     return syncedCount;
@@ -278,14 +387,14 @@ async function calculateAgentMetrics(agentId: string, agentName: string, venue: 
         const tradeId = p.ostium_trade_id;
         if (tradeId) {
           try {
-            const order = await getOstiumOrderById(tradeId);
-            const collateralRaw = Number(order?.collateral || 0);
+            const trade = await getOstiumTradeById(tradeId);
+            const collateralRaw = Number(trade?.collateral || 0);
             const collateral = collateralRaw / 1e6;
             if (collateral > 0) {
               capital = collateral;
             }
           } catch (err: any) {
-            console.log(`   ⚠️  Failed to fetch order ${tradeId} for capital: ${err.message}`);
+            console.log(`   ⚠️  Failed to fetch trade ${tradeId} for capital: ${err.message}`);
           }
         }
       } else {
