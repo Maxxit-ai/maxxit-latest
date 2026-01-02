@@ -385,6 +385,7 @@ model telegram_alpha_users {
   user_wallet           String?                 // Wallet address for lazy traders (links telegram to wallet)
   last_message_at       DateTime?               @db.Timestamptz(6)
   created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  credit_price          Decimal                 @default(0) @db.Decimal(20, 8)
   agent_telegram_users  agent_telegram_users[]
   telegram_posts        telegram_posts[]
 

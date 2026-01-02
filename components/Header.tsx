@@ -8,7 +8,7 @@ import Image from 'next/image';
 import { ethers } from 'ethers';
 
 // Set this to true for testing on Sepolia, false for Mainnet
-const IS_TESTNET = true;
+const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET;
 
 const NETWORKS = {
   MAINNET: {

@@ -15,7 +15,7 @@ interface Web3CheckoutModalProps {
 }
 
 // Set this to true for testing on Sepolia, false for Mainnet
-const IS_TESTNET = true;
+const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET;
 
 const NETWORKS = {
     MAINNET: {
@@ -33,7 +33,7 @@ const NETWORKS = {
 };
 
 const ACTIVE_NETWORK = IS_TESTNET ? NETWORKS.TESTNET : NETWORKS.MAINNET;
-const TREASURY_WALLET = '0xE05C32C447fcaAb67C24eff83796F70c44d64576';
+const TREASURY_WALLET = process.env.TREASURY_WALLET_ADDRESS;
 const USDC_ABI = [
     'function transfer(address to, uint256 amount) external returns (bool)',
 ];
@@ -82,7 +82,7 @@ export function Web3CheckoutModal({
             // Tier price is like "$19" -> need to parse 19
             const priceValue = tier.price.replace('$', '');
             // const amount = ethers.utils.parseUnits(priceValue, 6); // USDC has 6 decimals
-            const amount = ethers.utils.parseUnits("0.01", 6); // USDC has 6 decimals
+            const amount = IS_TESTNET ? ethers.utils.parseUnits("0.01", 6) : ethers.utils.parseUnits(priceValue, 6); // USDC has 6 decimals
 
             // PRE-FLIGHT CHECK: Verify Balance
             const balance = await usdcContract.balanceOf(address);

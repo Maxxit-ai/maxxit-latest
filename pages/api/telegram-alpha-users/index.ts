@@ -26,6 +26,7 @@ export default async function handler(
         impact_factor: true,
         last_message_at: true,
         created_at: true,
+        credit_price: true,
         _count: {
           select: {
             telegram_posts: true, // Total messages

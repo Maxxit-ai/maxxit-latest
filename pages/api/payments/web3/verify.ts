@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { CreditService } from '@lib/credit-service';
 
 // For consistency with frontend toggle
-const IS_TESTNET = true;
+const IS_TESTNET = process.env.USE_TESTNET;
 
 const NETWORKS = {
     MAINNET: {
@@ -19,7 +19,7 @@ const NETWORKS = {
 };
 
 const ACTIVE_NETWORK = IS_TESTNET ? NETWORKS.TESTNET : NETWORKS.MAINNET;
-const TREASURY_WALLET = '0xE05C32C447fcaAb67C24eff83796F70c44d64576'.toLowerCase();
+const TREASURY_WALLET = process.env.TREASURY_WALLET_ADDRESS?.toLowerCase();
 
 const pricingTiers: Record<string, { price: number; credits: number }> = {
     "STARTER": { price: 19, credits: 1000 },

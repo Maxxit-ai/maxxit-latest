@@ -13,8 +13,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'Missing wallet parameter' });
     }
 
+    const normalizedWallet = wallet.toLowerCase();
+
     try {
-        const history = await CreditService.getHistory(wallet);
+        const history = await CreditService.getHistory(normalizedWallet);
         res.status(200).json({ history: serializePrisma(history) });
     } catch (error: any) {
         console.error('Error fetching credit history:', error);

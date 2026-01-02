@@ -163,14 +163,14 @@ export default function Dashboard() {
             }
 
             setTrades(tradesData.trades || []);
-            setDeployments(deploymentsData.deployments || []);
+            setDeployments(Array.isArray(deploymentsData) ? deploymentsData : (deploymentsData.deployments || []));
             setSummary(currentSummary); // Use the calculated currentSummary
             setBalance(finalBalance);
 
             // Update cache
             globalDashboardCache = {
                 trades: tradesData.trades || [],
-                deployments: deploymentsData.deployments || [],
+                deployments: Array.isArray(deploymentsData) ? deploymentsData : (deploymentsData.deployments || []),
                 summary: currentSummary, // Use the calculated currentSummary
                 balance: finalBalance,
                 timestamp: Date.now(),
