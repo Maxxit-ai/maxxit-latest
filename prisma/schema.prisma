@@ -683,6 +683,30 @@ model lazy_trading_link_cache {
   @@index([user_wallet])
 }
 
+model top_traders {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  wallet_address      String   @unique
+  total_volume        Decimal  @db.Decimal(30, 6)
+  total_closed_volume Decimal  @db.Decimal(30, 6)
+  total_pnl           Decimal  @db.Decimal(30, 6)
+  total_profit_trades Int
+  total_loss_trades   Int
+  total_trades        Int
+  last_active_at      DateTime @db.Timestamptz(6)
+  edge_score          Float    @default(0) @db.Real
+  consistency_score   Float    @default(0) @db.Real
+  stake_score         Float    @default(0) @db.Real
+  freshness_score     Float    @default(0) @db.Real
+  impact_factor       Float    @default(0) @db.Real
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+  
+  @@index([wallet_address])
+  @@index([impact_factor])
+  @@index([total_pnl])
+  @@index([updated_at])
+}
+
 enum agent_status_t {
   DRAFT
   PUBLIC

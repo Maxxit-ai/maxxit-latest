@@ -30,3 +30,4 @@ requests>=2.31.0
 # Encryption (for agent private key decryption from user_agent_addresses)
 cryptography>=41.0.0
 
+psutil

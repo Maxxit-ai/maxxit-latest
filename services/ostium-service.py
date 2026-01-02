@@ -15,7 +15,14 @@ import traceback
 import ssl
 import warnings
 import asyncio
-import asyncio
+
+# Resource monitoring
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    print("WARNING: psutil not installed. Resource monitoring disabled. Run: pip install psutil")
+    PSUTIL_AVAILABLE = False
 
 try:
     from dotenv import load_dotenv
@@ -76,6 +83,40 @@ PORT = int(os.getenv('OSTIUM_SERVICE_PORT', '5002'))
 logger.info(f"🚀 Ostium Service Starting...")
 logger.info(f"   Network: {'MAINNET' if OSTIUM_MAINNET else 'TESTNET'}")
 logger.info(f"   RPC URL: {OSTIUM_RPC_URL}")
+
+def get_resource_usage():
+    """
+    Get current CPU and memory usage statistics.
+    Returns a dict with usage info or None if psutil is not available.
+    """
+    if not PSUTIL_AVAILABLE:
+        return None
+    
+    try:
+        process = psutil.Process()
+        
+        # Process-specific metrics
+        process_memory = process.memory_info()
+        process_cpu_percent = process.cpu_percent(interval=0.1)
+        
+        # System-wide metrics
+        system_memory = psutil.virtual_memory()
+        system_cpu_percent = psutil.cpu_percent(interval=0.1)
+        
+        return {
+            'process': {
+                'memory_rss_mb': round(process_memory.rss / (1024 * 1024), 2),
+                'memory_vms_mb': round(process_memory.vms / (1024 * 1024), 2),
+                'cpu_percent': round(process_cpu_percent, 2),
+                'num_threads': process.num_threads(),
+                'open_files': len(process.open_files()),
+                'connections': len(process.net_connections()),
+            },
+            'timestamp': datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting resource usage: {e}")
+        return None
 
 # SDK Cache
 sdk_cache = {}
@@ -192,14 +233,19 @@ def get_available_markets(refresh=False):
 
 def send_insufficient_funds_telegram_notification(user_address: str, market: str, collateral: float):
     """
-    Send a Telegram notification to Lazy Trader users when position open fails due to insufficient funds.
-    Only sends if:
-    1. User has a wallet linked in telegram_alpha_users with lazy_trader=true
-    2. User has a Telegram connection in user_telegram_notifications
+    Send a Telegram notification to users when position open fails due to insufficient funds.
+    Sends notification if user has a telegram_chat_id in user_telegram_notifications table.
     """
     import psycopg2
     from psycopg2.extras import RealDictCursor
     import requests
+    
+    logger.warning("=" * 50)
+    logger.warning("📱 TELEGRAM NOTIFICATION: Insufficient Funds")
+    logger.warning("=" * 50)
+    logger.warning(f"   User Address: {user_address}")
+    logger.warning(f"   Market: {market}")
+    logger.warning(f"   Collateral: ${collateral:.2f}")
     
     try:
         database_url = os.getenv('DATABASE_URL')
@@ -226,47 +272,8 @@ def send_insufficient_funds_telegram_notification(user_address: str, market: str
             conn.close()
             return False
         
-        # Check if user is a lazy trader via telegram_alpha_users
-        logger.warning("   Checking telegram_alpha_users for lazy_trader...")
-        cur.execute(
-            """
-            SELECT id, telegram_user_id, telegram_username, first_name, user_wallet, lazy_trader
-            FROM telegram_alpha_users 
-            WHERE LOWER(user_wallet) = %s AND lazy_trader = true AND is_active = true
-            """,
-            (user_wallet_lower,)
-        )
-        lazy_trader = cur.fetchone()
-        
-        if not lazy_trader:
-            # Let's also check what records exist for this wallet
-            cur.execute(
-                """
-                SELECT id, telegram_username, user_wallet, lazy_trader, is_active
-                FROM telegram_alpha_users 
-                WHERE LOWER(user_wallet) = %s
-                """,
-                (user_wallet_lower,)
-            )
-            any_record = cur.fetchone()
-            
-            if any_record:
-                logger.warning(f"   Found telegram_alpha_users record but conditions not met:")
-                logger.warning(f"      - lazy_trader: {any_record.get('lazy_trader')}")
-                logger.warning(f"      - is_active: {any_record.get('is_active')}")
-            else:
-                logger.warning(f"   ❌ No telegram_alpha_users record found for wallet {user_wallet_lower[:10]}...")
-                
-            logger.warning(f"❌ User {user_wallet_lower[:10]}... is not a lazy trader - skipping Telegram notification")
-            cur.close()
-            conn.close()
-            return False
-        
-        logger.warning(f"   ✅ User is a Lazy Trader: @{lazy_trader.get('telegram_username') or lazy_trader.get('first_name')}")
-        logger.info(f"      - telegram_user_id: {lazy_trader.get('telegram_user_id')}")
-        
-        # Get the user's Telegram chat ID from user_telegram_notifications
-        logger.info("   Checking user_telegram_notifications for chat_id...")
+        # Get the user's Telegram chat ID directly from user_telegram_notifications
+        logger.warning(f"   Checking user_telegram_notifications for wallet {user_wallet_lower[:10]}...")
         cur.execute(
             """
             SELECT telegram_chat_id, telegram_username, is_active
@@ -284,7 +291,7 @@ def send_insufficient_funds_telegram_notification(user_address: str, market: str
             logger.warning(f"   ❌ No user_telegram_notifications record found for {user_wallet_lower[:10]}...")
             return False
             
-        logger.warning(f"   Found user_telegram_notifications record:")
+        logger.warning(f"   ✅ Found user_telegram_notifications record:")
         logger.warning(f"      - telegram_chat_id: {telegram_info.get('telegram_chat_id')}")
         logger.warning(f"      - telegram_username: {telegram_info.get('telegram_username')}")
         logger.warning(f"      - is_active: {telegram_info.get('is_active')}")
@@ -310,7 +317,10 @@ Your position on *{market}* could not be opened due to insufficient balance.
 
 💡 *Action Required:*
 Please ensure you have at least *$5 USDC* in your wallet to open positions.
-"""        
+"""
+        
+        logger.warning(f"   Sending Telegram message...")
+        
         # Send via Telegram Bot API
         telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         payload = {
@@ -372,9 +382,35 @@ def health():
             "trailing_stops": True,
             "position_monitoring": True,
             "close_position_idempotency": True,
-            "error_tuple_detection": True
+            "error_tuple_detection": True,
+            "resource_monitoring": PSUTIL_AVAILABLE
         }
     })
+
+
+@app.route('/resource-usage', methods=['GET'])
+def resource_usage():
+    """
+    Get current resource usage (CPU, memory) for monitoring.
+    Returns process-level and system-level metrics.
+    """
+    if not PSUTIL_AVAILABLE:
+        return jsonify({
+            "success": False,
+            "error": "psutil not installed. Run: pip install psutil"
+        }), 503
+    
+    usage = get_resource_usage()
+    if usage:
+        return jsonify({
+            "success": True,
+            **usage
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "error": "Failed to get resource usage"
+        }), 500
 
 
 @app.route('/test-deployment', methods=['GET'])
@@ -2525,9 +2561,13 @@ if __name__ == '__main__':
     logger.info(f"🚀 Starting Ostium Service on port {PORT}")
     logger.info(f"   Network: {'TESTNET (Arbitrum Sepolia)' if OSTIUM_TESTNET else 'MAINNET'}")
     
+    if PSUTIL_AVAILABLE:
+        logger.info("📊 Resource monitoring available at /resource-usage endpoint")
+    else:
+        logger.warning("⚠️  Resource monitoring disabled (psutil not installed)")
+    
     app.run(
         host='0.0.0.0',
         port=PORT,
         debug=False
     )
-
