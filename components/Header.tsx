@@ -8,7 +8,7 @@ import Image from 'next/image';
 import { ethers } from 'ethers';
 
 // Set this to true for testing on Sepolia, false for Mainnet
-const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET;
+const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET === 'true';
 
 const NETWORKS = {
   MAINNET: {
@@ -154,7 +154,7 @@ export function Header() {
   ];
 
   const tradingItems = [
-    { href: 'https://ostium.maxxit.ai/lazy-trading', label: 'Lazy Trading', icon: Bot, testId: 'nav-lazy-trading' },
+    { href: '/lazy-trading', label: 'Lazy Trading', icon: Bot, testId: 'nav-lazy-trading' },
     { href: '/creator', label: 'Create Club', icon: User, testId: 'nav-my-agents' },
   ];
 

@@ -60,7 +60,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
   return (
     <>
-      <section id="agents" className={`border-[var(--border)] bg-[var(--bg-deep)] ${fromHome ? 'border-t-2 py-24' : 'border-t-0 py-8' }`}>
+      <section id="agents" className={`border-[var(--border)] bg-[var(--bg-deep)] ${fromHome ? 'border-t-2 py-24' : 'border-t-0 py-8'}`}>
         <style jsx>{`
         @keyframes borderScan {
           0% {
@@ -223,6 +223,13 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
         .button-animated:hover > * {
           transform: scale(1.02);
+        }
+
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
       `}</style>
 
@@ -422,16 +429,25 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                   onClick={() => onCardClick(agent)}
                   onMouseEnter={() => setHoveredCard(agent.id)}
                   onMouseLeave={() => setHoveredCard(null)}
-                  className="border-scan flex h-full flex-col justify-between border-2 border-[var(--border)] p-6 cursor-pointer bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-all group card-enter"
+                  className="border-scan flex h-full flex-col justify-between border-2 border-[var(--border)] p-6 cursor-pointer bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-all group card-enter relative overflow-hidden"
                   style={{ animationDelay: `${i * 0.1}s` }}
                 >
-                  <div>
+                  {/* Decorative gradient overlay on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
+                  {/* Subtle grid pattern */}
+                  <div className="absolute inset-0 opacity-[0.02] group-hover:opacity-[0.04] transition-opacity pointer-events-none" style={{
+                    backgroundImage: 'linear-gradient(rgba(0, 255, 136, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 136, 0.1) 1px, transparent 1px)',
+                    backgroundSize: '20px 20px'
+                  }} />
+
+                  <div className="relative z-10">
                     <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="font-display text-xl group-hover:text-accent transition-colors mb-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-display text-xl group-hover:text-accent transition-colors mb-2 truncate">
                           {agent.name}
                         </h3>
-                        <div className="flex items-center gap-2">
+                        {/* <div className="flex items-center gap-2 flex-wrap">
                           {agent.venue === 'MULTI' ? (
                             <span className="text-xs px-2 py-1 border-2 border-accent text-accent bg-accent/10 font-bold">
                               MULTI-VENUE
@@ -441,77 +457,88 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                               {agent.venue}
                             </span>
                           )}
-                        </div>
+                        </div> */}
                       </div>
-                      <div className="border-2 border-[var(--border)] px-2 py-1 bg-[var(--bg-elevated)]">
+                      <div className="border-2 border-[var(--border)] px-2 py-1 bg-[var(--bg-elevated)] flex-shrink-0 ml-2">
                         <span className="text-[var(--text-muted)] text-xs font-mono font-bold">
                           #{String(i + 1).padStart(2, '0')}
                         </span>
                       </div>
                     </div>
 
-                    <div className="mb-6 pb-4">
-                      <p className="data-label mb-2">30D RETURN</p>
-                      <p
-                        className={`data-value text-4xl font-display leading-none ${agent.apr30d && agent.apr30d > 0
-                          ? 'text-accent'
-                          : agent.apr30d && agent.apr30d < 0
-                            ? 'text-[var(--danger)]'
-                            : 'text-[var(--text-muted)]'
-                          }`}
-                      >
-                        {agent.apr30d != null
-                          ? `${agent.apr30d > 0 ? '+' : ''}${agent.apr30d.toFixed(1)}%`
-                          : '—'}
-                      </p>
-                    </div>
-
-                    {agent.sharpe30d != null && (
-                      <div className="flex justify-between items-center text-sm mb-4 pb-3">
-                        <span className="text-[var(--text-muted)] font-mono uppercase text-xs">Sharpe</span>
-                        <span className="font-mono font-bold text-accent">{agent.sharpe30d.toFixed(2)}</span>
+                    {/* Description Section */}
+                    {agent.description && (
+                      <div className=" mb-5 pb-4 border-b border-[#ededed]/30">
+                        <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed opacity-80">
+                          {agent.description}
+                        </p>
                       </div>
                     )}
 
-                    {/* Venue Deployment Status - Always shown to maintain card height */}
-                    <div className="mt-4 pt-4 border-t border-[var(--border)]/50">
-                      <p className="text-xs text-[var(--text-muted)] font-bold uppercase mb-2">Active Venues</p>
-                      <div className="flex flex-wrap gap-2 mb-[1rem]">
-                        {agentDeployments[agent.id] && agentDeployments[agent.id].length > 0 ? (
-                          agentDeployments[agent.id].map((venue) => (
-                            <div
-                              key={venue}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[var(--accent)]/10 border border-[var(--accent)]/40 text-[var(--accent)] text-xs font-bold"
-                            >
-                              <CheckCircle className="w-3 h-3" />
-                              <span>{venue}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[var(--bg-elevated)] border border-[var(--border)]/50 text-[var(--text-muted)] text-xs font-bold">
-                            <span>NONE</span>
+                    {/* Metrics Section - Unified Design */}
+                    <div className="flex-1 flex flex-col justify-center">
+                      {/* Primary Metric - 30D Return */}
+                      <div className="mb-4">
+                        <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1.5 opacity-70">
+                          30D RETURN
+                        </p>
+                        <p
+                          className={`text-3xl font-display leading-none font-bold ${agent.apr30d && agent.apr30d > 0
+                            ? 'text-accent'
+                            : agent.apr30d && agent.apr30d < 0
+                              ? 'text-[var(--danger)]'
+                              : 'text-[var(--text-muted)]'
+                            }`}
+                        >
+                          {agent.apr30d != null
+                            ? `${agent.apr30d > 0 ? '+' : ''}${agent.apr30d.toFixed(1)}%`
+                            : '—'}
+                        </p>
+                      </div>
+
+                      {/* Secondary Metrics */}
+                      <div className="flex gap-3">
+                        {agent.sharpe30d != null && (
+                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-3 py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                            <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 opacity-70">
+                              SHARPE
+                            </p>
+                            <p className="font-mono font-bold text-accent text-base leading-none">
+                              {agent.sharpe30d.toFixed(2)}
+                            </p>
+                          </div>
+                        )}
+                        {agent.apr90d != null && (
+                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-3 py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                            <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 opacity-70">
+                              90D
+                            </p>
+                            <p className={`font-mono font-bold text-base leading-none ${agent.apr90d > 0 ? 'text-accent' : agent.apr90d < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
+                              {agent.apr90d > 0 ? '+' : ''}{agent.apr90d.toFixed(1)}%
+                            </p>
                           </div>
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="pt-4 border-t border-[var(--border)]">
-                    <button
-                      onMouseEnter={() => setHoveredButton(agent.id)}
-                      onMouseLeave={() => setHoveredButton(null)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeployClick(agent);
-                      }}
-                      className="button-animated w-full py-3 border-2 border-[var(--border)] text-sm font-bold bg-[var(--bg-elevated)] flex items-center justify-center gap-2 group/btn relative"
-                    >
-                      <span className="relative z-10 font-bold">JOIN CLUB</span>
-                      <ArrowRight
-                        className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
-                        size={16}
-                      />
-                    </button>
+                    {/* Button Section */}
+                    <div className="pt-6">
+                      <button
+                        onMouseEnter={() => setHoveredButton(agent.id)}
+                        onMouseLeave={() => setHoveredButton(null)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeployClick(agent);
+                        }}
+                        className="button-animated w-full py-3 border-2 border-[var(--border)] text-sm font-bold bg-[var(--bg-elevated)] flex items-center justify-center gap-2 group/btn relative"
+                      >
+                        <span className="relative z-10 font-bold">JOIN CLUB</span>
+                        <ArrowRight
+                          className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
+                          size={16}
+                        />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

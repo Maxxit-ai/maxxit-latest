@@ -1,5 +1,13 @@
 # Ostium Service Requirements
 # Install: pip install -r requirements-ostium.txt
+# 
+# NOTE: ostium-python-sdk-test is published on test PyPI.
+# To install (recommended - checks both PyPI and test PyPI):
+#   pip install --extra-index-url https://test.pypi.org/simple/ -r requirements-ostium.txt
+# 
+# Or install the test package separately first:
+#   pip install -i https://test.pypi.org/simple/ ostium-python-sdk-test==3.0.1.1
+#   pip install -r requirements-ostium.txt
 
 # Core
 Flask>=3.0.0
@@ -7,7 +15,10 @@ flask-cors>=4.0.0
 
 # Ostium SDK (v3.0.0+ required for get_open_trades method)
 # This will pull in all required dependencies: web3, gql, humanize, pydantic, etc.
-ostium-python-sdk==3.0.1
+# Production package (commented out):
+# ostium-python-sdk==3.0.1
+# Test package from test PyPI:
+ostium-python-sdk-test==3.0.1.2
 
 # Database
 psycopg2-binary>=2.9.9

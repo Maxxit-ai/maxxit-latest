@@ -132,6 +132,7 @@ model agents {
   id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   creator_wallet            String
   name                      String
+  description               String?
   venue                     venue_t
   weights                   Int[]                       @db.SmallInt
   apr_30d                   Float?                      @db.Real
@@ -357,6 +358,8 @@ model signals {
   llm_should_trade             Boolean?
   llm_fund_allocation          Float?
   llm_leverage                Float?
+  llm_close_trade_id          String?               
+  llm_net_position_change     String?               
   trade_executed               String?
   execution_result             String?
   routing_history              Json?

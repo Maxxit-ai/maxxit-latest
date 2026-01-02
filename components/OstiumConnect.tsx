@@ -39,8 +39,11 @@ export function OstiumConnect({
   const [delegateApproved, setDelegateApproved] = useState(false);
   const [usdcApproved, setUsdcApproved] = useState(false);
   const [deploymentId, setDeploymentId] = useState<string>('');
-  const [step, setStep] = useState<'connect' | 'preferences' | 'agent' | 'delegate' | 'usdc' | 'complete'>('connect');
+  const [step, setStep] = useState<'connect' | 'preferences' | 'agent' | 'approvals' | 'complete'>('connect');
   const [joiningAgent, setJoiningAgent] = useState(false);
+  const [checkingApprovalStatus, setCheckingApprovalStatus] = useState(false);
+  const [delegationStatus, setDelegationStatus] = useState<boolean | null>(null);
+  const [usdcAllowanceStatus, setUsdcAllowanceStatus] = useState<boolean | null>(null);
 
   // Trading preferences stored locally until all approvals complete
   const [tradingPreferences, setTradingPreferences] = useState<TradingPreferences | null>(null);
@@ -128,14 +131,14 @@ export function OstiumConnect({
               setAgentAddress(setupData.addresses.ostium);
               // Skip delegate (already done) but need USDC approval
               setDelegateApproved(true); // setDelegate is permanent
-              setStep('usdc');
+              setStep('approvals');
               setLoading(false);
             }
           } else {
             // Couldn't check approval status - go through full flow to be safe
-            console.log('[OstiumConnect] Could not check approval status - showing delegate step');
+            console.log('[OstiumConnect] Could not check approval status - showing approvals step');
             setAgentAddress(setupData.addresses.ostium);
-            setStep('delegate');
+            setStep('approvals');
             setLoading(false);
           }
         } else {
@@ -213,7 +216,7 @@ export function OstiumConnect({
       // Don't create deployment here - just assign the agent address
       // Deployment will be created when user clicks "Join Agent" in the complete step
       console.log('[OstiumConnect] Agent address assigned, skipping deployment creation');
-      setStep('delegate');
+      setStep('approvals');
     } catch (err: any) {
       console.error('[OstiumConnect] Failed to assign agent:', err);
       setError(err.message || 'Failed to assign agent wallet');
@@ -319,10 +322,13 @@ export function OstiumConnect({
 
       await tx.wait();
 
-      console.log('[OstiumConnect] ✅ Delegate approved, moving to USDC step');
+      console.log('[OstiumConnect] ✅ Delegate approved');
       setDelegateApproved(true);
-      setStep('usdc');
+      setDelegationStatus(true);
       setTxHash(null); // Clear tx hash for next transaction
+
+      // After delegation, check if USDC approval is needed
+      await checkAndApproveUsdc();
 
     } catch (err: any) {
       console.error('[OstiumConnect] Approval error:', err);
@@ -337,6 +343,118 @@ export function OstiumConnect({
     } finally {
       setLoading(false);
     }
+  };
+
+  const checkAndApproveUsdc = async () => {
+    console.log('[OstiumConnect] checkAndApproveUsdc called - checking USDC approval status');
+    setLoading(true);
+    setError('');
+
+    try {
+      if (!authenticated || !user?.wallet?.address) {
+        throw new Error('Please connect your wallet');
+      }
+
+      const provider = (window as any).ethereum;
+      if (!provider) {
+        throw new Error('No wallet provider found.');
+      }
+
+      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      await ethersProvider.send('eth_requestAccounts', []);
+
+      const network = await ethersProvider.getNetwork();
+      if (network.chainId !== ARBITRUM_CHAIN_ID) {
+        throw new Error('Please switch to Arbitrum');
+      }
+
+      const signer = ethersProvider.getSigner();
+      const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
+
+      const currentAllowanceStorage = await usdcContract.allowance(user.wallet.address, OSTIUM_STORAGE);
+      const allowanceAmount = ethers.utils.parseUnits('1000000', 6);
+
+      const storageAllowance = parseFloat(ethers.utils.formatUnits(currentAllowanceStorage, 6));
+      const requiredAmount = parseFloat(ethers.utils.formatUnits(allowanceAmount, 6));
+
+      console.log('[OstiumConnect] USDC Approval Check:');
+      console.log('  Storage allowance:', storageAllowance, 'USDC');
+      console.log('  Required amount:', requiredAmount, 'USDC');
+
+      const MIN_REQUIRED_APPROVAL = 100;
+      const needsStorageApproval = storageAllowance < MIN_REQUIRED_APPROVAL;
+
+      console.log('  Needs Storage approval:', needsStorageApproval, `(current: ${storageAllowance}, required: ${MIN_REQUIRED_APPROVAL})`);
+
+      if (!needsStorageApproval) {
+        console.log('[OstiumConnect] USDC already sufficiently approved');
+        setUsdcApproved(true);
+        setUsdcAllowanceStatus(true);
+
+        // If both are done, move to complete
+        if (delegateApproved) {
+          setStep('complete');
+          if (onSuccess) {
+            onSuccess();
+          }
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Approval is needed - proceed with transaction
+      console.log('[OstiumConnect] USDC approval needed, proceeding with transaction');
+      await approveUsdcTransaction();
+    } catch (err: any) {
+      console.error('USDC approval check error:', err);
+      setError(err.message || 'Failed to check USDC approval');
+      setLoading(false);
+    }
+  };
+
+  const approveUsdcTransaction = async () => {
+    if (!authenticated || !user?.wallet?.address) {
+      throw new Error('Please connect your wallet');
+    }
+
+    const provider = (window as any).ethereum;
+    const ethersProvider = new ethers.providers.Web3Provider(provider);
+    const signer = ethersProvider.getSigner();
+    const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
+
+    const allowanceAmount = ethers.utils.parseUnits('1000000', 6);
+
+    const approveData = usdcContract.interface.encodeFunctionData('approve', [OSTIUM_STORAGE, allowanceAmount]);
+    const gasEstimate = await ethersProvider.estimateGas({
+      to: USDC_TOKEN,
+      from: user.wallet.address,
+      data: approveData,
+    });
+
+    const gasWithBuffer = gasEstimate.mul(150).div(100);
+    console.log(`[OstiumConnect] USDC Storage approval - Gas estimate: ${gasEstimate.toString()}, with 50% buffer: ${gasWithBuffer.toString()}`);
+
+    const txHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [{
+        from: user.wallet.address,
+        to: USDC_TOKEN,
+        data: approveData,
+        gas: gasWithBuffer.toHexString(),
+      }],
+    });
+
+    setTxHash(txHash);
+    await ethersProvider.waitForTransaction(txHash);
+
+    setUsdcApproved(true);
+    setUsdcAllowanceStatus(true);
+
+    // If both approvals are done, move to complete
+    if (delegateApproved) {
+      setStep('complete');
+    }
+    setLoading(false);
   };
 
   const approveUsdc = async () => {
@@ -388,13 +506,16 @@ export function OstiumConnect({
       // console.log('  Needs Trading approval:', needsTradingApproval, `(current: ${tradingAllowance}, required: ${MIN_REQUIRED_APPROVAL})`);
 
       if (!needsStorageApproval) {
-        console.log('[OstiumConnect] USDC already sufficiently approved, skipping to complete');
+        console.log('[OstiumConnect] USDC already sufficiently approved');
         setUsdcApproved(true);
-        setStep('complete');
+        setUsdcAllowanceStatus(true);
 
-        // Call onSuccess but don't auto-close - let user close manually
-        if (onSuccess) {
-          onSuccess();
+        // If both are done, move to complete
+        if (delegateApproved && usdcApproved) {
+          setStep('complete');
+          if (onSuccess) {
+            onSuccess();
+          }
         }
         return;
       }
@@ -403,62 +524,8 @@ export function OstiumConnect({
       console.log('[OstiumConnect] USDC approval needed, proceeding with transaction(s)');
 
       if (needsStorageApproval) {
-        const approveData = usdcContract.interface.encodeFunctionData('approve', [OSTIUM_STORAGE, allowanceAmount]);
-        const gasEstimate = await ethersProvider.estimateGas({
-          to: USDC_TOKEN,
-          from: user.wallet.address,
-          data: approveData,
-        });
-
-        // 50% gas buffer for reliability
-        const gasWithBuffer = gasEstimate.mul(150).div(100);
-        console.log(`[OstiumConnect] USDC Storage approval - Gas estimate: ${gasEstimate.toString()}, with 50% buffer: ${gasWithBuffer.toString()}`);
-
-        const txHash = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [{
-            from: user.wallet.address,
-            to: USDC_TOKEN,
-            data: approveData,
-            gas: gasWithBuffer.toHexString(),
-          }],
-        });
-
-        setTxHash(txHash);
-        await ethersProvider.waitForTransaction(txHash);
+        await approveUsdcTransaction();
       }
-
-      // if (needsTradingApproval) {
-      //   const approveDataTrading = usdcContract.interface.encodeFunctionData('approve', [OSTIUM_TRADING_CONTRACT, allowanceAmount]);
-      //   const gasEstimateTrading = await ethersProvider.estimateGas({
-      //     to: USDC_TOKEN,
-      //     from: user.wallet.address,
-      //     data: approveDataTrading,
-      //   });
-
-      //   // 50% gas buffer for reliability
-      //   const gasWithBufferTrading = gasEstimateTrading.mul(150).div(100);
-      //   console.log(`[OstiumConnect] USDC Trading approval - Gas estimate: ${gasEstimateTrading.toString()}, with 50% buffer: ${gasWithBufferTrading.toString()}`);
-
-      //   const txHashTrading = await provider.request({
-      //     method: 'eth_sendTransaction',
-      //     params: [{
-      //       from: user.wallet.address,
-      //       to: USDC_TOKEN,
-      //       data: approveDataTrading,
-      //       gas: gasWithBufferTrading.toHexString(),
-      //     }],
-      //   });
-
-      //   setTxHash(txHashTrading);
-      //   await ethersProvider.waitForTransaction(txHashTrading);
-      // }
-
-      setUsdcApproved(true);
-      setStep('complete');
-
-      // Don't call onSuccess here - wait until deployment is actually created
-      // onSuccess will be called in joinAgent function
 
     } catch (err: any) {
       console.error('USDC approval error:', err);
@@ -480,7 +547,7 @@ export function OstiumConnect({
   };
 
   const handlePreferencesSet = (preferences: TradingPreferences) => {
-    console.log('[OstiumConnect] Trading preferences set:', preferences);
+    // console.log('[OstiumConnect] Trading preferences set:', preferences);
     tradingPreferencesRef.current = preferences;
     setTradingPreferences(preferences);
 
@@ -522,14 +589,121 @@ export function OstiumConnect({
       setStep('connect');
     } else if (step === 'agent') {
       setStep('preferences');
-    } else if (step === 'delegate') {
+    } else if (step === 'approvals') {
       setStep('preferences');
-    } else if (step === 'usdc') {
-      setStep('delegate');
     } else if (step === 'complete') {
-      setStep('usdc');
+      setStep('approvals');
     }
   };
+
+  const checkApprovalStatus = async (): Promise<{ isDelegated: boolean; hasApproval: boolean }> => {
+    if (!user?.wallet?.address || !agentAddress) {
+      return { isDelegated: false, hasApproval: false };
+    }
+
+    setCheckingApprovalStatus(true);
+    try {
+      // Check delegation status
+      const delegationResponse = await fetch(
+        `/api/ostium/check-delegation-status?userWallet=${user.wallet.address}&agentAddress=${agentAddress}`
+      );
+
+      let isDelegated = false;
+      if (delegationResponse.ok) {
+        const delegationData = await delegationResponse.json();
+        isDelegated = delegationData.isDelegatedToAgent;
+        setDelegationStatus(isDelegated);
+        setDelegateApproved(isDelegated);
+        console.log('[OstiumConnect] Delegation status:', isDelegated);
+      }
+
+      // Check USDC allowance
+      const allowanceResponse = await fetch(
+        `/api/ostium/check-approval-status?userWallet=${user.wallet.address}`
+      );
+
+      let hasApproval = false;
+      if (allowanceResponse.ok) {
+        const allowanceData = await allowanceResponse.json();
+        hasApproval = allowanceData.hasApproval;
+        setUsdcAllowanceStatus(hasApproval);
+        setUsdcApproved(hasApproval);
+        console.log('[OstiumConnect] USDC allowance status:', hasApproval);
+      }
+
+      // If both are done, move to complete
+      if (isDelegated && hasApproval) {
+        setStep('complete');
+        if (onSuccess) {
+          onSuccess();
+        }
+      }
+
+      return { isDelegated, hasApproval };
+    } catch (err) {
+      console.error('[OstiumConnect] Error checking approval status:', err);
+      return { isDelegated: false, hasApproval: false };
+    } finally {
+      setCheckingApprovalStatus(false);
+    }
+  };
+
+  const enableOneClickTrading = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      if (!authenticated || !user?.wallet?.address) {
+        throw new Error('Please connect your wallet');
+      }
+
+      if (!agentAddress) {
+        throw new Error('Agent not assigned yet');
+      }
+
+      // First, check current status
+      const { isDelegated, hasApproval } = await checkApprovalStatus();
+
+      // If delegation is not done, do it first
+      if (!isDelegated) {
+        console.log('[OstiumConnect] Delegation needed, proceeding...');
+        await approveAgent();
+        // approveAgent will call checkAndApproveUsdc after completion
+        return;
+      }
+
+      // If delegation is done but USDC is not, approve USDC
+      if (isDelegated && !hasApproval) {
+        console.log('[OstiumConnect] USDC approval needed, proceeding...');
+        await checkAndApproveUsdc();
+        return;
+      }
+
+      // Both are done, move to complete
+      if (isDelegated && hasApproval) {
+        setStep('complete');
+        if (onSuccess) {
+          onSuccess();
+        }
+        setLoading(false);
+      }
+    } catch (err: any) {
+      console.error('[OstiumConnect] Error enabling 1-click trading:', err);
+      if (err.code === 4001 || err.message?.includes('rejected')) {
+        setError('Transaction rejected');
+      } else {
+        setError(err.message || 'Failed to enable 1-click trading');
+      }
+      setLoading(false);
+    }
+  };
+
+  // Check approval status when entering approvals step
+  useEffect(() => {
+    if (step === 'approvals' && user?.wallet?.address && agentAddress && !checkingApprovalStatus) {
+      checkApprovalStatus();
+    }
+  }, [step, user?.wallet?.address, agentAddress]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -611,7 +785,7 @@ export function OstiumConnect({
 
               <li className="flex items-start gap-3">
                 <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold ${step === 'delegate'
+                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold ${step === 'approvals'
                     ? 'border-[var(--accent)] text-[var(--accent)]'
                     : 'border-[var(--border)] text-[var(--text-muted)]'
                     }`}
@@ -619,23 +793,8 @@ export function OstiumConnect({
                   3
                 </span>
                 <div>
-                  <p className="font-semibold">Assign trading agent</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Let the agent trade on your behalf.</p>
-                </div>
-              </li>
-
-              <li className="flex items-start gap-3">
-                <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold ${step === 'usdc'
-                    ? 'border-[var(--accent)] text-[var(--accent)]'
-                    : 'border-[var(--border)] text-[var(--text-muted)]'
-                    }`}
-                >
-                  4
-                </span>
-                <div>
-                  <p className="font-semibold">Provide funds (non-custodial)</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Funds stay in your wallet, only routed to Ostium.</p>
+                  <p className="font-semibold">Enable 1-Click Trading</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">Delegate signatures and set allowance.</p>
                 </div>
               </li>
 
@@ -646,7 +805,7 @@ export function OstiumConnect({
                     : 'border-[var(--border)] text-[var(--text-muted)]'
                     }`}
                 >
-                  5
+                  4
                 </span>
                 <div>
                   <p className="font-semibold">Join Agent</p>
@@ -769,173 +928,121 @@ export function OstiumConnect({
                   </p>
                 </div>
               </div>
-            ) : step === 'delegate' ? (
+            ) : step === 'approvals' ? (
               <>
-                <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4 space-y-2 rounded">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-[var(--accent)] font-semibold">Step 3 · Assign Agent to Trade for You</p>
-                    {delegateApproved && (
-                      <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
-                        Completed
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    This assigns your Alpha Club's trading wallet to execute trades on your behalf. The agent can open and close positions, but <strong className="text-[var(--accent)]">cannot withdraw your funds</strong>.
-                  </p>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-3 text-xs">
-                  <div className="border border-[var(--border)] p-3 rounded">
-                    <p className="font-semibold text-[var(--text-primary)]">Trading wallet assigned</p>
-                    <p className="font-mono break-all text-[var(--text-secondary)] mt-1">{agentAddress}</p>
-                  </div>
-                  <div className="border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 rounded">
-                    <p className="font-semibold text-[var(--accent)]">🔒 Your funds stay safe</p>
-                    <p className="text-[var(--text-secondary)] mt-1">
-                      Agent can only trade. It cannot withdraw, transfer, or access any other tokens. Revoke anytime.
+                <div className="space-y-6">
+                  {/* Header */}
+                  <div>
+                    <h3 className="font-display text-2xl mb-2">Enable 1-Click Trading</h3>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Make the most of Ostium. Enable gasless transactions and 1-click trading.
                     </p>
                   </div>
-                </div>
 
-                {txHash && (
-                  <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-3">
-                    <p className="text-[var(--accent)] text-sm mb-2">✓ Transaction confirmed</p>
-                    <a
-                      href={`https://sepolia.arbiscan.io/tx/${txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1"
-                    >
-                      View on Arbiscan <ExternalLink className="w-3 h-3" />
-                    </a>
+                  {/* Steps Section */}
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">STEPS</p>
+                      <p className="text-xs text-[var(--text-secondary)] mb-4">Sign the following wallet requests.</p>
+                    </div>
+
+                    {/* Step 1: Enable Account Delegation */}
+                    <div className="flex items-start gap-4 p-4 border border-[var(--border)] rounded">
+                      <div className={`w-10 h-10 rounded border-2 flex items-center justify-center flex-shrink-0 ${checkingApprovalStatus && delegationStatus === null
+                        ? 'border-[var(--border)] bg-[var(--bg-deep)]'
+                        : delegateApproved
+                          ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+                          : 'border-[var(--border)] bg-[var(--bg-deep)]'
+                        }`}>
+                        {checkingApprovalStatus && delegationStatus === null ? (
+                          <Activity className="w-5 h-5 text-[var(--text-muted)] animate-spin" />
+                        ) : delegateApproved ? (
+                          <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
+                        ) : (
+                          <div className="w-5 h-5 flex items-center justify-center">
+                            <div className="w-3 h-3 border-2 border-[var(--text-muted)] rounded" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-[var(--text-muted)] mb-1">ENABLE ACCOUNT DELEGATION</p>
+                        <p className="text-xs text-[var(--text-secondary)]">Delegate signatures to a smart wallet.</p>
+                      </div>
+                    </div>
+
+                    {/* Step 2: Set Allowance */}
+                    <div className="flex items-start gap-4 p-4 border border-[var(--border)] rounded">
+                      <div className={`w-10 h-10 rounded border-2 flex items-center justify-center flex-shrink-0 ${checkingApprovalStatus && usdcAllowanceStatus === null
+                        ? 'border-[var(--border)] bg-[var(--bg-deep)]'
+                        : usdcApproved
+                          ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+                          : 'border-[var(--border)] bg-[var(--bg-deep)]'
+                        }`}>
+                        {checkingApprovalStatus && usdcAllowanceStatus === null ? (
+                          <Activity className="w-5 h-5 text-[var(--text-muted)] animate-spin" />
+                        ) : usdcApproved ? (
+                          <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
+                        ) : (
+                          <span className="text-sm font-bold text-[var(--text-muted)]">2</span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-[var(--text-muted)] mb-1">SET ALLOWANCE</p>
+                        <p className="text-xs text-[var(--text-secondary)]">Set the maximum allowance. It's advisable to set this high.</p>
+                      </div>
+                    </div>
                   </div>
-                )}
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={goBack}
-                    className="w-32 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
-                    type="button"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={approveAgent}
-                    disabled={loading || delegateApproved}
-                    className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <Activity className="w-5 h-5 animate-pulse" />
-                        SIGNING...
-                      </>
-                    ) : delegateApproved ? (
-                      <>
-                        <CheckCircle className="w-5 h-5" />
-                        DELEGATE APPROVED
-                      </>
-                    ) : (
-                      'APPROVE AGENT ACCESS →'
-                    )}
-                  </button>
-                  {delegateApproved && (
-                    <button
-                      onClick={() => setStep('usdc')}
-                      className="w-40 py-3 border border-[var(--accent)] text-[var(--accent)] font-semibold hover:bg-[var(--accent)]/10 transition-colors"
-                      type="button"
-                    >
-                      Next: USDC
-                    </button>
+                  {/* Transaction Status */}
+                  {txHash && (
+                    <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-3 rounded">
+                      <p className="text-[var(--accent)] text-sm mb-2">✓ Transaction confirmed</p>
+                      <a
+                        href={`https://sepolia.arbiscan.io/tx/${txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1"
+                      >
+                        View on Arbiscan <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
                   )}
-                </div>
-              </>
-            ) : step === 'usdc' ? (
-              <>
-                <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4 space-y-3 text-sm rounded">
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold text-[var(--accent)]">STEP 4: PROVIDE FUNDS TO AGENT (NON-CUSTODIAL)</p>
-                    {!usdcApproved && (
-                      <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
-                        Required
-                      </span>
-                    )}
-                    {usdcApproved && (
-                      <span className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold rounded">
-                        Completed
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[var(--text-secondary)]">
-                    You're allowing the agent to use your USDC for trading on Ostium. This is <strong className="text-[var(--accent)]">100% non-custodial</strong>: your funds never leave your wallet — they're only routed to Ostium for position management.
-                  </p>
-                </div>
 
-                <div className="grid md:grid-cols-2 gap-3 text-xs">
-                  <div className="border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 rounded">
-                    <p className="font-semibold text-[var(--accent)]">🔒 Non-custodial guarantee</p>
-                    <p className="text-[var(--text-secondary)] mt-1">
-                      Funds stay in YOUR wallet. Agent can only route USDC to Ostium for trades — cannot withdraw or transfer elsewhere.
-                    </p>
-                  </div>
-                  <div className="border border-[var(--border)] p-3 rounded">
-                    <p className="font-semibold text-[var(--text-primary)]">Full control</p>
-                    <p className="text-[var(--text-secondary)] mt-1">
-                      Revoke or reduce this allowance anytime from your wallet. Agent cannot access other tokens.
-                    </p>
-                  </div>
-                </div>
-
-                {txHash && (
-                  <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-3">
-                    <p className="text-[var(--accent)] text-sm mb-2">✓ Transaction confirmed</p>
-                    <a
-                      href={`https://sepolia.arbiscan.io/tx/${txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1"
-                    >
-                      View on Arbiscan <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={goBack}
-                    className="w-32 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
-                    type="button"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={approveUsdc}
-                    disabled={loading || usdcApproved}
-                    className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <Activity className="w-5 h-5 animate-pulse" />
-                        SIGNING...
-                      </>
-                    ) : usdcApproved ? (
-                      <>
-                        <CheckCircle className="w-5 h-5" />
-                        USDC APPROVED
-                      </>
-                    ) : (
-                      'APPROVE USDC →'
-                    )}
-                  </button>
-                  {usdcApproved && (
+                  {/* Action Buttons */}
+                  <div className="flex gap-3">
                     <button
-                      onClick={() => setStep('complete')}
-                      className="w-40 py-3 border border-[var(--accent)] text-[var(--accent)] font-semibold hover:bg-[var(--accent)]/10 transition-colors"
+                      onClick={goBack}
+                      className="w-32 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
                       type="button"
+                      disabled={loading || checkingApprovalStatus}
                     >
-                      Next: Finish
+                      Back
                     </button>
-                  )}
+                    <button
+                      onClick={enableOneClickTrading}
+                      disabled={loading || checkingApprovalStatus || (delegateApproved && usdcApproved)}
+                      className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {checkingApprovalStatus ? (
+                        <>
+                          <Activity className="w-5 h-5 animate-spin" />
+                          CHECKING STATUS...
+                        </>
+                      ) : loading ? (
+                        <>
+                          <Activity className="w-5 h-5 animate-pulse" />
+                          SIGNING...
+                        </>
+                      ) : delegateApproved && usdcApproved ? (
+                        <>
+                          <CheckCircle className="w-5 h-5" />
+                          ALL APPROVALS COMPLETE
+                        </>
+                      ) : (
+                        'ENABLE 1-CLICK TRADING'
+                      )}
+                    </button>
+                  </div>
                 </div>
               </>
             ) : deploymentId ? (

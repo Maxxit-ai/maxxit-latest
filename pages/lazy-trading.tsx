@@ -3,9 +3,9 @@
  *
  * A streamlined 4-step flow:
  * 1. Connect Wallet
- * 2. Connect Telegram (as signal source)
+ * 2. Ostium Setup (Delegation + Allowance)
  * 3. Trading Preferences
- * 4. Ostium Setup (Delegation + Allowance)
+ * 4. Connect Telegram (as signal source)
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -60,11 +60,11 @@ export default function LazyTrading() {
   const { authenticated, user, login } = usePrivy();
 
   // Redirect to external URL when page is accessed directly
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.location.href = 'https://ostium.maxxit.ai/lazy-trading';
-    }
-  }, []);
+  // useEffect(() => {
+  //   if (typeof window !== 'undefined') {
+  //     window.location.href = 'https://ostium.maxxit.ai/lazy-trading';
+  //   }
+  // }, []);
 
   const [step, setStep] = useState<Step>("wallet");
   const [loading, setLoading] = useState(false);
@@ -88,6 +88,9 @@ export default function LazyTrading() {
   const [delegationComplete, setDelegationComplete] = useState(false);
   const [allowanceComplete, setAllowanceComplete] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [checkingOstiumStatus, setCheckingOstiumStatus] = useState(false);
+  const [enablingTrading, setEnablingTrading] = useState(false);
+  const [currentAction, setCurrentAction] = useState<string>("");
 
   // ETH sending state (for funding agent address)
   const [ethAmount, setEthAmount] = useState<string>("0.005");
@@ -137,9 +140,7 @@ export default function LazyTrading() {
           setHyperliquidAgentAddress(data.hyperliquidAgentAddress);
         }
 
-        // NEW: Pre-fill delegation and approval status from API
-        // This matches the normal club flow behavior - if user already has
-        // delegated and approved, we skip those steps
+        // Pre-fill delegation and approval status from API
         if (data.isDelegatedToAgent) {
           console.log("[LazyTrading] Delegation already complete - pre-filling state");
           setDelegationComplete(true);
@@ -149,16 +150,17 @@ export default function LazyTrading() {
           setAllowanceComplete(true);
         }
 
-        // Set the current step based on progress
-        // Note: The API now returns 'complete' step if both delegation and approval are done
-        setStep(data.step as Step);
+        // If agent already exists, setup is complete - go to complete step
+        if (data.agent && data.telegramUser && data.tradingPreferences) {
+          console.log("[LazyTrading] Setup already complete - going to complete step");
+          setStep("complete");
+        } else {
+          // Set the current step based on progress
+          setStep(data.step as Step);
+        }
 
-        // If on ostium step, set address and check delegation/allowance status
-        if (data.step === "ostium" && data.ostiumAgentAddress) {
-          setOstiumAgentAddress(data.ostiumAgentAddress);
-          // Check status after address is set (useEffect will handle this)
-        } else if (data.ostiumAgentAddress) {
-          // Even if not on ostium step, set the address for future use
+        // Set address if available
+        if (data.ostiumAgentAddress) {
           setOstiumAgentAddress(data.ostiumAgentAddress);
         }
       } else {
@@ -179,11 +181,16 @@ export default function LazyTrading() {
         if (data.hyperliquidAgentAddress) {
           setHyperliquidAgentAddress(data.hyperliquidAgentAddress);
         }
-        setStep("telegram");
+        // New flow: start with ostium if wallet connected
+        if (data.hasExistingOstiumAddress && data.ostiumAgentAddress) {
+          setStep("ostium");
+        } else {
+          setStep("ostium");
+        }
       }
     } catch (err) {
       console.error("Error loading existing setup:", err);
-      setStep("telegram");
+      setStep("ostium");
     } finally {
       setInitialLoadDone(true);
     }
@@ -206,11 +213,18 @@ export default function LazyTrading() {
 
   // Check Ostium status when on ostium step and agent address is available
   useEffect(() => {
-    if (step === "ostium" && user?.wallet?.address && ostiumAgentAddress) {
+    if (step === "ostium" && user?.wallet?.address && ostiumAgentAddress && !checkingOstiumStatus) {
       console.log(
         "[Ostium] Agent address available, checking delegation status..."
       );
       checkOstiumStatus();
+    }
+  }, [step, user?.wallet?.address, ostiumAgentAddress]);
+
+  // Generate Ostium address when wallet is connected and on ostium step
+  useEffect(() => {
+    if (step === "ostium" && user?.wallet?.address && !ostiumAgentAddress && !loading) {
+      generateOstiumAddress();
     }
   }, [step, user?.wallet?.address, ostiumAgentAddress]);
 
@@ -259,8 +273,18 @@ export default function LazyTrading() {
         if (data.agentId) {
           setAgentId(data.agentId);
         }
-        // Stay on telegram step to show connected state
-        setStep("telegram");
+
+        // If agent already exists, go to complete step
+        if (agentId) {
+          console.log("[Telegram] Agent already exists, going to complete step");
+          setStep("complete");
+        } else if (tradingPreferences) {
+          // Create agent after telegram connection if preferences are set
+          await createAgentAndProceed(tradingPreferences);
+        } else {
+          // Stay on telegram step to show connected state
+          setStep("telegram");
+        }
       } else {
         // Still waiting for connection
         console.log("[Telegram] ⏳ Still waiting for connection...", {
@@ -319,11 +343,20 @@ export default function LazyTrading() {
 
   const handlePreferencesSave = (prefs: TradingPreferences) => {
     setTradingPreferences(prefs);
-    createAgentAndProceed(prefs);
+    // Just save preferences and move to telegram step
+    // Agent will be created after telegram connection
+    setStep("telegram");
   };
 
   const createAgentAndProceed = async (prefs: TradingPreferences) => {
     if (!user?.wallet?.address || !telegramUser) return;
+
+    // Check if agent already exists - prevent duplicate creation
+    if (agentId) {
+      console.log("[LazyTrading] Agent already exists, skipping creation");
+      setStep("complete");
+      return;
+    }
 
     setLoading(true);
     setError("");
@@ -349,31 +382,22 @@ export default function LazyTrading() {
 
         if (data.ostiumAgentAddress) {
           setOstiumAgentAddress(data.ostiumAgentAddress);
-          // Wait a bit for state to update, then check status
-          setTimeout(() => {
-            checkOstiumStatus();
-          }, 100);
-        } else {
-          // Generate agent address if not returned
-          await generateOstiumAddress();
-          // checkOstiumStatus will be called via useEffect when address is set
         }
 
         if (data.hyperliquidAgentAddress) {
           setHyperliquidAgentAddress(data.hyperliquidAgentAddress);
         }
 
-        // NEW: Check if delegation and approval are already complete
-        // (from existing wallet setup via normal club flow)
-        // If both are already done, skip to complete step
-        if (delegationComplete && allowanceComplete) {
-          console.log("[LazyTrading] Delegation and approval already complete, skipping to complete step");
+        // Move to complete step after agent creation
+        setStep("complete");
+      } else {
+        // If agent already exists error, go to complete step
+        if (data.error?.includes("already exists") || data.error?.includes("already created")) {
+          console.log("[LazyTrading] Agent already exists on server, going to complete step");
           setStep("complete");
         } else {
-          setStep("ostium");
+          setError(data.error || "Failed to create agent");
         }
-      } else {
-        setError(data.error || "Failed to create agent");
       }
     } catch (err: any) {
       setError(err.message || "Failed to create agent");
@@ -412,6 +436,7 @@ export default function LazyTrading() {
       return;
     }
 
+    setCheckingOstiumStatus(true);
     try {
       console.log(
         "[Ostium] Checking delegation status for:",
@@ -471,6 +496,8 @@ export default function LazyTrading() {
       }
     } catch (err) {
       console.error("[Ostium] Error checking Ostium status:", err);
+    } finally {
+      setCheckingOstiumStatus(false);
     }
   };
 
@@ -485,7 +512,6 @@ export default function LazyTrading() {
       return;
     }
 
-    setLoading(true);
     setError("");
 
     try {
@@ -548,20 +574,20 @@ export default function LazyTrading() {
       console.error("Delegation error:", err);
       if (err.code === 4001) {
         setError("Transaction rejected");
+        throw err; // Re-throw to stop the flow
       } else if (err.code === -32603) {
         setError("Transaction failed. Please check your wallet balance.");
+        throw err;
       } else {
         setError(err.message || "Failed to approve delegation");
+        throw err;
       }
-    } finally {
-      setLoading(false);
     }
   };
 
   const approveUsdc = async () => {
     if (!authenticated || !user?.wallet?.address) return;
 
-    setLoading(true);
     setError("");
 
     try {
@@ -607,19 +633,68 @@ export default function LazyTrading() {
 
       setAllowanceComplete(true);
       setTxHash(null);
-
-      // Both complete - move to final step
-      if (delegationComplete) {
-        setStep("complete");
-      }
     } catch (err: any) {
       if (err.code === 4001 || err.message?.includes("rejected")) {
         setError("Transaction rejected");
+        throw err; // Re-throw to stop the flow
       } else {
         setError(err.message || "Failed to approve USDC");
+        throw err;
       }
+    }
+  };
+
+  // Combined function to enable 1-click trading
+  const enableOneClickTrading = async () => {
+    if (!authenticated || !user?.wallet?.address) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    if (!ostiumAgentAddress) {
+      setError("Agent address not found. Please refresh the page.");
+      return;
+    }
+
+    setEnablingTrading(true);
+    setError("");
+
+    try {
+      // First check current status to see what's needed
+      await checkOstiumStatus();
+
+      // Wait a moment for state to update after status check
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // If delegation is not complete, do it first
+      if (!delegationComplete) {
+        setCurrentAction("Setting delegation...");
+        await approveDelegation();
+        // Wait for transaction to be confirmed and state to update
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Verify delegation status
+        await checkOstiumStatus();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      // If allowance is not complete, do it next
+      if (!allowanceComplete) {
+        setCurrentAction("Approving USDC allowance...");
+        await approveUsdc();
+        // Wait for transaction to be confirmed and state to update
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Verify allowance status
+        await checkOstiumStatus();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      // Both should be complete now - useEffect will handle transition to preferences
+    } catch (err: any) {
+      // Error is already set in approveDelegation or approveUsdc
+      console.error("Error enabling 1-click trading:", err);
     } finally {
-      setLoading(false);
+      setEnablingTrading(false);
+      setCurrentAction("");
     }
   };
 
@@ -671,18 +746,21 @@ export default function LazyTrading() {
     }
   };
 
-  // Proceed to complete when both delegation and allowance are done
+  // Proceed to preferences when both delegation and allowance are done
   useEffect(() => {
-    if (step === "ostium" && delegationComplete && allowanceComplete) {
-      setStep("complete");
+    if (step === "ostium" && delegationComplete && allowanceComplete && !enablingTrading) {
+      // Small delay to show completion state
+      setTimeout(() => {
+        setStep("preferences");
+      }, 500);
     }
-  }, [step, delegationComplete, allowanceComplete]);
+  }, [step, delegationComplete, allowanceComplete, enablingTrading]);
 
   const steps = [
     { id: "wallet", label: "WALLET", icon: Wallet },
-    { id: "telegram", label: "TELEGRAM", icon: Send },
-    { id: "preferences", label: "PREFERENCES", icon: Sliders },
     { id: "ostium", label: "OSTIUM", icon: Shield },
+    { id: "preferences", label: "PREFERENCES", icon: Sliders },
+    { id: "telegram", label: "TELEGRAM", icon: Send },
     { id: "complete", label: "COMPLETE", icon: Check },
   ];
 
@@ -711,44 +789,61 @@ export default function LazyTrading() {
 
         {/* Progress Steps */}
         <div className="mb-12">
-          <div className="relative">
-            <div className="absolute top-4 left-4 right-4 h-0.5 bg-[var(--border)]" />
+          <div className="relative px-2">
+            {/* Background line */}
+            <div className="absolute top-6 left-8 right-8 h-0.5 bg-[var(--border)]" />
+            {/* Progress line with gradient */}
             <div
-              className="absolute top-4 left-4 h-0.5 bg-[var(--accent)] transition-all duration-500"
+              className="absolute top-6 left-8 h-0.5 bg-gradient-to-r from-[var(--accent)] to-[var(--accent)] transition-all duration-700 ease-out"
               style={{
-                width: `calc(${(currentStepIndex / (steps.length - 1)) * 100
-                  }% - 32px)`,
+                width: `calc(${(currentStepIndex / (steps.length - 1)) * 100}% - 64px)`,
               }}
             />
-            <div className="relative flex justify-between">
+            <div className="relative flex justify-between items-start">
               {steps.map((s, index) => {
                 const Icon = s.icon;
                 const isCompleted = index < currentStepIndex;
                 const isCurrent = s.id === step;
+                const isUpcoming = index > currentStepIndex;
+
                 return (
-                  <div key={s.id} className="flex flex-col items-center">
+                  <div key={s.id} className="flex flex-col items-center flex-1 relative z-10">
+                    {/* Step indicator */}
                     <div
-                      className={`w-8 h-8 flex items-center justify-center transition-all border ${isCompleted
-                        ? "bg-[var(--accent)] border-[var(--accent)] text-[var(--bg-deep)]"
+                      className={`relative w-12 h-12 flex items-center justify-center transition-all duration-300 rounded-full border-2 ${isCompleted
+                        ? "bg-[var(--accent)] border-[var(--accent)] text-[var(--bg-deep)] shadow-lg shadow-[var(--accent)]/30 scale-110"
                         : isCurrent
-                          ? "border-[var(--accent)] text-[var(--accent)]"
-                          : "border-[var(--border)] text-[var(--text-muted)]"
+                          ? "border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--accent)] shadow-md shadow-[var(--accent)]/20 scale-105 ring-2 ring-[var(--accent)]/20"
+                          : "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-muted)] opacity-60"
                         }`}
                     >
                       {isCompleted ? (
-                        <Check className="h-4 w-4" />
+                        <Check className="h-6 w-6 stroke-[2.5]" />
                       ) : (
-                        <Icon className="h-4 w-4" />
+                        <Icon className={`h-6 w-6 ${isCurrent ? "stroke-[2]" : "stroke-[1.5]"}`} />
+                      )}
+                      {/* Pulse animation for current step */}
+                      {isCurrent && (
+                        <div className="absolute inset-0 rounded-full bg-[var(--accent)]/20 animate-ping" />
                       )}
                     </div>
+                    {/* Step label */}
                     <span
-                      className={`mt-2 text-[10px] font-bold hidden sm:block ${isCurrent
+                      className={`mt-3 text-[11px] font-bold text-center max-w-[90px] leading-tight transition-colors duration-300 ${isCurrent
                         ? "text-[var(--accent)]"
-                        : "text-[var(--text-muted)]"
+                        : isCompleted
+                          ? "text-[var(--text-primary)]"
+                          : "text-[var(--text-muted)]"
                         }`}
                     >
                       {s.label}
                     </span>
+                    {/* Step number badge for upcoming steps */}
+                    {isUpcoming && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center text-[8px] font-bold rounded-full bg-[var(--bg-deep)] border border-[var(--border)] text-[var(--text-muted)]">
+                        {index + 1}
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -790,20 +885,11 @@ export default function LazyTrading() {
                     </p>
                   </div>
                   <button
-                    onClick={() => checkTelegramStatus()}
+                    onClick={() => setStep("ostium")}
                     className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
                   >
-                    {checkingTelegram ? (
-                      <>
-                        <Activity className="w-5 h-5 animate-pulse" />
-                        CHECKING...
-                      </>
-                    ) : (
-                      <>
-                        CONTINUE
-                        <ChevronRight className="w-5 h-5" />
-                      </>
-                    )}
+                    CONTINUE
+                    <ChevronRight className="w-5 h-5" />
                   </button>
                 </div>
               ) : (
@@ -846,13 +932,33 @@ export default function LazyTrading() {
                   </div>
 
                   <div className="space-y-2">
-                    <button
-                      onClick={() => setStep("preferences")}
-                      className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
-                    >
-                      CONTINUE
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
+                    {tradingPreferences ? (
+                      <button
+                        onClick={() => createAgentAndProceed(tradingPreferences)}
+                        disabled={loading}
+                        className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {loading ? (
+                          <>
+                            <Activity className="w-5 h-5 animate-pulse" />
+                            CREATING AGENT...
+                          </>
+                        ) : (
+                          <>
+                            CONTINUE
+                            <ChevronRight className="w-5 h-5" />
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setStep("preferences")}
+                        className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
+                      >
+                        CONTINUE
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    )}
 
                     {/* Manual Refresh Button */}
                     <button
@@ -1004,22 +1110,25 @@ export default function LazyTrading() {
               <TradingPreferencesForm
                 userWallet={user?.wallet?.address || ""}
                 onClose={() => router.push("/")}
-                onBack={() => setStep("telegram")}
+                onBack={() => setStep("ostium")}
                 localOnly={true}
                 onSaveLocal={handlePreferencesSave}
                 initialPreferences={tradingPreferences || undefined}
-                primaryLabel={loading ? "Creating Agent..." : "Save & Continue"}
+                primaryLabel="Save & Continue"
               />
             </div>
           )}
 
-          {/* Step 4: Ostium Setup */}
+          {/* Step 2: Ostium Setup */}
           {step === "ostium" && (
             <div className="space-y-6">
               <div className="text-center">
+                <div className="w-16 h-16 mx-auto border-2 border-[var(--accent)] flex items-center justify-center mb-4">
+                  <Shield className="w-8 h-8 text-[var(--accent)]" />
+                </div>
                 <h2 className="font-display text-2xl mb-2">OSTIUM SETUP</h2>
                 <p className="text-[var(--text-secondary)]">
-                  Authorize your agent to trade on Ostium
+                  Enable 1-click trading authorization
                 </p>
               </div>
 
@@ -1035,114 +1144,132 @@ export default function LazyTrading() {
                 </div>
               )}
 
-              {/* Step 1: Delegation */}
-              <div
-                className={`border p-4 ${delegationComplete
-                  ? "border-[var(--accent)] bg-[var(--accent)]/5"
-                  : "border-[var(--border)]"
-                  }`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-8 h-8 flex items-center justify-center border ${delegationComplete
-                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]"
-                        : "border-[var(--border)]"
-                        }`}
-                    >
-                      {delegationComplete ? <Check className="w-4 h-4" /> : "1"}
-                    </span>
-                    <div>
-                      <p className="font-bold">SET DELEGATION</p>
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        Allow agent to trade on your behalf
-                      </p>
+              {/* Status Check Loader */}
+              {checkingOstiumStatus && (
+                <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-4 flex items-center gap-3">
+                  <Activity className="w-5 h-5 text-[var(--accent)] animate-pulse flex-shrink-0" />
+                  <p className="text-sm text-[var(--text-secondary)] flex-1">
+                    Checking authorization status...
+                  </p>
+                </div>
+              )}
+
+              {/* Status Display */}
+              {!checkingOstiumStatus && (
+                <div className="space-y-3">
+                  {/* Delegation Status */}
+                  <div
+                    className={`border p-4 rounded ${delegationComplete
+                      ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                      : "border-[var(--border)]"
+                      }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {delegationComplete ? (
+                          <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
+                        ) : (
+                          <div className="w-5 h-5 border-2 border-[var(--border)] rounded-full" />
+                        )}
+                        <div>
+                          <p className="font-bold text-sm">Delegation</p>
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            Allow agent to trade on your behalf
+                          </p>
+                        </div>
+                      </div>
+                      {delegationComplete && (
+                        <span className="text-xs px-2 py-1 bg-[var(--accent)] text-[var(--bg-deep)] font-bold">
+                          DONE
+                        </span>
+                      )}
                     </div>
                   </div>
-                  {delegationComplete && (
-                    <span className="text-xs px-2 py-1 bg-[var(--accent)] text-[var(--bg-deep)] font-bold">
-                      DONE
-                    </span>
-                  )}
-                </div>
 
-                {!delegationComplete && (
-                  <div className="space-y-2">
+                  {/* Allowance Status */}
+                  <div
+                    className={`border p-4 rounded ${allowanceComplete
+                      ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                      : "border-[var(--border)]"
+                      }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {allowanceComplete ? (
+                          <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
+                        ) : (
+                          <div className="w-5 h-5 border-2 border-[var(--border)] rounded-full" />
+                        )}
+                        <div>
+                          <p className="font-bold text-sm">USDC Allowance</p>
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            Approve USDC spending for trades
+                          </p>
+                        </div>
+                      </div>
+                      {allowanceComplete && (
+                        <span className="text-xs px-2 py-1 bg-[var(--accent)] text-[var(--bg-deep)] font-bold">
+                          DONE
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Main Action Button */}
+              {!checkingOstiumStatus && (
+                <div className="space-y-3">
+                  {delegationComplete && allowanceComplete ? (
+                    <div className="border border-[var(--accent)] bg-[var(--accent)]/10 p-4 text-center">
+                      <CheckCircle className="w-8 h-8 text-[var(--accent)] mx-auto mb-2" />
+                      <p className="font-bold text-[var(--accent)] mb-1">
+                        AUTHORIZATION COMPLETE
+                      </p>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Both delegation and allowance are set up
+                      </p>
+                    </div>
+                  ) : (
                     <button
-                      onClick={approveDelegation}
-                      disabled={loading || !ostiumAgentAddress}
-                      className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      onClick={enableOneClickTrading}
+                      disabled={enablingTrading || !ostiumAgentAddress || checkingOstiumStatus}
+                      className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                      {loading && !allowanceComplete ? (
+                      {enablingTrading ? (
                         <>
                           <Activity className="w-5 h-5 animate-pulse" />
-                          SIGNING...
+                          {currentAction || "PROCESSING..."}
                         </>
                       ) : (
-                        "APPROVE DELEGATION"
+                        <>
+                          <Zap className="w-5 h-5" />
+                          ENABLE 1-CLICK TRADING
+                        </>
                       )}
                     </button>
-                    {ostiumAgentAddress && (
-                      <button
-                        onClick={checkOstiumStatus}
-                        disabled={loading}
-                        className="w-full py-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                      >
-                        Refresh Status
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Step 2: USDC Allowance */}
-              <div
-                className={`border p-4 ${allowanceComplete
-                  ? "border-[var(--accent)] bg-[var(--accent)]/5"
-                  : "border-[var(--border)]"
-                  }`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-8 h-8 flex items-center justify-center border ${allowanceComplete
-                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)]"
-                        : "border-[var(--border)]"
-                        }`}
-                    >
-                      {allowanceComplete ? <Check className="w-4 h-4" /> : "2"}
-                    </span>
-                    <div>
-                      <p className="font-bold">SET ALLOWANCE</p>
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        Approve USDC spending for trades
-                      </p>
-                    </div>
-                  </div>
-                  {allowanceComplete && (
-                    <span className="text-xs px-2 py-1 bg-[var(--accent)] text-[var(--bg-deep)] font-bold">
-                      DONE
-                    </span>
                   )}
-                </div>
 
-                {!allowanceComplete && (
+                  {/* Manual Refresh Button */}
                   <button
-                    onClick={approveUsdc}
-                    disabled={loading || !delegationComplete}
-                    className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    onClick={checkOstiumStatus}
+                    disabled={checkingOstiumStatus || enablingTrading}
+                    className="w-full py-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {loading && delegationComplete ? (
+                    {checkingOstiumStatus ? (
                       <>
-                        <Activity className="w-5 h-5 animate-pulse" />
-                        SIGNING...
+                        <Activity className="w-4 h-4 animate-pulse" />
+                        Checking...
                       </>
                     ) : (
-                      "APPROVE USDC"
+                      <>
+                        <Activity className="w-4 h-4" />
+                        Refresh Status
+                      </>
                     )}
                   </button>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Transaction Hash */}
               {txHash && (

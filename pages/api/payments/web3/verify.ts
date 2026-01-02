@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { CreditService } from '@lib/credit-service';
 
 // For consistency with frontend toggle
-const IS_TESTNET = process.env.USE_TESTNET;
+const IS_TESTNET = process.env.USE_TESTNET === 'true';
 
 const NETWORKS = {
     MAINNET: {

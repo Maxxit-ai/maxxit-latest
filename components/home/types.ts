@@ -1,6 +1,7 @@
 export interface AgentSummary {
   id: string;
   name: string;
+  description: string | null;
   venue: string;
   apr30d: number | null;
   apr90d: number | null;

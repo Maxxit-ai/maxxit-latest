@@ -188,7 +188,7 @@ const HeroSection = memo(
                 →
               </span>
             </button>
-            <Link href="https://ostium.maxxit.ai/lazy-trading"
+            <Link href="/lazy-trading"
               target="_blank"
               className="group px-8 py-4 border-2 border-accent text-accent font-bold text-lg hover:bg-accent hover:text-[var(--bg-deep)] transition-all"
             >

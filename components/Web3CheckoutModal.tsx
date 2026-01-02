@@ -15,7 +15,7 @@ interface Web3CheckoutModalProps {
 }
 
 // Set this to true for testing on Sepolia, false for Mainnet
-const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET;
+const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET === 'true';
 
 const NETWORKS = {
     MAINNET: {

@@ -6,19 +6,25 @@ import { useState, useEffect } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { X, Wallet, CheckCircle, AlertCircle, Activity, ExternalLink } from 'lucide-react';
 import { ethers } from 'ethers';
+import { getOstiumConfig } from '../lib/ostium-config';
 
 interface OstiumUsdcApprovalModalProps {
   onClose: () => void;
   onSuccess?: () => void;
 }
 
-const USDC_TOKEN = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+const {
+  usdcContract: USDC_TOKEN,
+  storageContract: OSTIUM_STORAGE,
+  chainId: ARBITRUM_CHAIN_ID,
+  blockExplorerUrl,
+  chainName
+} = getOstiumConfig();
+
 const USDC_ABI = [
   'function approve(address spender, uint256 amount) public returns (bool)',
   'function allowance(address owner, address spender) view returns (uint256)',
 ];
-
-const OSTIUM_STORAGE = '0xccd5891083a8acd2074690f65d3024e7d13d66e7';
 
 export function OstiumUsdcApprovalModal({
   onClose,
@@ -55,9 +61,8 @@ export function OstiumUsdcApprovalModal({
       await ethersProvider.send('eth_requestAccounts', []);
 
       const network = await ethersProvider.getNetwork();
-      const ARBITRUM_CHAIN_ID = 42161;
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
-        throw new Error('Please switch to Arbitrum');
+        throw new Error(`Please switch to ${chainName}`);
       }
 
       const signer = ethersProvider.getSigner();
@@ -246,12 +251,12 @@ export function OstiumUsdcApprovalModal({
                 <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-3">
                   <p className="text-[var(--accent)] text-sm mb-2">✓ Transaction confirmed</p>
                   <a
-                    href={`https://sepolia.arbiscan.io/tx/${txHash}`}
+                    href={`${blockExplorerUrl}/tx/${txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1"
                   >
-                    View on Arbiscan <ExternalLink className="w-3 h-3" />
+                    View on Explorer <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               )}
@@ -285,7 +290,7 @@ export function OstiumUsdcApprovalModal({
 
               {txHash && (
                 <a
-                  href={`https://arbiscan.io/tx/${txHash}`}
+                  href={`${blockExplorerUrl}/tx/${txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-[var(--accent)] hover:underline flex items-center justify-center gap-1"

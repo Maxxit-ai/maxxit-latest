@@ -1,10 +1,20 @@
 import { z } from "zod";
 
 // Enums
-export const VenueEnum = z.enum(["SPOT", "GMX", "HYPERLIQUID", "OSTIUM", "MULTI"]);
+export const VenueEnum = z.enum([
+  "SPOT",
+  "GMX",
+  "HYPERLIQUID",
+  "OSTIUM",
+  "MULTI",
+]);
 export const AgentStatusEnum = z.enum(["DRAFT", "PUBLIC", "PRIVATE"]);
 export const DeploymentStatusEnum = z.enum(["ACTIVE", "PAUSED", "CANCELLED"]);
-export const BillingKindEnum = z.enum(["SUBSCRIPTION", "INFRA_FEE", "PROFIT_SHARE"]);
+export const BillingKindEnum = z.enum([
+  "SUBSCRIPTION",
+  "INFRA_FEE",
+  "PROFIT_SHARE",
+]);
 export const BillingStatusEnum = z.enum(["CHARGED", "FAILED"]);
 export const PositionStatusEnum = z.enum(["OPEN", "CLOSED"]);
 
@@ -52,8 +62,11 @@ export interface CtPost extends InsertCtPost {
 // Agent schemas
 export const insertAgentSchema = z.object({
   creatorWallet: z.string(),
-  profitReceiverAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
+  profitReceiverAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
   name: z.string().min(1).max(100),
+  description: z.string().max(500).nullable().optional(),
   venue: VenueEnum.default("MULTI"), // Default to MULTI for Agent Where routing
   status: AgentStatusEnum.default("PUBLIC"), // Default to PUBLIC - all agents are public by default
   weights: z.array(z.number().int().min(0).max(100)).length(8),
@@ -68,10 +81,10 @@ export type InsertAgent = z.infer<typeof insertAgentSchema>;
 export interface Agent extends InsertAgent {
   id: string;
   profitReceiverAddress: string;
-  apr30d: number | null;
-  apr90d: number | null;
-  aprSi: number | null;
-  sharpe30d: number | null;
+  apr30d: number | 0;
+  apr90d: number | 0;
+  aprSi: number | 0;
+  sharpe30d: number | 0;
   // Proof of Intent fields
   proofOfIntentMessage: string | null;
   proofOfIntentSignature: string | null;
@@ -193,7 +206,9 @@ export const insertMarketIndicators6hSchema = z.object({
   indicators: z.record(z.any()),
 });
 
-export type InsertMarketIndicators6h = z.infer<typeof insertMarketIndicators6hSchema>;
+export type InsertMarketIndicators6h = z.infer<
+  typeof insertMarketIndicators6hSchema
+>;
 
 export interface MarketIndicators6h extends InsertMarketIndicators6h {
   id: string;

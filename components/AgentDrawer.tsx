@@ -17,10 +17,11 @@ interface AgentDrawerProps {
   agentId: string;
   agentName: string;
   agentVenue?: string;
+  agentDescription?: string | null;
   onClose: () => void;
 }
 
-export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDrawerProps) {
+export function AgentDrawer({ agentId, agentName, agentVenue, agentDescription, onClose }: AgentDrawerProps) {
   const { authenticated, user, login } = usePrivy();
   const [data, setData] = useState<PnlSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -363,6 +364,7 @@ export function AgentDrawer({ agentId, agentName, agentVenue, onClose }: AgentDr
         <MultiVenueSelector
           agentId={agentId}
           agentName={agentName}
+          agentDescription={agentDescription || null}
           onClose={() => setMultiVenueSelectorOpen(false)}
           onComplete={() => {
             setMultiVenueSelectorOpen(false);

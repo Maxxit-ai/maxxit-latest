@@ -17,7 +17,7 @@ async function testTradeDecision() {
     // Mock data similar to real scenario
     const mockInput = {
         message: "BTC showing bullish momentum with potential breakout above $42,000 resistance level. RSI indicates oversold conditions.",
-        confidenceScore: 0.22, 
+        confidenceScore: 0.22,
         lunarcrushData: {
             data: {
                 galaxy_score: 63.5,
@@ -49,7 +49,7 @@ async function testTradeDecision() {
             price_momentum_focus: 50,
             market_rank_priority: 50,
         },
-        userBalance: 22.24, 
+        userBalance: 22.24,
         venue: "HYPERLIQUID",
         token: "BTC",
         side: "LONG",
@@ -77,7 +77,7 @@ async function testTradeDecision() {
 
         console.log("\n✅ Trade Decision Result:");
         console.log("=".repeat(60));
-        console.log(`Should Trade: ${decision.shouldTrade ? "✅ YES" : "❌ NO"}`);
+        console.log(`Should Open New Position: ${decision.shouldOpenNewPosition ? "✅ YES" : "❌ NO"}`);
         console.log(`Fund Allocation: ${decision.fundAllocation}%`);
         console.log(`Leverage: ${decision.leverage}x`);
         console.log("\n📝 Reason:");
