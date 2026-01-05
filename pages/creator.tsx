@@ -60,7 +60,7 @@ export default function Creator() {
       // Fetch agents created by this wallet and user agent addresses in parallel
       const [agentsData, addressesData] = await Promise.all([
         db.get("agents", {
-          creatorWallet: `eq.${user.wallet.address}`,
+          creatorWallet: `eq.${user.wallet.address.toLowerCase()}`,
           order: "apr30d.desc.nullslast",
           select: "*",
         }),
@@ -558,7 +558,9 @@ export default function Creator() {
                             className="flex items-center gap-1 px-3 py-1 bg-yellow-500 text-white text-xs rounded-md hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             <Pause className="h-3 w-3" />
-                            {deactivatingAgentId === agent.id ? "Switching..." : "Private"}
+                            {deactivatingAgentId === agent.id
+                              ? "Switching..."
+                              : "Private"}
                           </button>
                         ) : (
                           <button
@@ -567,7 +569,9 @@ export default function Creator() {
                             className="flex items-center gap-1 px-3 py-1 bg-primary text-primary-foreground text-xs rounded-md hover-elevate disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             <CheckCircle className="h-3 w-3" />
-                            {activatingAgentId === agent.id ? "Switching..." : "Public"}
+                            {activatingAgentId === agent.id
+                              ? "Switching..."
+                              : "Public"}
                           </button>
                         )}
                       </div>
