@@ -292,6 +292,36 @@ export default function MyTrades() {
     setVerifying(true);
 
     try {
+      let llmFullPrompt = trade.signatureData.llmFullPrompt;
+
+      // If llmFullPrompt is missing, construct it using the construct-prompt API
+      if (!llmFullPrompt) {
+        console.log("[MyTrades] llmFullPrompt is missing, constructing it...");
+        
+        const constructResponse = await fetch("/api/eigenai/construct-prompt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tweetText: trade.signatureData.messageText,
+            llm_market_context: trade.signatureData.llmMarketContext || "NO MARKET DATA AVAILABLE",
+            tokenSymbol: trade.tokenSymbol,
+            userImpactFactor: 50, // Default value
+          }),
+        });
+
+        const constructData = await constructResponse.json();
+        
+        if (!constructResponse.ok || !constructData.success) {
+          throw new Error(
+            constructData.error || "Failed to construct LLM prompt"
+          );
+        }
+
+        llmFullPrompt = constructData.llm_full_prompt;
+        console.log("[MyTrades] Successfully constructed llmFullPrompt");
+      }
+
+      // Now verify the signature with the full prompt
       const response = await fetch("/api/eigenai/verify-signature", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -301,7 +331,7 @@ export default function MyTrades() {
           llm_raw_output: trade.signatureData.llmRawOutput,
           llm_model_used: trade.signatureData.llmModelUsed,
           llm_chain_id: trade.signatureData.llmChainId,
-          llm_full_prompt: trade.signatureData.llmFullPrompt,
+          llm_full_prompt: llmFullPrompt,
           llm_market_context:
             trade.signatureData.llmMarketContext || "NO MARKET DATA AVAILABLE",
         }),
