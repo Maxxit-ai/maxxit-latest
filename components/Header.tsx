@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen, ChevronDown, Activity } from 'lucide-react';
+import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen, ChevronDown, Activity, Coins } from 'lucide-react';
 import { Bot, BarChart3, FileText, Copy, Check, LogOut, X, AlertCircle, Sparkles } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import Image from 'next/image';
@@ -59,6 +59,11 @@ export function Header() {
   const tradingButtonRef = useRef<HTMLButtonElement>(null);
   const resourcesRef = useRef<HTMLDivElement>(null);
   const resourcesButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Credit balance state
+  const [creditBalance, setCreditBalance] = useState<string | null>(null);
+  const [isLoadingCredits, setIsLoadingCredits] = useState(false);
+  const creditFetchedRef = useRef(false);
 
   // Monitor current network chain ID
   useEffect(() => {
@@ -144,6 +149,42 @@ export function Header() {
       return () => clearInterval(interval);
     }
   }, [authenticated, isOnArbitrum, user?.wallet?.address]);
+
+  // Fetch credit balance (optimized - only once per mount + 60s polling)
+  const fetchCreditBalance = async (walletAddress: string, showLoader = false) => {
+    try {
+      if (showLoader) setIsLoadingCredits(true);
+      const res = await fetch(`/api/user/credits/balance?wallet=${walletAddress}`);
+      const data = await res.json();
+      if (data.balance !== undefined) {
+        const bal = parseFloat(data.balance);
+        setCreditBalance(isNaN(bal) ? '0' : bal.toLocaleString());
+      }
+    } catch (error) {
+      console.error('Failed to fetch credit balance:', error);
+    } finally {
+      if (showLoader) setIsLoadingCredits(false);
+    }
+  };
+
+  useEffect(() => {
+    if (authenticated && user?.wallet?.address) {
+      const address = user.wallet.address;
+      // Only fetch with loader on first load
+      if (!creditFetchedRef.current) {
+        fetchCreditBalance(address, true);
+        creditFetchedRef.current = true;
+      }
+      // Poll every 60 seconds silently
+      const interval = setInterval(() => {
+        fetchCreditBalance(address, false);
+      }, 60000);
+      return () => clearInterval(interval);
+    } else {
+      setCreditBalance(null);
+      creditFetchedRef.current = false;
+    }
+  }, [authenticated, user?.wallet?.address]);
 
   const navLinks = [{ href: '/', label: 'Home', icon: Home, testId: 'nav-home' }];
 
@@ -520,6 +561,22 @@ export function Header() {
                 </button>
               </Link>
 
+              {/* Credit Balance Badge - Desktop */}
+              {ready && authenticated && (
+                <Link href="/credit-history">
+                  <button
+                    className="inline-flex items-center justify-center gap-2 px-3 py-2 ml-2 border border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] text-sm font-bold hover:bg-[var(--accent)]/20 hover:border-[var(--accent)] transition-all group"
+                    data-testid="nav-credits"
+                  >
+                    <Coins className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                    <span className="hidden sm:inline font-mono min-w-[2ch]">
+                      {isLoadingCredits || creditBalance === null ? '—' : creditBalance}
+                    </span>
+                    <span className="hidden sm:inline text-[10px] text-[var(--accent)]/70 uppercase tracking-wider">Credits</span>
+                  </button>
+                </Link>
+              )}
+
               {/* Wallet Connection */}
               {ready && (
                 <div className="relative ml-2">
@@ -704,6 +761,23 @@ export function Header() {
                     Join
                   </button>
                 </Link>
+
+                {/* Credit Balance Badge - Mobile */}
+                {ready && authenticated && (
+                  <Link href="/credit-history" onClick={() => setIsMobileMenuOpen(false)}>
+                    <button
+                      className="w-full inline-flex items-center justify-center gap-3 px-4 py-3 border border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] text-sm font-bold hover:bg-[var(--accent)]/20 transition-all"
+                      data-testid="nav-credits-mobile"
+                    >
+                      <Coins className="h-5 w-5" />
+                      <span className="font-mono text-lg min-w-[2ch]">
+                        {isLoadingCredits || creditBalance === null ? '—' : creditBalance}
+                      </span>
+                      <span className="text-xs text-[var(--accent)]/70 uppercase tracking-wider">Credits</span>
+                    </button>
+                  </Link>
+                )}
+
                 {ready && (
                   <>
                     {authenticated ? (

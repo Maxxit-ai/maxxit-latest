@@ -73,6 +73,7 @@ export default function Dashboard() {
         totalUnrealizedPnlPercent: 0
     });
     const [balance, setBalance] = useState<{ usdc: string; eth: string; credits: string } | null>(null);
+    const [tradeQuota, setTradeQuota] = useState<{ trades_total: number; trades_used: number; remaining: number } | null>(null);
 
     useEffect(() => {
         if (authenticated && user?.wallet?.address) {
@@ -105,17 +106,19 @@ export default function Dashboard() {
         }
 
         try {
-            // Fetch Trades, Deployments, and Credits in parallel
-            const [tradesRes, deploymentsRes, creditsRes] = await Promise.all([
+            // Fetch Trades, Deployments, Credits, and Trade Quota in parallel
+            const [tradesRes, deploymentsRes, creditsRes, quotaRes] = await Promise.all([
                 fetch(`/api/trades/my-trades?userWallet=${user.wallet.address}&page=1&pageSize=5`),
                 fetch(`/api/deployments?userWallet=${user.wallet.address}`),
                 fetch(`/api/user/credits/balance?wallet=${user.wallet.address}`),
+                fetch(`/api/user/trades/quota?wallet=${user.wallet.address}`),
             ]);
 
-            const [tradesData, deploymentsData, creditsData] = await Promise.all([
+            const [tradesData, deploymentsData, creditsData, quotaData] = await Promise.all([
                 tradesRes.json(),
                 deploymentsRes.json(),
                 creditsRes.json(),
+                quotaRes.json(),
             ]);
 
             // Fetch Portfolio Balance
@@ -166,6 +169,7 @@ export default function Dashboard() {
             setDeployments(Array.isArray(deploymentsData) ? deploymentsData : (deploymentsData.deployments || []));
             setSummary(currentSummary); // Use the calculated currentSummary
             setBalance(finalBalance);
+            setTradeQuota(quotaData);
 
             // Update cache
             globalDashboardCache = {
@@ -372,6 +376,27 @@ export default function Dashboard() {
 
                     {/* Sidebar - Quick Info */}
                     <div className="space-y-6">
+                        <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-6">
+                            <h3 className="data-label mb-4">TRADE USAGE</h3>
+                            <div className="flex items-end gap-2 mb-2">
+                                <span className="text-2xl font-display text-[var(--accent)]">
+                                    {tradeQuota ? `${tradeQuota.trades_used} / ${tradeQuota.trades_total}` : '-- / --'}
+                                </span>
+                                <span className="text-[var(--text-muted)] text-[10px] mb-1">USED</span>
+                            </div>
+                            <div className="h-2 bg-[var(--bg-deep)] border border-[var(--border)] overflow-hidden mb-6">
+                                <div
+                                    className="h-full bg-[var(--accent)] transition-all duration-500"
+                                    style={{ width: tradeQuota && tradeQuota.trades_total > 0 ? `${(tradeQuota.trades_used / tradeQuota.trades_total) * 100}%` : '0%' }}
+                                />
+                            </div>
+                            <Link href="/pricing">
+                                <button className="w-full py-3 bg-[var(--bg-elevated)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors text-[10px] font-bold tracking-widest uppercase">
+                                    BUY MORE TRADES
+                                </button>
+                            </Link>
+                        </section>
+
                         <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-6 relative overflow-hidden">
                             <div className="relative z-10">
                                 <h3 className="data-label mb-4">ACTIVE CLUBS</h3>
@@ -412,21 +437,7 @@ export default function Dashboard() {
                             </div>
                         </section>
 
-                        <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-6">
-                            <h3 className="data-label mb-4">CREDIT USAGE</h3>
-                            <div className="flex items-end gap-2 mb-2">
-                                <span className="text-2xl font-display text-[var(--accent)]">1,250</span>
-                                <span className="text-[var(--text-muted)] text-[10px] mb-1">USED THIS MONTH</span>
-                            </div>
-                            <div className="h-2 bg-[var(--bg-deep)] border border-[var(--border)] overflow-hidden mb-6">
-                                <div className="h-full bg-[var(--accent)]" style={{ width: '15%' }} />
-                            </div>
-                            <Link href="/credit-history">
-                                <button className="w-full py-3 bg-[var(--bg-elevated)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors text-[10px] font-bold tracking-widest uppercase">
-                                    FULL USAGE REPORT
-                                </button>
-                            </Link>
-                        </section>
+
                     </div>
                 </div>
             </main>
