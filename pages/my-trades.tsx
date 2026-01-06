@@ -50,6 +50,7 @@ interface Trade {
     llmRawOutput: string;
     llmModelUsed: string;
     llmChainId: number;
+    llmFullPrompt: string | null;
     llmMarketContext: string | null;
     llmReasoning: string;
     messageCreatedAt: string;
@@ -291,6 +292,36 @@ export default function MyTrades() {
     setVerifying(true);
 
     try {
+      let llmFullPrompt = trade.signatureData.llmFullPrompt;
+
+      // If llmFullPrompt is missing, construct it using the construct-prompt API
+      if (!llmFullPrompt) {
+        console.log("[MyTrades] llmFullPrompt is missing, constructing it...");
+        
+        const constructResponse = await fetch("/api/eigenai/construct-prompt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tweetText: trade.signatureData.messageText,
+            llm_market_context: trade.signatureData.llmMarketContext || "NO MARKET DATA AVAILABLE",
+            tokenSymbol: trade.tokenSymbol,
+            userImpactFactor: 50, // Default value
+          }),
+        });
+
+        const constructData = await constructResponse.json();
+        
+        if (!constructResponse.ok || !constructData.success) {
+          throw new Error(
+            constructData.error || "Failed to construct LLM prompt"
+          );
+        }
+
+        llmFullPrompt = constructData.llm_full_prompt;
+        console.log("[MyTrades] Successfully constructed llmFullPrompt");
+      }
+
+      // Now verify the signature with the full prompt
       const response = await fetch("/api/eigenai/verify-signature", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -300,6 +331,7 @@ export default function MyTrades() {
           llm_raw_output: trade.signatureData.llmRawOutput,
           llm_model_used: trade.signatureData.llmModelUsed,
           llm_chain_id: trade.signatureData.llmChainId,
+          llm_full_prompt: llmFullPrompt,
           llm_market_context:
             trade.signatureData.llmMarketContext || "NO MARKET DATA AVAILABLE",
         }),
@@ -1119,35 +1151,6 @@ export default function MyTrades() {
                                   {signal.llmDecision}
                                 </p>
                               )}
-                              <div className="flex flex-wrap gap-3 text-xs">
-                                {signal.llmFundAllocation !== null && (
-                                  <span className="border border-[var(--border)] px-2 py-1 font-mono text-[var(--accent)]">
-                                    Allocation:{" "}
-                                    {(signal.llmFundAllocation * 100).toFixed(
-                                      0
-                                    )}
-                                    %
-                                  </span>
-                                )}
-                                {signal.llmLeverage !== null && (
-                                  <span className="border border-[var(--border)] px-2 py-1 font-mono">
-                                    Leverage: {signal.llmLeverage.toFixed(1)}x
-                                  </span>
-                                )}
-                                {signal.llmShouldTrade !== null && (
-                                  <span
-                                    className={`border border-[var(--border)] px-2 py-1 font-mono ${
-                                      signal.llmShouldTrade
-                                        ? "text-green-400"
-                                        : "text-red-400"
-                                    }`}
-                                  >
-                                    {signal.llmShouldTrade
-                                      ? "Model: TRADE"
-                                      : "Model: DO NOT TRADE"}
-                                  </span>
-                                )}
-                              </div>
                             </div>
                           )}
 
@@ -1162,14 +1165,7 @@ export default function MyTrades() {
                                   </p>
                                   <p className="text-xs text-[var(--text-secondary)] italic">
                                     "
-                                    {signal.signatureData.messageText.substring(
-                                      0,
-                                      150
-                                    )}
-                                    {signal.signatureData.messageText.length >
-                                    150
-                                      ? "..."
-                                      : ""}
+                                    {signal.signatureData.messageText}
                                     "
                                   </p>
                                 </div>

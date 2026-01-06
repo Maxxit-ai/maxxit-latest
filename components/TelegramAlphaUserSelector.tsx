@@ -9,6 +9,7 @@ interface TelegramAlphaUser {
   last_name: string | null;
   impact_factor: number;
   last_message_at: string | null;
+  credit_price: string;
   _count: {
     telegram_posts: number;
     agent_telegram_users: number;
@@ -92,9 +93,19 @@ export function TelegramAlphaUserSelector({
 
   return (
     <div className="space-y-3">
-      <div className="text-sm text-[var(--text-secondary)] mb-3">
-        Select Telegram users whose alpha signals your agent should follow.
-        Selected: {selectedIds.size}
+      <div className="text-sm text-[var(--text-secondary)] mb-3 flex justify-between items-center">
+        <span>
+          Select Telegram users whose alpha signals your agent should follow.
+          Selected: {selectedIds.size}
+        </span>
+        {selectedIds.size > 0 && (
+          <span className="font-bold text-[var(--accent)]">
+            Subtotal: {alphaUsers
+              .filter(u => selectedIds.has(u.id))
+              .reduce((sum, u) => sum + Number(u.credit_price), 0)
+              .toLocaleString()} credits
+          </span>
+        )}
       </div>
 
       <div className="max-h-96 overflow-y-auto space-y-2" onWheel={(e) => {
@@ -150,9 +161,14 @@ export function TelegramAlphaUserSelector({
 
                   {/* Content */}
                   <div className="flex-1">
-                    <h3 className={`font-semibold ${isSelected ? 'text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}`}>
-                      {displayName}
-                    </h3>
+                    <div className="flex justify-between items-start">
+                      <h3 className={`font-semibold ${isSelected ? 'text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}`}>
+                        {displayName}
+                      </h3>
+                      <div className="text-sm font-mono text-[var(--accent)]">
+                        {Number(user.credit_price) > 0 ? `${Number(user.credit_price).toLocaleString()} ¢` : 'FREE'}
+                      </div>
+                    </div>
                     <div className="flex gap-3 mt-1 text-xs text-[var(--text-secondary)]">
                       <span>{user._count.telegram_posts} messages</span>
                       {user._count.agent_telegram_users > 0 && (

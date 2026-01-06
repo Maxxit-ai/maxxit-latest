@@ -132,6 +132,7 @@ model agents {
   id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   creator_wallet            String
   name                      String
+  description               String?
   venue                     venue_t
   weights                   Int[]                       @db.SmallInt
   apr_30d                   Float?                      @db.Real
@@ -357,6 +358,8 @@ model signals {
   llm_should_trade             Boolean?
   llm_fund_allocation          Float?
   llm_leverage                Float?
+  llm_close_trade_id          String?               
+  llm_net_position_change     String?               
   trade_executed               String?
   execution_result             String?
   routing_history              Json?
@@ -385,6 +388,7 @@ model telegram_alpha_users {
   user_wallet           String?                 // Wallet address for lazy traders (links telegram to wallet)
   last_message_at       DateTime?               @db.Timestamptz(6)
   created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  credit_price          Decimal                 @default(0) @db.Decimal(20, 8)
   agent_telegram_users  agent_telegram_users[]
   telegram_posts        telegram_posts[]
 
@@ -426,6 +430,12 @@ model telegram_posts {
   extracted_tokens        String[]              @default([])
   confidence_score        Float?
   signal_type             String?
+  token_price             Float?               // Spot price from LunarCrush at classification time
+  timeline_window         String?              // Parsed time window / deadline for the signal (e.g. "2025-01-31" or textual)
+  take_profit             Float?   @default(0) // Take profit target extracted from signal
+  stop_loss               Float?   @default(0) // Stop loss target extracted from signal
+  impact_factor_flag      Boolean              @default(false) // Whether this signal has been used for impact-factor updates
+  pnl                     Float                @default(0) @db.Real // Profit & Loss percentage (calculated from token_price vs current price)
   processed_for_signals   Boolean               @default(false)
   created_at              DateTime              @default(now()) @db.Timestamptz(6)
   
@@ -436,7 +446,11 @@ model telegram_posts {
   llm_chain_id            Int?                  // Chain ID for signature verification
   llm_reasoning           String?               // LLM reasoning for classification
   llm_market_context      String?               // Market context string used in the prompt (for signature verification)
-  
+  llm_full_prompt         String?               // Full prompt (system + user) sent to LLM (for signature verification)
+  max_favorable_excursion  Decimal? @db.Decimal(10, 4)  // Track max MFE over lifetime
+  max_adverse_excursion    Decimal? @db.Decimal(10, 4)  // Track max MAE over lifetime
+  impact_factor  Decimal? @default(0) @db.Decimal(10, 4)  // Store final impact factor
+
   telegram_sources        telegram_sources?     @relation(fields: [source_id], references: [id], onDelete: Cascade)
   telegram_alpha_users    telegram_alpha_users? @relation(fields: [alpha_user_id], references: [id], onDelete: Cascade)
 
@@ -533,15 +547,40 @@ model venue_markets {
 }
 
 model ostium_available_pairs {
+  // Ostium Pair Data
   id                  Int       @id
-  symbol              String
+  symbol              String    @unique
   max_leverage        Float?
   maker_max_leverage  Float?
   group               String?
+
+  // LunarCrush Market Metrics
+  galaxy_score            Float?
+  alt_rank                Int?
+  social_volume_24h       Float?
+  sentiment               Float?
+  percent_change_24h      Float?
+  volatility              Float?
+  price                   Decimal? @db.Decimal(38, 8)
+  volume_24h              Decimal? @db.Decimal(38, 8)
+  market_cap              Decimal? @db.Decimal(38, 8)
+  market_cap_rank         Int?
+  social_dominance        Float?
+  market_dominance        Float?
+  interactions_24h        Float?
+  galaxy_score_previous   Float?
+  alt_rank_previous       Int?
+
+  // Timestamps
   created_at          DateTime  @default(now()) @db.Timestamptz(6)
   updated_at          DateTime  @updatedAt @db.Timestamptz(6)
 
   @@index([group])
+  @@index([symbol])
+  @@index([updated_at])
+  @@index([price])
+  @@index([sentiment])
+  @@index([volatility])
 }
 
 model venue_routing_config {
@@ -646,6 +685,60 @@ model lazy_trading_link_cache {
   @@index([user_wallet])
 }
 
+model credit_ledger_entry {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_wallet  String // 'SYSTEM' for treasury-only rows
+  amount       Decimal              @db.Decimal(20, 8)
+  entry_type   credit_entry_type_t
+  purpose      String
+  reference_id String?              @unique // Stripe Session ID or Web3 Tx Hash (for idempotency)
+  metadata     Json?
+  created_at   DateTime             @default(now()) @db.Timestamptz(6)
+
+  @@index([user_wallet])
+  @@index([reference_id])
+  @@index([created_at])
+}
+
+model user_credit_balance {
+  user_wallet String   @id
+  balance     Decimal  @default(0) @db.Decimal(20, 8)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([user_wallet])
+}
+
+model system_treasury {
+  id             String   @id @default("GLOBAL_TREASURY")
+  total_minted   Decimal  @default(0) @db.Decimal(20, 8)
+  total_consumed Decimal  @default(0) @db.Decimal(20, 8)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+}
+
+model top_traders {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  wallet_address      String   @unique
+  total_volume        Decimal  @db.Decimal(30, 6)
+  total_closed_volume Decimal  @db.Decimal(30, 6)
+  total_pnl           Decimal  @db.Decimal(30, 6)
+  total_profit_trades Int
+  total_loss_trades   Int
+  total_trades        Int
+  last_active_at      DateTime @db.Timestamptz(6)
+  edge_score          Float    @default(0) @db.Real
+  consistency_score   Float    @default(0) @db.Real
+  stake_score         Float    @default(0) @db.Real
+  freshness_score     Float    @default(0) @db.Real
+  impact_factor       Float    @default(0) @db.Real
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @updatedAt @db.Timestamptz(6)
+  
+  @@index([wallet_address])
+  @@index([impact_factor])
+  @@index([total_pnl])
+  @@index([updated_at])
+}
+
 enum agent_status_t {
   DRAFT
   PUBLIC
@@ -695,4 +788,11 @@ enum notification_status_t {
   PENDING
   SENT
   FAILED
+}
+
+enum credit_entry_type_t {
+  PURCHASE
+  USAGE
+  REWARD
+  ADJUSTMENT
 }

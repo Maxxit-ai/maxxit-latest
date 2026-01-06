@@ -33,6 +33,7 @@ interface Deployment {
   agent: {
     name: string;
     venue: string;
+    description: string | null;
   };
   userWallet: string;
   safeWallet: string;
@@ -81,6 +82,7 @@ export default function MyDeployments() {
   const [multiVenueAgent, setMultiVenueAgent] = useState<{
     id: string;
     name: string;
+    description: string | null;
   } | null>(null);
   const [userAgentAddresses, setUserAgentAddresses] = useState<{
     hyperliquid?: string | null;
@@ -191,12 +193,9 @@ export default function MyDeployments() {
           : null;
 
       const [agentsData, addressesData, deploymentsData] = await Promise.all([
-        db.get("agents", {
-          status: "eq.PUBLIC",
-          order: "apr30d.desc",
-          limit: "20",
-          select: "id,name,venue,apr30d,apr90d,aprSi,sharpe30d",
-        }),
+        fetch("/api/agents?status=PUBLIC&order=apr30d.desc&limit=20").then(
+          (res) => res.json()
+        ),
         userWallet
           ? db
             .get("user_agent_addresses", {
@@ -355,7 +354,7 @@ export default function MyDeployments() {
 
   const handleAgentCardClick = (agent: AgentSummary) => {
     if (agent.venue === "MULTI") {
-      setMultiVenueAgent({ id: agent.id, name: agent.name });
+      setMultiVenueAgent({ id: agent.id, name: agent.name, description: agent.description });
       setMultiVenueSelectorOpen(true);
     } else {
       setSelectedAgent(agent);
@@ -364,7 +363,7 @@ export default function MyDeployments() {
 
   const handleDeployClick = (agent: AgentSummary) => {
     if (agent.venue === "MULTI") {
-      setMultiVenueAgent({ id: agent.id, name: agent.name });
+      setMultiVenueAgent({ id: agent.id, name: agent.name, description: agent.description });
       setMultiVenueSelectorOpen(true);
       return;
     }
@@ -690,6 +689,7 @@ export default function MyDeployments() {
         <AgentDrawer
           agentId={selectedAgent.id}
           agentName={selectedAgent.name}
+          agentDescription={selectedAgent.description || null}
           agentVenue={selectedAgent.venue}
           onClose={() => setSelectedAgent(null)}
         />
@@ -712,6 +712,7 @@ export default function MyDeployments() {
         <MultiVenueSelector
           agentId={multiVenueAgent.id}
           agentName={multiVenueAgent.name}
+          agentDescription={multiVenueAgent.description}
           onClose={() => {
             setMultiVenueSelectorOpen(false);
             setMultiVenueAgent(null);

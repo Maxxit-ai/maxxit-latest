@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { insertAgentSchema, VenueEnum } from '@shared/schema';
+import { insertAgentSchema, VenueEnum, InsertAgent } from '@shared/schema';
 import { db } from '../client/src/lib/db';
 import { useRouter } from 'next/router';
 import { Check, User, Building2, Sliders, Wallet, Eye, Rocket, Twitter, Search, Plus as PlusIcon, X, Shield, Send, Activity } from 'lucide-react';
@@ -63,7 +63,7 @@ export default function CreateAgent() {
   const [reviewData, setReviewData] = useState<{
     researchInstitutes: Array<{ id: string; name: string; description: string | null; x_handle: string | null }>;
     ctAccounts: Array<{ id: string; xUsername: string; displayName: string | null; followersCount: number | null }>;
-    telegramUsers: Array<{ id: string; telegram_username: string | null; first_name: string | null; last_name: string | null }>;
+    telegramUsers: Array<{ id: string; telegram_username: string | null; first_name: string | null; last_name: string | null; credit_price?: string }>;
   }>({
     researchInstitutes: [],
     ctAccounts: [],
@@ -202,46 +202,38 @@ export default function CreateAgent() {
     setError(null);
     try {
       const { description, ...agentData } = data;
-      agentData.creatorWallet = user?.wallet?.address || data.creatorWallet;
-      if (!agentData.profitReceiverAddress) agentData.profitReceiverAddress = agentData.creatorWallet;
-      if (proofOfIntent) {
-        agentData.proofOfIntentMessage = proofOfIntent.message;
-        agentData.proofOfIntentSignature = proofOfIntent.signature;
-        agentData.proofOfIntentTimestamp = proofOfIntent.timestamp.toISOString();
+      const creatorWallet = user?.wallet?.address || data.creatorWallet;
+
+      const payload = {
+        agentData: {
+          ...agentData,
+          creatorWallet,
+          profitReceiverAddress: agentData.profitReceiverAddress || creatorWallet,
+          proofOfIntentMessage: proofOfIntent?.message,
+          proofOfIntentSignature: proofOfIntent?.signature,
+          proofOfIntentTimestamp: proofOfIntent?.timestamp.toISOString(),
+        },
+        linkingData: {
+          ctAccountIds: Array.from(selectedCtAccounts),
+          researchInstituteIds: selectedResearchInstitutes,
+          telegramAlphaUserIds: Array.from(selectedTelegramUsers),
+        }
+      };
+
+      const response = await fetch('/api/agents/create-with-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || result.error || 'Failed to create agent');
       }
 
-      const result = await db.post('agents', agentData);
-      if (result && result.id) {
-        const agentId = result.id;
-
-        // Link CT accounts
-        await Promise.all(Array.from(selectedCtAccounts).map(async (ctAccountId) => {
-          await fetch(`/api/agents/${agentId}/accounts`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ctAccountId }),
-          });
-        }));
-
-        // Link research institutes
-        await Promise.all(selectedResearchInstitutes.map(async (instituteId) => {
-          await fetch(`/api/agents/${agentId}/research-institutes`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ institute_id: instituteId }),
-          });
-        }));
-
-        // Link telegram users
-        await Promise.all(Array.from(selectedTelegramUsers).map(async (telegramAlphaUserId) => {
-          await fetch(`/api/agents/${agentId}/telegram-users`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ telegram_alpha_user_id: telegramAlphaUserId }),
-          });
-        }));
-
-        setCreatedAgentId(agentId);
+      if (result.success && result.agent?.id) {
+        setCreatedAgentId(result.agent.id);
         setShowDeployModal(true);
       } else {
         router.push('/creator');
@@ -1014,33 +1006,71 @@ export default function CreateAgent() {
                       Edit
                     </button>
                   </div>
-                  {reviewData.telegramUsers.length > 0 ? (
-                    <div className="space-y-2 mt-3">
-                      {reviewData.telegramUsers.map((u) => {
-                        const displayName = u.telegram_username
-                          ? `@${u.telegram_username}`
-                          : u.first_name
-                            ? `${u.first_name} ${u.last_name || ''}`.trim()
-                            : 'Telegram User';
-                        return (
-                          <div
-                            key={u.id}
-                            className="p-3 bg-[var(--bg-deep)] border border-[var(--border)] rounded flex items-center justify-between gap-3"
-                          >
-                            <div className="flex items-center gap-3 flex-1">
-                              <Send className="h-4 w-4 text-[var(--accent)]" />
-                              <p className="font-semibold text-[var(--text-primary)]">{displayName}</p>
-                            </div>
-                            <Check className="h-4 w-4 text-[var(--accent)] flex-shrink-0" />
+                  {(() => {
+                    const subtotal = reviewData.telegramUsers.reduce((sum, u) => sum + Number(u.credit_price || 0), 0);
+                    const platformFee = subtotal * 0.1;
+                    const totalCredits = subtotal + platformFee;
+
+                    return (
+                      <>
+                        {reviewData.telegramUsers.length > 0 ? (
+                          <div className="space-y-2 mt-3">
+                            {reviewData.telegramUsers.map((u) => {
+                              const displayName = u.telegram_username
+                                ? `@${u.telegram_username}`
+                                : u.first_name
+                                  ? `${u.first_name} ${u.last_name || ''}`.trim()
+                                  : 'Telegram User';
+                              return (
+                                <div
+                                  key={u.id}
+                                  className="p-3 bg-[var(--bg-deep)] border border-[var(--border)] rounded flex items-center justify-between gap-3"
+                                >
+                                  <div className="flex items-center gap-3 flex-1">
+                                    <Send className="h-4 w-4 text-[var(--accent)]" />
+                                    <p className="font-semibold text-[var(--text-primary)]">{displayName}</p>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs font-mono text-[var(--accent)]">
+                                      {Number(u.credit_price) > 0 ? `${Number(u.credit_price).toLocaleString()} ¢` : 'FREE'}
+                                    </span>
+                                    <Check className="h-4 w-4 text-[var(--accent)] flex-shrink-0" />
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-[var(--text-muted)] mt-1">
-                      No Telegram users resolved yet. They will appear here once loaded.
-                    </p>
-                  )}
+                        ) : (
+                          <p className="text-sm text-[var(--text-muted)] mt-1">
+                            No Telegram users selected.
+                          </p>
+                        )}
+
+                        {/* Cost Breakdown */}
+                        <div className="mt-4 p-4 border border-[var(--accent)]/30 bg-[var(--accent)]/5 rounded-lg">
+                          <p className="text-xs font-bold text-[var(--accent)] mb-3 tracking-wider uppercase">Subscription Breakdown</p>
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-[var(--text-secondary)]">Alpha Subscription Subtotal</span>
+                              <span className="font-mono text-[var(--text-primary)]">{subtotal.toLocaleString()} ¢</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-[var(--text-secondary)]">Platform Fee (10%)</span>
+                              <span className="font-mono text-[var(--text-primary)]">+{platformFee.toLocaleString()} ¢</span>
+                            </div>
+                            <div className="h-px bg-[var(--border)] my-1" />
+                            <div className="flex justify-between items-center pt-1">
+                              <span className="text-sm font-bold text-[var(--text-primary)]">TOTAL CREDITS REQUIRED</span>
+                              <div className="text-right">
+                                <span className="text-lg font-mono font-bold text-[var(--accent)]">{totalCredits.toLocaleString()} ¢</span>
+                                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-tighter">One-time payment</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Wallet configuration */}

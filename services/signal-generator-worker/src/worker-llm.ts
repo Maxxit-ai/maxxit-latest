@@ -24,6 +24,12 @@ dotenv.config();
 const PORT = process.env.PORT || 5008;
 const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds default
 
+// Duplicate signal check configuration
+// Set DUPLICATE_SIGNAL_CHECK_ENABLED=false to disable the check entirely
+// Set DUPLICATE_SIGNAL_CHECK_HOURS to change the time window (default: 6 hours)
+const DUPLICATE_CHECK_ENABLED = process.env.DUPLICATE_SIGNAL_CHECK_ENABLED !== "false"; // Default: true
+const DUPLICATE_CHECK_HOURS = parseInt(process.env.DUPLICATE_SIGNAL_CHECK_HOURS || "6"); // Default: 6 hours
+
 let workerInterval: NodeJS.Timeout | null = null;
 let isCycleRunning = false;
 
@@ -106,6 +112,8 @@ async function generateAllSignals() {
 
         // Get agents based on the source of the post
         let agents: any[] = [];
+        let influencerImpactFactor = 50; // Default to 50 (neutral) - will be updated if alpha_user_id exists
+
 
         if (post.alpha_user_id) {
           // For Telegram Alpha Users: find agents linked via agent_telegram_users
@@ -122,10 +130,13 @@ async function generateAllSignals() {
           // Get the source user's flags
           const isLazyTrader = (alphaUser as any)?.lazy_trader === true;
           const isPublicSource = (alphaUser as any)?.public_source === true;
+          
+          // Get the influencer's impact factor (historical performance)
+          influencerImpactFactor = (alphaUser as any)?.impact_factor ?? 50; // Default to 50 (neutral) if not set
+          console.log(`[SignalGenerator]    Impact Factor of source: ${influencerImpactFactor}/100`);
 
           console.log(
-            `[SignalGenerator]    Source: @${
-              alphaUser.telegram_username || alphaUser.first_name
+            `[SignalGenerator]    Source: @${alphaUser.telegram_username || alphaUser.first_name
             }`
           );
           console.log(
@@ -276,6 +287,27 @@ async function generateAllSignals() {
         // Generate signal for each deployment, agent, and token combination
         // Each deployment has its own trading preferences, so we generate separate signals
         for (const agent of agents) {
+          // Check if this is a Lazy Trader agent
+          // Lazy Trader agents are PRIVATE agents with names containing "Lazy" and "Trader" (case-insensitive)
+          // This handles variations like "Lazy Trader", "Lazyz rader", etc.
+          const isLazyTraderAgent =
+            agent.status === "PRIVATE" &&
+            agent.name &&
+            agent.name.toLowerCase().includes("lazy") &&
+            agent.name.toLowerCase().includes("trader");
+
+          console.log("checking lazy trader agent",agent.status + " " + agent.name + " " + isLazyTraderAgent)
+
+          console.log(
+            `[SignalGenerator]    🔍 Checking Lazy Trader agent: ${agent.name}, isLazyTraderAgent: ${isLazyTraderAgent}`
+          );
+
+          if (isLazyTraderAgent) {
+            console.log(
+              `[SignalGenerator]    🔍 Detected Lazy Trader agent: ${agent.name} - will deprioritize confidence score`
+            );
+          }
+
           for (const deployment of agent.agent_deployments) {
             for (const token of extractedTokens) {
               try {
@@ -283,22 +315,21 @@ async function generateAllSignals() {
                   post,
                   agent,
                   deployment,
-                  token
+                  token,
+                  isLazyTraderAgent,
+                  influencerImpactFactor
                 );
 
                 if (success) {
                   console.log(
-                    `[SignalGenerator] ✅ Signal created for ${
-                      agent.name
+                    `[SignalGenerator] ✅ Signal created for ${agent.name
                     } (deployment ${deployment.id.substring(0, 8)}): ${token}`
                   );
                 }
               } catch (error: any) {
                 console.error(
-                  `[SignalGenerator] ❌ Failed to generate signal for ${
-                    agent.name
-                  } (deployment ${deployment.id.substring(0, 8)}): ${token}: ${
-                    error.message
+                  `[SignalGenerator] ❌ Failed to generate signal for ${agent.name
+                  } (deployment ${deployment.id.substring(0, 8)}): ${token}: ${error.message
                   }`
                 );
               }
@@ -331,13 +362,17 @@ async function generateAllSignals() {
 
 /**
  * Generate a signal for a specific agent deployment and token using LLM decision making
+ * @param isLazyTraderAgent - True if this is a Lazy Trader agent (don't prioritize confidence score as much)
+ * @param influencerImpactFactor - Impact factor of the signal sender (0-100, 50=neutral)
  * @returns true if signal was created, false if skipped
  */
 async function generateSignalForAgentAndToken(
   post: any,
   agent: any,
   deployment: any,
-  token: string
+  token: string,
+  isLazyTraderAgent: boolean = false,
+  influencerImpactFactor: number = 50
 ) {
   try {
     // Stablecoins should NOT be traded (they are base currency)
@@ -398,6 +433,50 @@ async function generateSignalForAgentAndToken(
         // }
 
         console.log(`    ⏭️  Skipping ${token} - not available on OSTIUM`);
+        console.log(
+          `    📝 Creating skipped signal - token not supported in venue_markets`
+        );
+
+        // Determine side from post sentiment
+        const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
+
+        try {
+          await prisma.signals.create({
+            data: {
+              agent_id: agent.id,
+              deployment_id: deployment.id,
+              token_symbol: token,
+              venue: "OSTIUM", // Default to OSTIUM for MULTI agents
+              side: side,
+              size_model: {
+                type: "balance-percentage",
+                value: 0,
+                impactFactor: 0,
+              },
+              risk_model: {
+                stopLoss: 0.1,
+                takeProfit: 0.05,
+                leverage: 1,
+              },
+              source_tweets: [post.message_id],
+              skipped_reason: `Token ${token} is not supported/available in Ostium pairs`,
+              llm_decision: `Token ${token} is not supported/available in Ostium pairs. Cannot proceed with trade.`,
+              llm_should_trade: false,
+              llm_fund_allocation: 0,
+              llm_leverage: 0,
+              trade_executed: null,
+            },
+          });
+
+          console.log(
+            `    ✅ Skipped signal stored for deployment ${deployment.id.substring(
+              0,
+              8
+            )}: ${token} - Token not supported in OSTIUM`
+          );
+        } catch (error) {
+          console.error(`    ❌ Error storing skipped signal: ${error}`);
+        }
 
         return false;
       }
@@ -418,6 +497,51 @@ async function generateSignalForAgentAndToken(
         console.log(
           `       (Only ${agent.venue}-supported tokens will generate signals)`
         );
+        console.log(
+          `    📝 Creating skipped signal - token not supported in venue_markets`
+        );
+
+        // Determine side from post sentiment
+        const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
+
+        try {
+          await prisma.signals.create({
+            data: {
+              agent_id: agent.id,
+              deployment_id: deployment.id,
+              token_symbol: token,
+              venue: agent.venue,
+              side: side,
+              size_model: {
+                type: "balance-percentage",
+                value: 0,
+                impactFactor: 0,
+              },
+              risk_model: {
+                stopLoss: 0.1,
+                takeProfit: 0.05,
+                leverage: 1,
+              },
+              source_tweets: [post.message_id],
+              skipped_reason: `Token ${token} is not supported/available in ${agent.venue} pairs`,
+              llm_decision: `Token ${token} is not supported/available in ${agent.venue} pairs. Cannot proceed with trade.`,
+              llm_should_trade: false,
+              llm_fund_allocation: 0,
+              llm_leverage: 0,
+              trade_executed: null,
+            },
+          });
+
+          console.log(
+            `    ✅ Skipped signal stored for deployment ${deployment.id.substring(
+              0,
+              8
+            )}: ${token} - Token not supported in ${agent.venue}`
+          );
+        } catch (error) {
+          console.error(`    ❌ Error storing skipped signal: ${error}`);
+        }
+
         return false;
       }
 
@@ -430,72 +554,77 @@ async function generateSignalForAgentAndToken(
     // Determine side from post sentiment (already classified by LLM)
     const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
 
-    // Check for existing signal
-    const now = new Date();
-    const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+    // Check for existing signal (configurable via environment variables)
+    if (DUPLICATE_CHECK_ENABLED) {
+      const now = new Date();
+      const checkWindowMs = DUPLICATE_CHECK_HOURS * 60 * 60 * 1000;
+      const checkWindowStart = new Date(now.getTime() - checkWindowMs);
 
-    const existingSignal = await prisma.signals.findFirst({
-      where: {
-        agent_id: agent.id,
-        deployment_id: deployment.id,
-        token_symbol: token.toUpperCase(),
-        created_at: {
-          gte: sixHoursAgo,
-        },
-      },
-      include: {
-        positions: {
-          where: {
-            deployment_id: deployment.id,
+      const existingSignal = await prisma.signals.findFirst({
+        where: {
+          agent_id: agent.id,
+          deployment_id: deployment.id,
+          token_symbol: token.toUpperCase(),
+          created_at: {
+            gte: checkWindowStart,
           },
-          select: {
-            status: true,
-            entry_price: true,
-            qty: true,
-          },
-          take: 1,
         },
-      },
-    });
+        include: {
+          positions: {
+            where: {
+              deployment_id: deployment.id,
+            },
+            select: {
+              status: true,
+              entry_price: true,
+              qty: true,
+            },
+            take: 1,
+          },
+        },
+      });
 
-    if (existingSignal) {
-      const existingPosition = existingSignal.positions[0];
+      if (existingSignal) {
+        const existingPosition = existingSignal.positions[0];
 
-      if (existingPosition) {
-        const entryPrice = existingPosition.entry_price
-          ? Number(existingPosition.entry_price.toString())
-          : 0;
-        const qty = existingPosition.qty
-          ? Number(existingPosition.qty.toString())
-          : 0;
+        if (existingPosition) {
+          const entryPrice = existingPosition.entry_price
+            ? Number(existingPosition.entry_price.toString())
+            : 0;
+          const qty = existingPosition.qty
+            ? Number(existingPosition.qty.toString())
+            : 0;
 
-        const positionFailed =
-          existingPosition.status === "CLOSED" && entryPrice === 0 && qty === 0;
+          const positionFailed =
+            existingPosition.status === "CLOSED" && entryPrice === 0 && qty === 0;
 
-        if (positionFailed) {
+          if (positionFailed) {
+            console.log(
+              `    ⚠️  Existing signal for ${token} failed (position closed with 0 values)`
+            );
+            console.log(
+              `    ✅ Allowing new signal to be created (previous execution failed)`
+            );
+          } else {
+            console.log(
+              `    ⏭️  Signal already exists for ${token} for this deployment (within last ${DUPLICATE_CHECK_HOURS} hours)`
+            );
+            return false;
+          }
+        } else if (existingSignal.skipped_reason) {
           console.log(
-            `    ⚠️  Existing signal for ${token} failed (position closed with 0 values)`
+            `    ⏭️  Skipped signal already exists for ${token} (within last ${DUPLICATE_CHECK_HOURS} hours)`
           );
-          console.log(
-            `    ✅ Allowing new signal to be created (previous execution failed)`
-          );
+          return false;
         } else {
           console.log(
-            `    ⏭️  Signal already exists for ${token} for this deployment (within last 6 hours)`
+            `    ⏭️  Signal exists but no position yet for ${token} - trade executor will process`
           );
           return false;
         }
-      } else if (existingSignal.skipped_reason) {
-        console.log(
-          `    ⏭️  Skipped signal already exists for ${token} (within last 6 hours)`
-        );
-        return false;
-      } else {
-        console.log(
-          `    ⏭️  Signal exists but no position yet for ${token} - trade executor will process`
-        );
-        return false;
       }
+    } else {
+      console.log(`    ℹ️  Duplicate signal check DISABLED - proceeding without check`);
     }
 
     // Get trading preferences from the specific agent deployment (preferences are per deployment)
@@ -511,6 +640,7 @@ async function generateSignalForAgentAndToken(
     let userBalance = 0;
     // Track venue/token-specific max leverage (used to inform the LLM)
     let venueMaxLeverage: number | undefined;
+    let venueMakerMaxLeverage: number | undefined;
 
     if (signalVenue === "HYPERLIQUID") {
       // Get Hyperliquid balance via service
@@ -522,9 +652,8 @@ async function generateSignalForAgentAndToken(
       if (userAddress?.hyperliquid_agent_address) {
         try {
           const balanceResponse = await fetch(
-            `${
-              process.env.HYPERLIQUID_SERVICE_URL ||
-              "https://hyperliquid-service.onrender.com"
+            `${process.env.HYPERLIQUID_SERVICE_URL ||
+            "https://hyperliquid-service.onrender.com"
             }/balance`,
             {
               method: "POST",
@@ -555,8 +684,7 @@ async function generateSignalForAgentAndToken(
       if (userAddress?.ostium_agent_address) {
         try {
           const balanceResponse = await fetch(
-            `${
-              process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
+            `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
             }/balance`,
             {
               method: "POST",
@@ -601,6 +729,19 @@ async function generateSignalForAgentAndToken(
         });
       }
 
+      // If token not found in ostium_available_pairs, log warning
+      // Note: This should theoretically not happen if venue_markets is properly synced
+      // The token should have been caught earlier in the venue_markets check
+      if (!ostiumPair) {
+        console.log(
+          `    ⚠️  Token ${token} not found in ostium_available_pairs (but was in venue_markets)`
+        );
+        console.log(
+          `    ⚠️  This indicates a sync issue between venue_markets and ostium_available_pairs`
+        );
+        // Continue anyway - we'll use default leverage
+      }
+
       if (
         ostiumPair?.max_leverage !== undefined &&
         ostiumPair?.max_leverage !== null
@@ -608,6 +749,16 @@ async function generateSignalForAgentAndToken(
         const numericLeverage = Number(ostiumPair.max_leverage);
         venueMaxLeverage = Number.isFinite(numericLeverage)
           ? numericLeverage
+          : undefined;
+      }
+
+      if (
+        ostiumPair?.maker_max_leverage !== undefined &&
+        ostiumPair?.maker_max_leverage !== null
+      ) {
+        const numericMakerLeverage = Number(ostiumPair.maker_max_leverage);
+        venueMakerMaxLeverage = Number.isFinite(numericMakerLeverage)
+          ? numericMakerLeverage
           : undefined;
       }
     }
@@ -635,6 +786,90 @@ async function generateSignalForAgentAndToken(
       }
     }
 
+    let currentPositions: {
+      token: string;
+      side: string;
+      collateral: number;
+      entryPrice: number;
+      leverage: number;
+      notionalUsd: number;
+      takeProfitPrice: number | null;
+      stopLossPrice: number | null;
+      tradeId: string;
+    }[] = [];
+
+    if (signalVenue === "OSTIUM") {
+      const userAddress = await prisma.user_agent_addresses.findUnique({
+        where: { user_wallet: deployment.user_wallet.toLowerCase() },
+        select: { ostium_agent_address: true },
+      });
+
+      if (userAddress?.ostium_agent_address) {
+        try {
+          const positionsResponse = await fetch(
+            `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"}/positions`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                address: deployment.safe_wallet || deployment.user_wallet,
+              }),
+            }
+          );
+
+          if (positionsResponse.ok) {
+            const positionsData = (await positionsResponse.json()) as any;
+            if (positionsData.success && Array.isArray(positionsData.positions)) {
+              currentPositions = positionsData.positions.map((pos: any) => ({
+                token: pos.market,
+                side: pos.side?.toUpperCase() || "",
+                collateral: pos.collateral || 0,
+                entryPrice: pos.entryPrice || 0,
+                leverage: pos.leverage || 1,
+                notionalUsd: pos.notionalUsd || 0,
+                takeProfitPrice: pos.takeProfitPrice || null,
+                stopLossPrice: pos.stopLossPrice || null,
+                tradeId: pos.tradeId || "",
+              }));
+            }
+          }
+        } catch (error) {
+          console.log(`    ⚠️  Failed to fetch Ostium positions: ${error}`);
+        }
+      }
+    } else if (signalVenue === "HYPERLIQUID") {
+      const openPositions = await prisma.positions.findMany({
+        where: {
+          deployment_id: deployment.id,
+          status: "OPEN",
+          venue: "HYPERLIQUID",
+        },
+        select: {
+          id: true,
+          token_symbol: true,
+          side: true,
+          qty: true,
+          entry_price: true,
+          take_profit: true,
+          stop_loss: true,
+        },
+      });
+
+      currentPositions = openPositions.map((pos) => ({
+        token: pos.token_symbol,
+        side: pos.side,
+        collateral: pos.qty ? Number(pos.qty) : 0,
+        entryPrice: pos.entry_price ? Number(pos.entry_price) : 0,
+        leverage: 1,
+        notionalUsd: pos.qty ? Number(pos.qty) : 0,
+        takeProfitPrice: pos.take_profit ? Number(pos.take_profit) : null,
+        stopLossPrice: pos.stop_loss ? Number(pos.stop_loss) : null,
+        tradeId: pos.id,
+      }));
+    }
+
+    console.log(`    📈 Current open positions from ${signalVenue}: ${currentPositions.length}`);
+
     // Make LLM decision
     console.log(`    🤖 Making LLM trade decision for ${token}...`);
     const tradeDecision = await makeTradeDecision({
@@ -647,11 +882,18 @@ async function generateSignalForAgentAndToken(
       token,
       side,
       maxLeverage: venueMaxLeverage,
+      makerMaxLeverage: venueMakerMaxLeverage,
+      currentPositions,
+      isLazyTraderAgent,
+      influencerImpactFactor,
     });
 
     console.log(
-      `    📊 LLM Decision: ${tradeDecision.shouldTrade ? "TRADE" : "SKIP"}`
+      `    📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN NEW" : "SKIP"} | Net Position Change: ${tradeDecision.netPositionChange || "NONE"}`
     );
+    if (tradeDecision.closeExistingPositionIds.length > 0) {
+      console.log(`    🔄 Close Positions: ${tradeDecision.closeExistingPositionIds.join(', ')}`);
+    }
     console.log(
       `    💰 Fund Allocation: ${tradeDecision.fundAllocation.toFixed(2)}%`
     );
@@ -660,9 +902,9 @@ async function generateSignalForAgentAndToken(
     }
     console.log(`    💭 Reason: ${tradeDecision.reason}`);
 
-    // If LLM decides not to trade, create a skipped signal record
-    if (!tradeDecision.shouldTrade) {
-      console.log(`    ⏭️  Creating skipped signal based on LLM decision`);
+    // If LLM decides not to open a new position, create a skipped signal record
+    if (!tradeDecision.shouldOpenNewPosition) {
+      console.log(`    ⏭️  Creating skipped signal based on LLM decision (net: ${tradeDecision.netPositionChange || "NONE"})`);
 
       try {
         await prisma.signals.create({
@@ -685,9 +927,13 @@ async function generateSignalForAgentAndToken(
             source_tweets: [post.message_id],
             skipped_reason: tradeDecision.reason,
             llm_decision: tradeDecision.reason,
-            llm_should_trade: tradeDecision.shouldTrade,
+            llm_should_trade: tradeDecision.shouldOpenNewPosition,
             llm_fund_allocation: tradeDecision.fundAllocation,
             llm_leverage: tradeDecision.leverage,
+            llm_close_trade_id: tradeDecision.closeExistingPositionIds.length > 0
+              ? JSON.stringify(tradeDecision.closeExistingPositionIds)
+              : null,
+            llm_net_position_change: tradeDecision.netPositionChange || "NONE",
             trade_executed: null,
           },
         });
@@ -727,9 +973,13 @@ async function generateSignalForAgentAndToken(
           },
           source_tweets: [post.message_id],
           llm_decision: tradeDecision.reason,
-          llm_should_trade: tradeDecision.shouldTrade,
+          llm_should_trade: tradeDecision.shouldOpenNewPosition,
           llm_fund_allocation: tradeDecision.fundAllocation,
           llm_leverage: tradeDecision.leverage,
+          llm_close_trade_id: tradeDecision.closeExistingPositionIds.length > 0
+            ? JSON.stringify(tradeDecision.closeExistingPositionIds)
+            : null,
+          llm_net_position_change: tradeDecision.netPositionChange || "NONE",
           trade_executed: null,
         },
       });
@@ -788,6 +1038,12 @@ async function runWorker() {
     console.log(
       "   Note: These are NOT read from signal, but hardcoded in monitor"
     );
+    console.log("");
+    console.log("🔄 Duplicate Signal Check Configuration:");
+    console.log(`   • Enabled: ${DUPLICATE_CHECK_ENABLED ? "YES" : "NO"}`);
+    if (DUPLICATE_CHECK_ENABLED) {
+      console.log(`   • Time Window: ${DUPLICATE_CHECK_HOURS} hours`);
+    }
     console.log("");
 
     // Test database connection first

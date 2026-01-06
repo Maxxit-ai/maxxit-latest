@@ -1,38 +1,51 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { prisma } from '../../../lib/prisma';
-import { ethers } from 'ethers';
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+import type { NextApiRequest, NextApiResponse } from "next";
+import { getOrCreateOstiumAgentAddress } from "../../../lib/deployment-agent-address";
+
+/**
+ * Generate or retrieve Ostium agent address for a user
+ * POST /api/ostium/generate-agent
+ * Body: { userWallet: string }
+ *
+ * Uses the user_agent_addresses table to store addresses per user wallet.
+ * If the user already has an Ostium agent address, returns the existing one.
+ */
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const { userId, agentId } = req.body;
+    const { userWallet } = req.body;
 
-    if (!userId || !agentId) {
-      return res.status(400).json({ error: 'userId and agentId are required' });
+    if (!userWallet || typeof userWallet !== "string") {
+      return res.status(400).json({ error: "userWallet is required" });
     }
 
-    // Generate new agent wallet
-    const agentWallet = ethers.Wallet.createRandom();
-    const agentAddress = agentWallet.address;
-    const agentPrivateKey = agentWallet.privateKey;
+    // Get or create Ostium agent address for this user
+    // This uses the encrypted storage in user_agent_addresses table
+    const result = await getOrCreateOstiumAgentAddress({
+      userWallet: userWallet.toLowerCase(),
+    });
 
-    // Register in wallet pool (encrypted)
-    const { registerPrivateKey } = await import('../../../lib/wallet-pool');
-    await registerPrivateKey(agentAddress, agentPrivateKey, userId);
-
-    console.log('[Ostium Generate Agent] Created agent wallet:', agentAddress);
+    console.log(
+      "[Ostium Generate Agent] Agent address for",
+      userWallet,
+      ":",
+      result.address
+    );
 
     return res.status(200).json({
       success: true,
-      agentAddress,
+      agentAddress: result.address,
     });
   } catch (error: any) {
-    console.error('[Ostium Generate Agent API] Error:', error);
+    console.error("[Ostium Generate Agent API] Error:", error);
     return res.status(500).json({
-      error: error.message || 'Failed to generate agent wallet',
+      success: false,
+      error: error.message || "Failed to generate agent wallet",
     });
   }
 }
-

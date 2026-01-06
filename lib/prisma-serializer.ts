@@ -9,8 +9,9 @@ export function serializePrisma<T>(obj: T): any {
     return obj;
   }
 
-  if (obj instanceof Decimal) {
-    return obj.toString();
+  // Check if it's a Prisma/decimal.js Decimal
+  if (obj instanceof Decimal || (obj as any)?.constructor?.name === 'Decimal' || typeof (obj as any)?.toFixed === 'function' && (obj as any)?.d && (obj as any)?.s !== undefined) {
+    return (obj as any).toString();
   }
 
   if (obj instanceof Date) {

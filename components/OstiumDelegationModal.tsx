@@ -15,7 +15,7 @@ interface OstiumDelegationModalProps {
 }
 
 // Get Ostium configuration based on environment
-const { tradingContract: OSTIUM_TRADING_CONTRACT } = getOstiumConfig();
+const { tradingContract: OSTIUM_TRADING_CONTRACT, chainId: ARBITRUM_CHAIN_ID, blockExplorerUrl, chainName } = getOstiumConfig();
 const OSTIUM_TRADING_ABI = ['function setDelegate(address delegate) external'];
 
 export function OstiumDelegationModal({
@@ -57,7 +57,6 @@ export function OstiumDelegationModal({
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       const network = await ethersProvider.getNetwork();
 
-      const ARBITRUM_CHAIN_ID = 42161;
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
         try {
           await provider.request({
@@ -66,9 +65,9 @@ export function OstiumDelegationModal({
           });
         } catch (switchError: any) {
           if (switchError.code === 4902) {
-            throw new Error('Please add Arbitrum to your wallet');
+            throw new Error(`Please add ${chainName} to your wallet`);
           }
-          throw new Error('Please switch to Arbitrum network');
+          throw new Error(`Please switch to ${chainName} network`);
         }
       }
 
@@ -224,12 +223,12 @@ export function OstiumDelegationModal({
                 <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-3">
                   <p className="text-[var(--accent)] text-sm mb-2">✓ Transaction confirmed</p>
                   <a
-                    href={`https://sepolia.arbiscan.io/tx/${txHash}`}
+                    href={`${blockExplorerUrl}/tx/${txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1"
                   >
-                    View on Arbiscan <ExternalLink className="w-3 h-3" />
+                    View on Explorer <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               )}
@@ -263,7 +262,7 @@ export function OstiumDelegationModal({
 
               {txHash && (
                 <a
-                  href={`https://arbiscan.io/tx/${txHash}`}
+                  href={`${blockExplorerUrl}/tx/${txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-[var(--accent)] hover:underline flex items-center justify-center gap-1"

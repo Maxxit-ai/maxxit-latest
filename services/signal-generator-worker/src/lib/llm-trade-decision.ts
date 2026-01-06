@@ -21,14 +21,32 @@ interface TradeDecisionInput {
   venue: string; // HYPERLIQUID or OSTIUM
   token: string; // Token symbol
   side: string; // LONG or SHORT
-  maxLeverage?: number; // Venue/token-specific max leverage (if known)
+  maxLeverage?: number;
+  makerMaxLeverage?: number;
+  currentPositions?: OpenPosition[];
+  isLazyTraderAgent?: boolean; // True for Lazy Trader agents (don't prioritize confidence score as much)
+  influencerImpactFactor?: number; // Impact factor of the signal sender (0-100, 50=neutral)
+}
+
+interface OpenPosition {
+  token: string;
+  side: string;
+  collateral: number;
+  entryPrice: number;
+  leverage: number;
+  notionalUsd: number;
+  takeProfitPrice: number | null;
+  stopLossPrice: number | null;
+  tradeId: string;
 }
 
 interface TradeDecision {
-  shouldTrade: boolean;
+  shouldOpenNewPosition: boolean;
+  closeExistingPositionIds: string[];
   fundAllocation: number; // Percentage of balance (0-100)
   leverage: number; // Leverage multiplier (1x-100x)
   reason: string; // Reason for the decision
+  netPositionChange?: 'OPEN' | 'CLOSE' | 'FLIP' | 'NONE';
 }
 
 type LLMProvider = "perplexity" | "openai";
@@ -82,7 +100,8 @@ export class LLMTradeDecisionMaker {
 
       // Return a conservative decision as fallback
       return {
-        shouldTrade: false,
+        shouldOpenNewPosition: false,
+        closeExistingPositionIds: [],
         fundAllocation: 0,
         leverage: 1,
         reason: `Failed to get LLM decision: ${error.message}`
@@ -91,11 +110,18 @@ export class LLMTradeDecisionMaker {
   }
 
   /**
-   * Build the prompt for the LLM
+   * Build the prompt for LLM
    */
   private buildPrompt(input: TradeDecisionInput): string {
-    // Format LunarCrush data with descriptions
-    let lunarcrushSection = "Not available";
+    // Format analytics data with descriptions
+    let analyticsSection = "Not available";
+
+    // Field name mapping to use user-friendly terminology in reasoning
+    const fieldNameMapping: Record<string, string> = {
+      galaxy_score: "Momentum Index",
+      alt_rank: "Relative Market Position",
+    };
+
     if (input.lunarcrushData && input.lunarcrushData.data && input.lunarcrushData.descriptions) {
       const formattedData: string[] = [];
       const { data, descriptions } = input.lunarcrushData;
@@ -103,70 +129,150 @@ export class LLMTradeDecisionMaker {
       // Only include fields that have values (not null)
       for (const [key, value] of Object.entries(data)) {
         if (value !== null && value !== undefined) {
-          const description = descriptions[key] || `Raw ${key} value from LunarCrush API`;
-          formattedData.push(`${key}: ${value} - ${description}`);
+          // Use mapped field name if available, otherwise use original key
+          const displayName = fieldNameMapping[key] || key;
+          const description = descriptions[key] || `${displayName} metric`;
+          formattedData.push(`${displayName}: ${value} - ${description}`);
         }
       }
 
       if (formattedData.length > 0) {
-        lunarcrushSection = formattedData.join("\n");
+        analyticsSection = formattedData.join("\n");
       }
     }
 
-    return `You are an expert crypto trading advisor with a deep understanding of risk management, market analysis, and quantitative decision-making. Your primary goal is to make highly accurate, data-driven trade decisions that prioritize capital preservation while optimizing for potential returns. Based on the following data, rigorously evaluate the trade opportunity and make a precise decision:
+    // Determine confidence instruction based on whether this is a Lazy Trader agent
+  const confidenceInstruction = input.isLazyTraderAgent
+    ? `CONFIDENCE SCORE: ${input.confidenceScore}
+This is a Lazy Trader agent - do NOT heavily weigh the confidence score. 
+Even if confidence is lower, you can proceed with the trade if analytics and market conditions are favorable.
+Focus primarily on market analytics, momentum, sentiment, and risk/reward rather than the confidence score.`
+    : `CONFIDENCE SCORE: ${input.confidenceScore}
+CRITICAL: Confidence score is a KEY factor in your decision. This represents the signal quality/strength.
+• High confidence (>0.7): Strong signal - can take larger positions if analytics support it
+• Medium confidence (0.4-0.7): Moderate signal - use conservative sizing, require supportive analytics
+• Low confidence (<0.4): Weak signal - SKIP trade unless analytics are exceptionally strong AND all conditions align perfectly
+Do NOT ignore low confidence scores. They indicate signal uncertainty and should heavily influence your decision to trade.`;
 
-MESSAGE/SIGNAL:
-"${input.message}"
+    let positionsSection = "No open positions";
+    if (input.currentPositions && input.currentPositions.length > 0) {
+      positionsSection = input.currentPositions.map(pos => {
+        const slText = pos.stopLossPrice ? `$${pos.stopLossPrice.toFixed(2)}` : "None";
+        const tpText = pos.takeProfitPrice ? `$${pos.takeProfitPrice.toFixed(2)}` : "None";
 
-CONFIDENCE SCORE (from Agent What): ${input.confidenceScore} (0.0 to 1.0)
+        return `• ${pos.token} ${pos.side} | Collateral: $${pos.collateral.toFixed(2)} | Entry: $${pos.entryPrice.toFixed(2)} | Leverage: ${pos.leverage}x | Notional: $${pos.notionalUsd.toFixed(2)} | SL: ${slText} | TP: ${tpText} | TradeId: ${pos.tradeId}`;
+      }).join("\n");
+    }
 
-LUNARCRUSH DATA:
-${lunarcrushSection}
+    return `You are AGENT HOW (Trading-Style Clone). You need to make a trading decision based on:
+1) A new signal from our system (SIGNAL section below)
+2) Current open positions (CURRENT POSITIONS section below)
 
-USER TRADING PREFERENCES:
+IMPORTANT: You must check for CONFLICTS between the new signal and existing positions.
+
+CONFLICT SCENARIOS TO HANDLE:
+1) If new signal says OPEN LONG on ETH, and there's already a LONG ETH position → Decide: ADD to position (increase exposure) or SKIP (avoid overexposure)
+2) If new signal says OPEN SHORT on ETH, and there's already a LONG ETH position → Decide: CLOSE existing LONG + OPEN new SHORT (flip position) or SKIP
+3) If new signal says CLOSE on a token we have position for → Decide: CLOSE the position
+
+For position changes:
+• CLOSE: If closing a position, provide strong reason (risk management, signal reversal, profit target hit, etc.)
+• FLIP: If flipping from LONG to SHORT (or vice versa), explain why the direction changed
+• OPEN: If opening new position, align with signal and market conditions
+
+Your decision must include:
+1) shouldOpenNewPosition: boolean
+2) closeExistingPositionIds: string[] (array of tradeIds to close if flipping - can be multiple)
+3) fundAllocation: percentage of balance to use
+4) leverage: multiplier
+5) reason: detailed explanation of your decision
+6) netPositionChange: "OPEN" | "CLOSE" | "FLIP" | "NONE"
+
+Key constraints:
+	•	Do not quote user preference numbers/scales in the explanation.
+	•	Do show market/analytics/pricing numbers to reflect's research effort (e.g., price, % move, momentum/volatility/liquidity metrics, sentiment metrics, rank, funding/open interest—whatever exists in analytics).
+	•	Do not mention any external providers/services by name.
+
+SIGNAL:
+|"${input.message}"
+
+${confidenceInstruction}
+
+ANALYTICS:
+${analyticsSection}
+
+INFLUENCER IMPACT FACTOR: ${input.influencerImpactFactor ?? 50}/100
+This represents the historical performance of the signal sender (0=worst, 50=neutral, 100=best).
+• Excellent (>80): Strongly favor this signal, boost confidence significantly (exceptional historical success)
+• High (60-80): Weight historical success, moderately boost confidence
+• Neutral (40-60): No historical bias - proceed normally without favor/penalty
+• Low (20-40): More skeptical, require stronger signal evidence for high confidence
+• Very Poor (<20): Highly skeptical, require extremely strong signal evidence for any confidence
+
+USER STYLE INPUTS (use internally; don't echo numeric values):
 ${JSON.stringify(input.userTradingPreferences || "Not available", null, 2)}
 
-Note about Trading Preferences:
-- risk_tolerance (0-100): Higher values indicate greater comfort with risk
-- trade_frequency (0-100): Higher values indicate preference for multiple smaller positions, lower values indicate preference for fewer larger positions
-- social_sentiment_weight (0-100): Higher values indicate more focus on social sentiment in decisions
-- price_momentum_focus (0-100): Higher values indicate more focus on price momentum
-- market_rank_priority (0-100): Higher values indicate more focus on market rankings
+BALANCE: $${input.userBalance.toFixed(2)} USDC
+MAX LEVERAGE: ${input.maxLeverage ?? "Unknown"} (Maker: ${input.makerMaxLeverage ?? "Unknown"})
 
-USER BALANCE: $${input.userBalance.toFixed(2)} USDC
-MAX ALLOWED LEVERAGE FOR THIS MARKET: ${input.maxLeverage ?? "Unknown"}
+CURRENT OPEN POSITIONS:
+${positionsSection}
 
-TRADING DETAILS:
-- Venue: ${input.venue}
-- Token: ${input.token}
-- Side: ${input.side}
+NEW SIGNAL:
+	•	Venue: ${input.venue}
+	•	Token: ${input.token}
+	•	Side: ${input.side}
 
-Based on all this information, decide whether to act on this signal and determine the optimal fund allocation and leverage.
+DECISION + SIZE:
+	•	Analyze conflicts between new signal and existing positions
+	•	If conflict exists (same token, opposite direction), decide to FLIP (close old, open new)
+	•	If no direct conflict (same token, same direction), decide to ADD or SKIP based on exposure/risk
+	•	If signal says CLOSE, provide strong reason
+	•	Keep capital in reserve if user prefers multiple entries or risk is high
+	•	Use leverage to express conviction only if it stays well within max leverage and liquidation risk is reasonable.
 
-Respond with a JSON object containing:
+RESEARCH SAVED:
+In the reason, explicitly say what analysis you compressed/synthesized for them (time/effort saved), in natural language.
+
+VENUE RULES:
+	•	HYPERLIQUID: set "leverage": 1 (exposure via fundAllocation).
+	•	OSTIUM: leverage allowed up to max.
+
+⸻
+
+OUTPUT (JSON ONLY)
+
+Return only this JSON object:
+
 {
-  "shouldTrade": boolean, // Whether to execute this trade or not
-  "fundAllocation": number, // Percentage of balance to allocate (0-100%)
-  "leverage": number, // Leverage multiplier (1-50x)
-  "reason": string // Detailed explanation for your decision
+"shouldOpenNewPosition": boolean,
+"closeExistingPositionIds": string[],
+"fundAllocation": number,
+"leverage": number,
+"marketEvidence": {
+"price": number | null,
+"priceChangePct": number | null,
+"keyNumbers": [
+{ "label": string, "value": number, "unit": string }
+]
+},
+"reason": string,
+"netPositionChange": "OPEN" | "CLOSE" | "FLIP" | "NONE"
 }
 
-GUIDELINES:
-1. Consider the user's trading preferences when making decisions
-2. Account for the confidence score and LunarCrush metrics
-3. Be conservative with high-risk trades
-4. Fund allocation and leverage should be proportional to confidence, user's trading preferences and market conditions
-6. Always provide a clear reason for your decision
-7. A reason should explicitly mention why it chose the fund allocation and leverage given user's balance and trading preferences. (eg. I've $4300 in balance and given my risk tolerance of 80, I'm allocating 25% of my balance to this trade using 3x leverage.)
-8. Do not mention or suggest that any external service or source (such as LunarCrush or other analytics providers) was used to obtain scores or data in your explanation.
-9. Pay special attention to the trade_frequency parameter in user preferences - higher values indicate the user wants to open multiple positions, so fund allocation should reflect this by allowing capital for multiple trades, while lower values indicate preference for fewer, larger positions.
-10. If the fundsAllocation is 0 then shouldTrade should be false.
+Rules for marketEvidence:
+	•	Include at least 3 numeric items in keyNumbers (use whatever is present in analytics/pricing).
+	•	label must be human-readable (e.g., "24h volume", "volatility", "momentum score", "sentiment delta", "rank", "funding rate", "open interest change").
+	•	If a number isn't available, set fields to null (don't invent).
 
-VENUE-SPECIFIC NOTES:
-- For HYPERLIQUID: No explicit leverage (it's built into position sizing)
-- For OSTIUM: Explicit leverage is available (up to max allowed for token pair)
+Rules for reason:
+	•	Must feel like it follows the user's style without quoting preference numbers.
+	•	Must reference some of the numbers from marketEvidence to demonstrate research effort.
+	•	Must explain your decision clearly: what conflict detected, why flipping/adding/skipping, fund allocation rationale.
+	•	Do not mention external providers/services.
 
-RESPOND ONLY WITH THE JSON OBJECT, NO OTHER TEXT.`;
+HARD RULE: If fundAllocation == 0 => shouldOpenNewPosition must be false.
+RESPOND ONLY WITH THE JSON OBJECT.`;
   }
 
   /**
@@ -240,8 +346,6 @@ RESPOND ONLY WITH THE JSON OBJECT, NO OTHER TEXT.`;
     return data.choices[0].message.content;
   }
 
-
-
   /**
    * Parse LLM response
    */
@@ -257,10 +361,14 @@ RESPOND ONLY WITH THE JSON OBJECT, NO OTHER TEXT.`;
 
       // Validate and sanitize the response
       return {
-        shouldTrade: Boolean(parsed.shouldTrade),
+        shouldOpenNewPosition: Boolean(parsed.shouldOpenNewPosition),
+        closeExistingPositionIds: Array.isArray(parsed.closeExistingPositionIds)
+          ? parsed.closeExistingPositionIds
+          : (parsed.closeExistingPositionId ? [parsed.closeExistingPositionId] : []),
         fundAllocation: Math.max(0, Math.min(100, Number(parsed.fundAllocation) || 0)),
         leverage: Math.max(1, Math.min(50, Number(parsed.leverage) || 1)),
         reason: parsed.reason || "No reason provided",
+        netPositionChange: parsed.netPositionChange || "NONE",
       };
     } catch (error) {
       console.error("[LLM Trade Decision] Failed to parse LLM response:", error);
@@ -268,10 +376,12 @@ RESPOND ONLY WITH THE JSON OBJECT, NO OTHER TEXT.`;
 
       // Return a conservative decision as fallback
       return {
-        shouldTrade: false,
+        shouldOpenNewPosition: false,
+        closeExistingPositionIds: [],
         fundAllocation: 0,
         leverage: 1,
         reason: "Failed to parse LLM response",
+        netPositionChange: "NONE",
       };
     }
   }
@@ -328,10 +438,12 @@ export async function makeTradeDecision(input: TradeDecisionInput): Promise<Trad
 
     // Return a conservative decision as fallback
     return {
-      shouldTrade: false,
+      shouldOpenNewPosition: false,
+      closeExistingPositionIds: [],
       fundAllocation: 0,
       leverage: 1,
-      reason: "No LLM API key configured for trade decision making"
+      reason: "No LLM API key configured for trade decision making",
+      netPositionChange: "NONE",
     };
   }
 

@@ -120,10 +120,6 @@ const HeroSection = memo(
       [onLearnMoreScroll]
     );
 
-    const handleLazyTradingClick = useCallback(() => {
-      router.push("/lazy-trading");
-    }, [router]);
-
     return (
       <section className="py-16 relative flex-1 flex items-center overflow-hidden bg-black">
         <div className="absolute inset-0 w-full flex-1">
@@ -178,9 +174,9 @@ const HeroSection = memo(
             />
           </h1>
 
-          <p className="max-w-4xl mx-auto mb-8  md:text-xl text-[var(--text-secondary)] leading-relaxed">
-          Join an Alpha Club to automate your trading. Three AI agents work together to find signals, execute with your risk style, and route to the best venue — all while your funds stay in your wallet.
-        </p>
+          {/* <p className="max-w-4xl mx-auto mb-8  md:text-xl text-[var(--text-secondary)] leading-relaxed">
+            Join an Alpha Club to automate your trading. Three AI agents work together to find signals, execute with your risk style, and route to the best venue — all while your funds stay in your wallet.
+          </p> */}
 
           <div className="flex flex-wrap justify-center gap-4 mb-16">
             <button
@@ -192,15 +188,15 @@ const HeroSection = memo(
                 →
               </span>
             </button>
-            <button
-              onClick={handleLazyTradingClick}
+            <Link href="/lazy-trading"
+              target="_blank"
               className="group px-8 py-4 border-2 border-accent text-accent font-bold text-lg hover:bg-accent hover:text-[var(--bg-deep)] transition-all"
             >
               LAZY TRADING
               <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">
                 ⚡
               </span>
-            </button>
+            </Link>
             <button
               onClick={handleLearnMoreClick}
               className="px-8 py-4 border border-[var(--border)] font-bold text-lg hover:border-accent hover:text-accent transition-all"

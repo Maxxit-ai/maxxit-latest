@@ -1,0 +1,23 @@
+{
+  "name": "ostium-pairs-sync-worker",
+  "version": "1.0.0",
+  "description": "Syncs Ostium trading pairs from the Ostium service to the database",
+  "main": "dist/worker.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/worker.ts",
+    "start": "node dist/worker.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "@maxxit/database": "*",
+    "@maxxit/common": "*",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1",
+    "@types/node": "^20.5.9"
+  }
+}
+

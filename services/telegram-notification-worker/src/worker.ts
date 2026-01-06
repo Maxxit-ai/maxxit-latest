@@ -25,11 +25,14 @@ dotenv.config();
 
 const PORT = process.env.PORT || 5010;
 const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds default
-const BOT_TOKEN = process.env.TELEGRAM_NOTIFICATION_BOT_TOKEN;
+
+// Use the main bot token (same as lazy trading)
+// This allows both features to share a single bot
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 if (!BOT_TOKEN) {
   console.error(
-    "❌ TELEGRAM_NOTIFICATION_BOT_TOKEN environment variable is required"
+    "❌ TELEGRAM_BOT_TOKEN environment variable is required"
   );
   process.exit(1);
 }
@@ -282,8 +285,7 @@ async function processNotifications() {
         }
 
         console.log(
-          `   ✅ Telegram connected (@${
-            userTelegram.telegram_username || userTelegram.telegram_user_id
+          `   ✅ Telegram connected (@${userTelegram.telegram_username || userTelegram.telegram_user_id
           })`
         );
 
@@ -470,8 +472,16 @@ function formatSignalNotTradedMessage(
   // Build message - different header for failed vs not traded
   let message: string;
 
+  // Check if this is a "token not supported" case
+  const isTokenNotSupported = 
+    reason?.toLowerCase().includes("not supported") || 
+    reason?.toLowerCase().includes("not available") ||
+    reason?.toLowerCase().includes("ostium pairs");
+
   if (isFailed) {
     message = `❌ *Trade Execution Failed*\n\n`;
+  } else if (isTokenNotSupported) {
+    message = `⚠️ *Token Not Supported*\n\n`;
   } else {
     message = `📊 *Signal Generated (Not Traded)*\n\n`;
   }
@@ -480,42 +490,84 @@ function formatSignalNotTradedMessage(
   message += `${venueEmoji} Venue: ${venue}\n`;
   message += `🤖 Agent: ${escapeTelegramMarkdown(agentName)}\n\n`;
 
-  // Status and reason
-  if (isFailed) {
+  // For token not supported: show clear explanation
+  if (isTokenNotSupported) {
+    message += `⚠️ *Why Skipped:*\n`;
+    message += `• This token is not currently available in the Ostium trading pairs\n`;
+    message += `• The signal was automatically skipped to prevent from execution\n`;
+    message += `• Your agent is working correctly - this is expected behavior\n`;
+  }
+  // For failed trades: show status and error, plus agent decision as bullets
+  else if (isFailed) {
     message += `⚠️ *Status:* Trade attempted but execution failed\n\n`;
     if (reason) {
       message += `❌ *Error:*\n${escapeTelegramMarkdown(reason)}\n`;
     }
+    // Include LLM decision for context on failed trades
+    if (signal.llm_decision) {
+      message += `\n💭 *Agent Decision:*\n${formatDecisionAsBullets(
+        signal.llm_decision
+      )}\n`;
+    }
   } else {
-    message += `ℹ️ *Status:* Signal generated but not traded\n\n`;
-    if (reason) {
-      message += `⚠️ *Reason:*\n${escapeTelegramMarkdown(reason)}\n`;
+    // For "not traded" signals, only show the agent decision
+    // (skipped_reason and llm_decision usually contain the same explanation)
+    if (signal.llm_decision) {
+      message += `💭 *Why Not Traded:*\n${formatDecisionAsBullets(
+        signal.llm_decision
+      )}\n`;
+    } else if (reason) {
+      // Fallback to reason if no llm_decision available
+      message += `💭 *Why Not Traded:*\n${formatDecisionAsBullets(reason)}\n`;
     }
   }
 
-  // LLM decision (useful context)
-  if (signal.llm_decision) {
-    message += `\n💭 *Agent Decision:*\n${escapeTelegramMarkdown(
-      signal.llm_decision
-    )}\n`;
-  }
+  // Trade parameters that were considered (only show if allocation > 0 AND trade was attempted/failed)
+  // For not traded signals, don't show parameters section
+  if (isFailed) {
+    const hasAllocation = signal.llm_fund_allocation !== null && signal.llm_fund_allocation > 0;
+    const hasLeverage = signal.llm_leverage !== null && signal.llm_leverage > 0;
 
-  // Trade parameters that were considered
-  if (signal.llm_fund_allocation !== null || signal.llm_leverage !== null) {
-    message += `\n📊 *Parameters Considered:*`;
-    if (signal.llm_fund_allocation !== null) {
-      message += `\n• Fund Allocation: ${signal.llm_fund_allocation.toFixed(
-        2
-      )}%`;
-    }
-    if (signal.llm_leverage !== null) {
-      message += `\n• Leverage: ${signal.llm_leverage.toFixed(1)}x`;
+    if (hasAllocation || hasLeverage) {
+      message += `\n📊 *Parameters Considered:*`;
+      if (hasAllocation) {
+        message += `\n• Fund Allocation: ${signal.llm_fund_allocation.toFixed(2)}%`;
+      }
+      if (hasLeverage) {
+        message += `\n• Leverage: ${signal.llm_leverage.toFixed(1)}x`;
+      }
     }
   }
 
   message += `\n\n💡 View all signals on your [Maxxit Dashboard](https://maxxit.ai/my-trades)`;
 
   return message;
+}
+
+/**
+ * Format LLM decision text into bullet points for better Telegram readability
+ * Splits by sentence and formats each as a bullet point
+ */
+function formatDecisionAsBullets(text: string): string {
+  if (!text) return "";
+
+  // Split text into sentences (look for periods, semicolons, or newlines)
+  const sentences = text
+    .replace(/\.\s+/g, ".\n")  // Replace period+space with period+newline
+    .replace(/;\s+/g, ";\n")   // Replace semicolon+space with semicolon+newline
+    .replace(/\n+/g, "\n")      // Remove multiple newlines
+    .split("\n")
+    .map(s => s.trim())
+    .filter(s => s.length > 0);   // Remove empty lines
+
+  // If no sentences found, return original text
+  if (sentences.length === 0) return escapeTelegramMarkdown(text);
+
+  // Format each sentence as a bullet point
+  return sentences.map(sentence => {
+    const bullet = sentence.startsWith("-") ? "" : "• ";
+    return bullet + escapeTelegramMarkdown(sentence);
+  }).join("\n");
 }
 
 /**

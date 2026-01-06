@@ -105,6 +105,7 @@ async function processTelegramAlphaMessages() {
     let totalSignals = 0;
     let totalErrors = 0;
 
+
     // Process each message
     for (const message of unprocessedMessages) {
       try {
@@ -122,47 +123,92 @@ async function processTelegramAlphaMessages() {
         // NO PRE-FILTERING - Let LLM decide everything
         // All messages go through LLM classification
 
-        // Classify message using LLM
-        const classification = await classifier.classifyTweet(
-          message.message_text
+        // Get user's impact_factor to pass to LLM
+        const userImpactFactor = user?.impact_factor ?? 50; // Default to 50 (neutral) if not set
+
+        // Classify message using LLM - returns array of classifications (one per token)
+        const classifications = await classifier.classifyTweet(
+          message.message_text,
+          userImpactFactor
         );
 
-        // Update message with classification and signature verification data
-        await prisma.telegram_posts.update({
-          where: { id: message.id },
-          data: {
-            is_signal_candidate: classification.isSignalCandidate,
-            extracted_tokens: classification.extractedTokens,
-            confidence_score: classification.confidence,
-            signal_type:
-              classification.sentiment === "bullish"
-                ? "LONG"
-                : classification.sentiment === "bearish"
-                ? "SHORT"
-                : null,
-            // EigenAI signature verification fields
-            llm_signature: classification.signature,
-            llm_raw_output: classification.rawOutput,
-            llm_model_used: classification.model,
-            llm_chain_id: classification.chainId,
-            llm_reasoning: classification.reasoning,
-            llm_market_context: classification.marketContext,
-          },
-        });
+        // Process each token classification separately
+        let tokenSignalsCreated = 0;
+        
+        for (const classification of classifications) {
+          // Skip non-signals
+          if (!classification.isSignalCandidate || classification.extractedTokens.length === 0) {
+            console.log(`[${username}] ℹ️  Not a signal (or no tokens extracted)`);
+            continue;
+          }
 
-        totalProcessed++;
+          const token = classification.extractedTokens[0]; // Only one token per classification now
 
-        if (classification.isSignalCandidate) {
+          // Create NEW record for this specific token
+          await prisma.telegram_posts.create({
+            data: {
+              // Link to original user
+              alpha_user_id: message.alpha_user_id,
+              source_id: message.source_id,
+
+              // Make message_id unique per token
+              message_id: `${message.message_id}_${token}`,
+
+              // Original message metadata
+              message_text: message.message_text,
+              message_created_at: message.message_created_at,
+              sender_id: message.sender_id,
+              sender_username: message.sender_username,
+
+              // Token-specific classification
+              is_signal_candidate: classification.isSignalCandidate,
+              extracted_tokens: [token],
+              confidence_score: classification.confidence,
+              signal_type:
+                classification.sentiment === "bullish"
+                  ? "LONG"
+                  : classification.sentiment === "bearish"
+                  ? "SHORT"
+                  : null,
+              token_price:
+                typeof classification.tokenPrice === "number"
+                  ? classification.tokenPrice
+                  : null,
+              timeline_window: classification.timelineWindow || null,
+              take_profit: classification.takeProfit ?? 0,
+              stop_loss: classification.stopLoss ?? 0,
+
+              // EigenAI verification data
+              llm_signature: classification.signature,
+              llm_raw_output: classification.rawOutput,
+              llm_model_used: classification.model,
+              llm_chain_id: classification.chainId,
+              llm_reasoning: classification.reasoning,
+              llm_market_context: classification.marketContext,
+              llm_full_prompt: classification.fullPrompt,
+            },
+          });
+
+          tokenSignalsCreated++;
           totalSignals++;
+          
           console.log(
-            `[${username}] ✅ Signal detected: ${classification.extractedTokens.join(
-              ", "
-            )} - ${classification.sentiment} (confidence: ${(
+            `[${username}] ✅ Signal for ${token}: ${classification.sentiment} (confidence: ${(
               classification.confidence * 100
             ).toFixed(0)}%)`
           );
-        } else {
-          console.log(`[${username}] ℹ️  Not a signal`);
+        }
+
+        // Delete original webhook message after creating token-specific records
+        // This prevents confusing NULL rows - only actual signal records remain
+        await prisma.telegram_posts.delete({
+          where: { id: message.id },
+        });
+
+        totalProcessed++;
+        
+        if (tokenSignalsCreated === 0) {
+          console.log(`[${username}] ℹ️  No actionable signals found in message`);
         }
       } catch (error: any) {
         totalErrors++;
@@ -176,6 +222,7 @@ async function processTelegramAlphaMessages() {
         // If classification fails, leave it NULL for next worker cycle
       }
     }
+
 
     console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("📊 PROCESSING SUMMARY");

@@ -38,6 +38,13 @@ export default async function handler(
 async function handleGet(id: string, req: NextApiRequest, res: NextApiResponse) {
   const agent = await prisma.agents.findUnique({
     where: { id },
+    include: {
+      agent_telegram_users: {
+        include: {
+          telegram_alpha_users: true
+        }
+      }
+    }
   });
 
   if (!agent) {
@@ -69,7 +76,7 @@ async function handlePatch(id: string, req: NextApiRequest, res: NextApiResponse
     return res.status(200).json(agent);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation failed',
         details: error.errors,
       });

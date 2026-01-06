@@ -1,14 +1,35 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen } from 'lucide-react';
-import { Bot, BarChart3, FileText, Copy, Check, LogOut, X, AlertCircle } from 'lucide-react';
+import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen, ChevronDown, Activity, Coins } from 'lucide-react';
+import { Bot, BarChart3, FileText, Copy, Check, LogOut, X, AlertCircle, Sparkles } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import Image from 'next/image';
 import { ethers } from 'ethers';
 
-const ARBITRUM_ONE_CHAIN_ID = 42161;
-const USDC_CONTRACT_ADDRESS = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+// Set this to true for testing on Sepolia, false for Mainnet
+const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET === 'true';
+
+const NETWORKS = {
+  MAINNET: {
+    chainId: 42161,
+    chainName: 'Arbitrum One',
+    usdcAddress: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    explorer: 'https://arbiscan.io',
+    rpc: 'https://arb1.arbitrum.io/rpc',
+    hexId: '0xa4b1'
+  },
+  TESTNET: {
+    chainId: 421614,
+    chainName: 'Arbitrum Sepolia',
+    usdcAddress: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
+    explorer: 'https://sepolia.arbiscan.io',
+    rpc: 'https://sepolia-rollup.arbitrum.io/rpc',
+    hexId: '0x66eee' // 421614 in hex
+  }
+};
+
+const ACTIVE_NETWORK = IS_TESTNET ? NETWORKS.TESTNET : NETWORKS.MAINNET;
 const USDC_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
   'function decimals() external view returns (uint8)',
@@ -29,6 +50,20 @@ export function Header() {
   const popupRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const mobileButtonRef = useRef<HTMLButtonElement>(null);
+  const [isPortfolioOpen, setIsPortfolioOpen] = useState(false);
+  const [isTradingOpen, setIsTradingOpen] = useState(false);
+  const [isResourcesOpen, setIsResourcesOpen] = useState(false);
+  const portfolioRef = useRef<HTMLDivElement>(null);
+  const portfolioButtonRef = useRef<HTMLButtonElement>(null);
+  const tradingRef = useRef<HTMLDivElement>(null);
+  const tradingButtonRef = useRef<HTMLButtonElement>(null);
+  const resourcesRef = useRef<HTMLDivElement>(null);
+  const resourcesButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Credit balance state
+  const [creditBalance, setCreditBalance] = useState<string | null>(null);
+  const [isLoadingCredits, setIsLoadingCredits] = useState(false);
+  const creditFetchedRef = useRef(false);
 
   // Monitor current network chain ID
   useEffect(() => {
@@ -58,7 +93,7 @@ export function Header() {
     };
   }, []);
 
-  const isOnArbitrum = currentChainId === ARBITRUM_ONE_CHAIN_ID;
+  const isOnArbitrum = currentChainId === ACTIVE_NETWORK.chainId;
   const needsNetworkSwitch = authenticated && currentChainId !== null && !isOnArbitrum;
 
   useEffect(() => {
@@ -79,10 +114,10 @@ export function Header() {
       if (showLoadingState) {
         setIsLoadingBalance(true);
       }
-      
+
       // Get provider from connected wallet
       const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const contract = new ethers.Contract(USDC_CONTRACT_ADDRESS, USDC_ABI, provider);
+      const contract = new ethers.Contract(ACTIVE_NETWORK.usdcAddress, USDC_ABI, provider);
 
       // Direct contract call to get balance
       const balance = await contract.balanceOf(walletAddress);
@@ -107,7 +142,7 @@ export function Header() {
       if (isInitialBalanceLoad) {
         setIsInitialBalanceLoad(false);
       }
-      
+
       const interval = setInterval(() => {
         fetchUsdcBalance(address, false);
       }, 30000);
@@ -115,15 +150,64 @@ export function Header() {
     }
   }, [authenticated, isOnArbitrum, user?.wallet?.address]);
 
-  const navLinks = [
-    // { href: '/', label: 'Home', icon: Home, testId: 'nav-home' },
+  // Fetch credit balance (optimized - only once per mount + 60s polling)
+  const fetchCreditBalance = async (walletAddress: string, showLoader = false) => {
+    try {
+      if (showLoader) setIsLoadingCredits(true);
+      const res = await fetch(`/api/user/credits/balance?wallet=${walletAddress}`);
+      const data = await res.json();
+      if (data.balance !== undefined) {
+        const bal = parseFloat(data.balance);
+        setCreditBalance(isNaN(bal) ? '0' : bal.toLocaleString());
+      }
+    } catch (error) {
+      console.error('Failed to fetch credit balance:', error);
+    } finally {
+      if (showLoader) setIsLoadingCredits(false);
+    }
+  };
+
+  useEffect(() => {
+    if (authenticated && user?.wallet?.address) {
+      const address = user.wallet.address;
+      // Only fetch with loader on first load
+      if (!creditFetchedRef.current) {
+        fetchCreditBalance(address, true);
+        creditFetchedRef.current = true;
+      }
+      // Poll every 60 seconds silently
+      const interval = setInterval(() => {
+        fetchCreditBalance(address, false);
+      }, 60000);
+      return () => clearInterval(interval);
+    } else {
+      setCreditBalance(null);
+      creditFetchedRef.current = false;
+    }
+  }, [authenticated, user?.wallet?.address]);
+
+  const navLinks = [{ href: '/', label: 'Home', icon: Home, testId: 'nav-home' }];
+
+  const portfolioItems = [
+    { href: '/dashboard', label: 'Dashboard', icon: Activity, testId: 'nav-dashboard' },
     { href: '/my-deployments', label: 'My Clubs', icon: Wallet, testId: 'nav-deployments' },
     { href: '/my-trades', label: 'My Trades', icon: TrendingUp, testId: 'nav-my-trades' },
+  ];
+
+  const tradingItems = [
     { href: '/lazy-trading', label: 'Lazy Trading', icon: Bot, testId: 'nav-lazy-trading' },
     { href: '/creator', label: 'Create Club', icon: User, testId: 'nav-my-agents' },
+  ];
+
+  const resourcesItems = [
     { href: '/blog', label: 'Blog', icon: BookOpen, testId: 'nav-blog' },
     { href: '/docs', label: 'Docs', icon: FileText, testId: 'nav-docs' },
+    { href: '/pricing', label: 'Pricing', icon: Sparkles, testId: 'nav-pricing' },
   ];
+
+  const isPortfolioActive = router.pathname === '/dashboard' || router.pathname === '/my-deployments' || router.pathname === '/my-trades';
+  const isTradingActive = router.pathname === '/lazy-trading' || router.pathname === '/creator';
+  const isResourcesActive = router.pathname === '/blog' || router.pathname === '/docs' || router.pathname === '/pricing';
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -165,6 +249,66 @@ export function Header() {
     }
   }, [isMobileMenuOpen]);
 
+  // Close portfolio dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isPortfolioOpen &&
+        portfolioRef.current &&
+        portfolioButtonRef.current &&
+        !portfolioRef.current.contains(event.target as Node) &&
+        !portfolioButtonRef.current.contains(event.target as Node)
+      ) {
+        setIsPortfolioOpen(false);
+      }
+    };
+
+    if (isPortfolioOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isPortfolioOpen]);
+
+  // Close trading dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isTradingOpen &&
+        tradingRef.current &&
+        tradingButtonRef.current &&
+        !tradingRef.current.contains(event.target as Node) &&
+        !tradingButtonRef.current.contains(event.target as Node)
+      ) {
+        setIsTradingOpen(false);
+      }
+    };
+
+    if (isTradingOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isTradingOpen]);
+
+  // Close resources dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isResourcesOpen &&
+        resourcesRef.current &&
+        resourcesButtonRef.current &&
+        !resourcesRef.current.contains(event.target as Node) &&
+        !resourcesButtonRef.current.contains(event.target as Node)
+      ) {
+        setIsResourcesOpen(false);
+      }
+    };
+
+    if (isResourcesOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isResourcesOpen]);
+
   // Collapse mobile menu when resizing up to desktop
   useEffect(() => {
     const handleResize = () => {
@@ -177,7 +321,8 @@ export function Header() {
     return () => window.removeEventListener('resize', handleResize);
   }, [isMobileMenuOpen]);
 
-  // Handle switching to Arbitrum One network
+
+  // Handle switching to correct Arbitrum network
   const handleSwitchToArbitrum = async () => {
     if (!window.ethereum) {
       console.error('Ethereum provider not found');
@@ -188,7 +333,7 @@ export function Header() {
       setIsSwitchingNetwork(true);
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0xa4b1' }], // 0xa4b1 is the hex for 42161 (Arbitrum One)
+        params: [{ chainId: ACTIVE_NETWORK.hexId }],
       });
     } catch (switchError: any) {
       // This error code indicates that the chain has not been added to MetaMask
@@ -198,10 +343,10 @@ export function Header() {
             method: 'wallet_addEthereumChain',
             params: [
               {
-                chainId: '0xa4b1',
-                chainName: 'Arbitrum One',
-                rpcUrls: ['https://arb1.arbitrum.io/rpc'],
-                blockExplorerUrls: ['https://arbiscan.io'],
+                chainId: ACTIVE_NETWORK.hexId,
+                chainName: ACTIVE_NETWORK.chainName,
+                rpcUrls: [ACTIVE_NETWORK.rpc],
+                blockExplorerUrls: [ACTIVE_NETWORK.explorer],
                 nativeCurrency: {
                   name: 'Ethereum',
                   symbol: 'ETH',
@@ -211,7 +356,7 @@ export function Header() {
             ],
           });
         } catch (addError) {
-          console.error('Failed to add Arbitrum network:', addError);
+          console.error('Failed to add network:', addError);
         }
       }
       console.error('Failed to switch network:', switchError);
@@ -247,6 +392,53 @@ export function Header() {
       );
     });
 
+  const renderDropdownItem = (
+    href: string,
+    label: string,
+    Icon: any,
+    testId: string,
+    isActive: boolean,
+    onClick?: () => void
+  ) => {
+    const isExternal = href.startsWith('http://') || href.startsWith('https://');
+
+    if (isExternal) {
+      return (
+        <Link
+          key={href}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onClick}
+          className={`w-full flex items-center gap-2 px-4 py-2 text-sm text-left transition-colors ${isActive
+            ? 'text-[var(--text-primary)] bg-[var(--accent)]/10'
+            : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
+            }`}
+          data-testid={testId}
+        >
+          <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-[var(--accent)]' : ''}`} />
+          {label}
+        </Link>
+      );
+    }
+
+    return (
+      <Link key={href} href={href}>
+        <button
+          onClick={onClick}
+          className={`w-full flex items-center gap-2 px-4 py-2 text-sm text-left transition-colors ${isActive
+            ? 'text-[var(--text-primary)] bg-[var(--accent)]/10'
+            : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
+            }`}
+          data-testid={testId}
+        >
+          <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-[var(--accent)]' : ''}`} />
+          {label}
+        </button>
+      </Link>
+    );
+  };
+
   return (
     <header className="sticky py-4 top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-lg">
       <div className="max-w-7xl mx-auto px-6">
@@ -266,6 +458,99 @@ export function Header() {
           <div className="flex items-center gap-2">
             <nav className="hidden lg:flex items-center gap-1">
               {renderNavLinks()}
+              {/* Portfolio Dropdown */}
+              <div className="relative">
+                <button
+                  ref={portfolioButtonRef}
+                  onClick={() => setIsPortfolioOpen(!isPortfolioOpen)}
+                  className={`relative inline-flex items-center justify-center gap-2 px-3 py-2 text-sm transition-colors md:w-auto md:text-center group ${isPortfolioActive
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                >
+                  <Wallet className={`h-4 w-4 transition-colors ${isPortfolioActive ? 'text-[var(--accent)]' : ''}`} />
+                  <span className="hidden sm:inline relative">Portfolio</span>
+                  <span className="sm:hidden relative">Portfolio</span>
+                  <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${isPortfolioOpen ? 'rotate-180' : ''}`} />
+                  {isPortfolioActive && (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"></span>
+                  )}
+                </button>
+                {isPortfolioOpen && (
+                  <div
+                    ref={portfolioRef}
+                    className="absolute left-0 top-full mt-2 w-48 z-50 border border-[var(--border)] bg-[var(--bg-surface)] shadow-lg rounded-md"
+                  >
+                    <div className="py-1">
+                      {portfolioItems.map(({ href, label, icon: Icon, testId }) =>
+                        renderDropdownItem(href, label, Icon, testId, router.pathname === href)
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Trading Dropdown */}
+              <div className="relative">
+                <button
+                  ref={tradingButtonRef}
+                  onClick={() => setIsTradingOpen(!isTradingOpen)}
+                  className={`relative inline-flex items-center justify-center gap-2 px-3 py-2 text-sm transition-colors md:w-auto md:text-center group ${isTradingActive
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                >
+                  <TrendingUp className={`h-4 w-4 transition-colors ${isTradingActive ? 'text-[var(--accent)]' : ''}`} />
+                  <span className="hidden sm:inline relative">Trading</span>
+                  <span className="sm:hidden relative">Trading</span>
+                  <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${isTradingOpen ? 'rotate-180' : ''}`} />
+                  {isTradingActive && (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"></span>
+                  )}
+                </button>
+                {isTradingOpen && (
+                  <div
+                    ref={tradingRef}
+                    className="absolute left-0 top-full mt-2 w-48 z-50 border border-[var(--border)] bg-[var(--bg-surface)] shadow-lg rounded-md"
+                  >
+                    <div className="py-1">
+                      {tradingItems.map(({ href, label, icon: Icon, testId }) =>
+                        renderDropdownItem(href, label, Icon, testId, router.pathname === href)
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Resources Dropdown */}
+              <div className="relative">
+                <button
+                  ref={resourcesButtonRef}
+                  onClick={() => setIsResourcesOpen(!isResourcesOpen)}
+                  className={`relative inline-flex items-center justify-center gap-2 px-3 py-2 text-sm transition-colors md:w-auto md:text-center group ${isResourcesActive
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                >
+                  <BookOpen className={`h-4 w-4 transition-colors ${isResourcesActive ? 'text-[var(--accent)]' : ''}`} />
+                  <span className="hidden sm:inline relative">Resources</span>
+                  <span className="sm:hidden relative">Resources</span>
+                  <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${isResourcesOpen ? 'rotate-180' : ''}`} />
+                  {isResourcesActive && (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"></span>
+                  )}
+                </button>
+                {isResourcesOpen && (
+                  <div
+                    ref={resourcesRef}
+                    className="absolute left-0 top-full mt-2 w-48 z-50 border border-[var(--border)] bg-[var(--bg-surface)] shadow-lg rounded-md"
+                  >
+                    <div className="py-1">
+                      {resourcesItems.map(({ href, label, icon: Icon, testId }) =>
+                        renderDropdownItem(href, label, Icon, testId, router.pathname === href)
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <Link href="/#agents">
                 <button
                   className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] text-sm font-bold hover:bg-[var(--accent-dim)] transition-colors ml-2"
@@ -275,6 +560,22 @@ export function Header() {
                   <span className="hidden sm:inline">Join</span>
                 </button>
               </Link>
+
+              {/* Credit Balance Badge - Desktop */}
+              {ready && authenticated && (
+                <Link href="/credit-history">
+                  <button
+                    className="inline-flex items-center justify-center gap-2 px-3 py-2 ml-2 border border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] text-sm font-bold hover:bg-[var(--accent)]/20 hover:border-[var(--accent)] transition-all group"
+                    data-testid="nav-credits"
+                  >
+                    <Coins className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                    <span className="hidden sm:inline font-mono min-w-[2ch]">
+                      {isLoadingCredits || creditBalance === null ? '—' : creditBalance}
+                    </span>
+                    <span className="hidden sm:inline text-[10px] text-[var(--accent)]/70 uppercase tracking-wider">Credits</span>
+                  </button>
+                </Link>
+              )}
 
               {/* Wallet Connection */}
               {ready && (
@@ -288,7 +589,7 @@ export function Header() {
                           className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] text-sm font-bold hover:bg-[var(--accent-dim)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           data-testid="button-switch-network"
                         >
-                          {isSwitchingNetwork ? 'Switching...' : 'Switch to Arbitrum'}
+                          {isSwitchingNetwork ? 'Switching...' : `Switch to ${ACTIVE_NETWORK.chainName}`}
                         </button>
                       ) : (
                         <button
@@ -426,18 +727,57 @@ export function Header() {
             className="md:hidden mt-3 border border-[var(--border)] bg-[var(--bg-surface)] shadow-lg"
           >
             <div className="flex flex-col divide-y divide-[var(--border)]">
-              <div className="flex flex-col p-2">{renderNavLinks(() => setIsMobileMenuOpen(false))}</div>
+              <div className="flex flex-col p-2">
+                {renderNavLinks(() => setIsMobileMenuOpen(false))}
+                {/* Portfolio Section */}
+                <div className="pt-2">
+                  <div className="px-4 py-2 text-xs text-[var(--text-muted)] uppercase tracking-wider font-semibold">Portfolio</div>
+                  {portfolioItems.map(({ href, label, icon: Icon, testId }) =>
+                    renderDropdownItem(href, label, Icon, testId, router.pathname === href, () => setIsMobileMenuOpen(false))
+                  )}
+                </div>
+                {/* Trading Section */}
+                <div className="pt-2">
+                  <div className="px-4 py-2 text-xs text-[var(--text-muted)] uppercase tracking-wider font-semibold">Trading</div>
+                  {tradingItems.map(({ href, label, icon: Icon, testId }) =>
+                    renderDropdownItem(href, label, Icon, testId, router.pathname === href, () => setIsMobileMenuOpen(false))
+                  )}
+                </div>
+                {/* Resources Section */}
+                <div className="pt-2">
+                  <div className="px-4 py-2 text-xs text-[var(--text-muted)] uppercase tracking-wider font-semibold">Resources</div>
+                  {resourcesItems.map(({ href, label, icon: Icon, testId }) =>
+                    renderDropdownItem(href, label, Icon, testId, router.pathname === href, () => setIsMobileMenuOpen(false))
+                  )}
+                </div>
+              </div>
               <div className="p-3 flex flex-col gap-3">
-                <Link href="/create-agent">
+                <Link href="/#agents" onClick={() => setIsMobileMenuOpen(false)}>
                   <button
-                    onClick={() => setIsMobileMenuOpen(false)}
                     className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] text-sm font-bold hover:bg-[var(--accent-dim)] transition-colors"
                     data-testid="nav-create"
                   >
                     <Plus className="h-4 w-4" />
-                    Create
+                    Join
                   </button>
                 </Link>
+
+                {/* Credit Balance Badge - Mobile */}
+                {ready && authenticated && (
+                  <Link href="/credit-history" onClick={() => setIsMobileMenuOpen(false)}>
+                    <button
+                      className="w-full inline-flex items-center justify-center gap-3 px-4 py-3 border border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)] text-sm font-bold hover:bg-[var(--accent)]/20 transition-all"
+                      data-testid="nav-credits-mobile"
+                    >
+                      <Coins className="h-5 w-5" />
+                      <span className="font-mono text-lg min-w-[2ch]">
+                        {isLoadingCredits || creditBalance === null ? '—' : creditBalance}
+                      </span>
+                      <span className="text-xs text-[var(--accent)]/70 uppercase tracking-wider">Credits</span>
+                    </button>
+                  </Link>
+                )}
+
                 {ready && (
                   <>
                     {authenticated ? (
@@ -449,7 +789,7 @@ export function Header() {
                             className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] text-sm font-bold hover:bg-[var(--accent-dim)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             data-testid="button-switch-network-mobile"
                           >
-                            {isSwitchingNetwork ? 'Switching...' : 'Switch to Arbitrum One'}
+                            {isSwitchingNetwork ? 'Switching...' : `Switch to ${ACTIVE_NETWORK.chainName}`}
                           </button>
                         ) : (
                           <div className="flex flex-col gap-2 border border-[var(--border)] p-3 bg-[var(--bg-elevated)]">

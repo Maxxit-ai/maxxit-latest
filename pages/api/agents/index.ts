@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../../lib/prisma';
 import { insertAgentSchema } from '@shared/schema';
 import { z } from 'zod';
+import { AgentService } from '../../../lib/agent-service';
 
 // Convert camelCase to snake_case for Prisma field names
 function camelToSnake(str: string): string {
@@ -19,7 +20,7 @@ function convertKeysToCamelCase(obj: any): any {
   if (typeof obj !== 'object') return obj;
   if (obj instanceof Date) return obj; // Don't convert Date objects
   if (Array.isArray(obj)) return obj.map(convertKeysToCamelCase);
-  
+
   const result: any = {};
   for (const key in obj) {
     if (obj.hasOwnProperty(key)) {
@@ -59,7 +60,7 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
   const orderBy: any = {};
   if (order) {
     const [field, direction] = (order as string).split('.');
-    
+
     // Special handling for fields with numbers (camelToSnake doesn't handle these)
     const fieldMap: Record<string, string> = {
       'apr30d': 'apr_30d',
@@ -69,7 +70,7 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
       'sharpe90d': 'sharpe_90d',
       'sharpeSi': 'sharpe_si',
     };
-    
+
     const snakeField = fieldMap[field] || camelToSnake(field);
     orderBy[snakeField] = direction === 'desc' ? 'desc' : 'asc';
   } else {
@@ -81,10 +82,37 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
     orderBy,
     take: parseInt(limit as string),
     skip: parseInt(offset as string),
+    include: {
+      agent_telegram_users: {
+        include: {
+          telegram_alpha_users: true
+        }
+      }
+    }
+  });
+
+  // Process agents to calculate total cost
+  const processedAgents = agents.map(agent => {
+    let alphaSum = 0;
+    if (agent.agent_telegram_users) {
+      agent.agent_telegram_users.forEach((au: any) => {
+        if (au.telegram_alpha_users?.credit_price) {
+          alphaSum += Number(au.telegram_alpha_users.credit_price);
+        }
+      });
+    }
+
+    // Add 10% platform fee and round/ceil as appropriate
+    const totalCost = alphaSum > 0 ? alphaSum * 1.1 : 0;
+
+    return {
+      ...agent,
+      totalCost: totalCost
+    };
   });
 
   // Convert response keys to camelCase for frontend
-  const camelCaseAgents = convertKeysToCamelCase(agents);
+  const camelCaseAgents = convertKeysToCamelCase(processedAgents);
   return res.status(200).json(camelCaseAgents);
 }
 
@@ -92,18 +120,20 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
   // Validate request body
   try {
     const validated = insertAgentSchema.parse(req.body);
-    
-    // Create agent
-    const agent = await prisma.agents.create({
-      data: validated,
-    });
+
+    // Create agent using consolidated service
+    const agent = await AgentService.createAgentCompletely(
+      prisma,
+      validated,
+      {} // No linking data provided in this basic creation endpoint
+    );
 
     // Convert response keys to camelCase for frontend
     const camelCaseAgent = convertKeysToCamelCase(agent);
     return res.status(201).json(camelCaseAgent);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation failed',
         details: error.errors,
       });

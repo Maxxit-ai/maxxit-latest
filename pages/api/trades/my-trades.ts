@@ -205,6 +205,7 @@ export default async function handler(
             llm_raw_output: true,
             llm_model_used: true,
             llm_chain_id: true,
+            llm_full_prompt: true,
             llm_reasoning: true,
             llm_market_context: true,
             message_created_at: true,
@@ -279,6 +280,7 @@ export default async function handler(
                 llmRawOutput: relatedTelegramPost.llm_raw_output,
                 llmModelUsed: relatedTelegramPost.llm_model_used,
                 llmChainId: relatedTelegramPost.llm_chain_id,
+                llmFullPrompt: relatedTelegramPost.llm_full_prompt,
                 llmMarketContext:
                   (relatedTelegramPost as any).llm_market_context || null,
                 llmReasoning: relatedTelegramPost.llm_reasoning,
@@ -366,6 +368,7 @@ export default async function handler(
             llm_raw_output: true,
             llm_model_used: true,
             llm_chain_id: true,
+            llm_full_prompt: true,
             llm_reasoning: true,
             llm_market_context: true,
             message_created_at: true,
@@ -395,6 +398,7 @@ export default async function handler(
                 llmRawOutput: relatedTelegramPost.llm_raw_output,
                 llmModelUsed: relatedTelegramPost.llm_model_used,
                 llmChainId: relatedTelegramPost.llm_chain_id,
+                llmFullPrompt: relatedTelegramPost.llm_full_prompt,
                 llmMarketContext:
                   (relatedTelegramPost as any).llm_market_context || null,
                 llmReasoning: relatedTelegramPost.llm_reasoning,

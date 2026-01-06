@@ -34,8 +34,8 @@ export default async function handler(
       });
     }
 
-    // Generate a unique link code (6 characters, alphanumeric)
-    const linkCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+    // Generate a unique link code with NTF_ prefix (to distinguish from lazy trading LT codes)
+    const linkCode = `NTF_${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
     // Create or update user telegram notification entry
     if (existingLink) {
@@ -59,9 +59,10 @@ export default async function handler(
       });
     }
 
-    // Get bot username from env or use default
+    // Use the main bot (same as lazy trading) - TELEGRAM_BOT_USERNAME
+    // This allows both features to use the same bot
     const botUsername =
-      process.env.TELEGRAM_NOTIFICATION_BOT_USERNAME || "MaxxitNotifyBot";
+      process.env.TELEGRAM_BOT_USERNAME || "Prime_Alpha_bot";
 
     // Create deep link URL
     const deepLink = `https://t.me/${botUsername}?start=${linkCode}`;
