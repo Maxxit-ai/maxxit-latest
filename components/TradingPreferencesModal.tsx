@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import React from 'react';
-import { X, Activity } from 'lucide-react';
+import { X, Activity, ArrowRight } from 'lucide-react';
 import { Slider, SliderRange, SliderThumb, SliderTrack } from '@radix-ui/react-slider';
 
 export interface TradingPreferences {
@@ -40,6 +40,18 @@ interface TradingPreferencesModalProps {
    * Override primary button label (defaults based on mode)
    */
   primaryLabel?: string;
+  /**
+   * Optional Next button handler - when provided, shows Next button beside Save
+   */
+  onNext?: () => void;
+  /**
+   * Whether Next button should be disabled
+   */
+  nextDisabled?: boolean;
+  /**
+   * Whether Next button is loading
+   */
+  nextLoading?: boolean;
 }
 
 /**
@@ -55,6 +67,9 @@ export function TradingPreferencesForm({
   onSaveLocal,
   initialPreferences,
   primaryLabel,
+  onNext,
+  nextDisabled,
+  nextLoading,
 }: TradingPreferencesModalProps) {
   const [preferences, setPreferences] = useState<TradingPreferences>(
     initialPreferences || {
@@ -123,6 +138,10 @@ export function TradingPreferencesForm({
           // Only close if there's no callback (shouldn't happen)
           onClose();
         }
+        // If onNext is provided, call it after saving locally
+        if (onNext) {
+          onNext();
+        }
         return;
       }
 
@@ -142,6 +161,11 @@ export function TradingPreferencesForm({
 
       if (onSave) {
         onSave();
+      }
+
+      // If onNext is provided, call it after saving
+      if (onNext) {
+        onNext();
       }
     } catch (err: any) {
       setError(err.message);
@@ -501,21 +525,28 @@ export function TradingPreferencesForm({
                 onClick={onBack}
                 className="flex-1 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
                 type="button"
+                disabled={saving}
               >
                 Back
               </button>
             )}
             <button
               onClick={handleSave}
-              disabled={saving}
-              className="flex-1 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50"
+              disabled={saving || (onNext && nextDisabled)}
+              className="flex-1 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {saving ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Activity className="w-4 h-4 animate-spin" /> Saving...
-                </span>
+              {saving || (onNext && nextLoading) ? (
+                <>
+                  <Activity className="w-4 h-4 animate-spin" />
+                  {saving ? 'Saving...' : 'Checking...'}
+                </>
               ) : (
-                primaryLabel || (localOnly ? 'Save & Continue' : 'Save Preferences')
+                <>
+                  {onNext 
+                    ? (primaryLabel || 'Save and Next')
+                    : (primaryLabel || (localOnly ? 'Save & Continue' : 'Save Preferences'))}
+                  {onNext && <ArrowRight className="w-4 h-4" />}
+                </>
               )}
             </button>
           </div>
