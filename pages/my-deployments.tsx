@@ -110,6 +110,7 @@ export default function MyDeployments() {
   const [deploymentStatusesLoading, setDeploymentStatusesLoading] = useState<
     Record<string, boolean>
   >({});
+  const [creditBalance, setCreditBalance] = useState<number>(0);
 
   useEffect(() => {
     if (authenticated && user?.wallet?.address) {
@@ -195,7 +196,7 @@ export default function MyDeployments() {
           ? user.wallet.address.toLowerCase()
           : null;
 
-      const [agentsData, addressesData, deploymentsData] = await Promise.all([
+      const [agentsData, addressesData, deploymentsData, creditData] = await Promise.all([
         fetch("/api/agents?status=PUBLIC&order=apr30d.desc&limit=20").then(
           (res) => res.json()
         ),
@@ -214,9 +215,14 @@ export default function MyDeployments() {
             })
             .catch(() => [])
           : Promise.resolve([]),
+        // Fetch credit balance if authenticated
+        userWallet
+          ? fetch(`/api/user/credits/balance?wallet=${user?.wallet?.address}`).then(res => res.ok ? res.json() : { balance: 0 }).catch(() => ({ balance: 0 }))
+          : Promise.resolve({ balance: 0 }),
       ]);
 
       setAgents(agentsData || []);
+      setCreditBalance(parseFloat(creditData?.balance || '0'));
 
       if (addressesData && Array.isArray(addressesData) && addressesData.length) {
         setUserAgentAddresses({
@@ -473,6 +479,8 @@ export default function MyDeployments() {
               ostiumDelegationStatus={ostiumDelegationStatus}
               ostiumUsdcAllowance={ostiumUsdcAllowance}
               fromHome={false}
+              creditBalance={creditBalance}
+              userWallet={user?.wallet?.address || ''}
             />
           </div>
         ) : !authenticated ? (

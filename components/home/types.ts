@@ -8,6 +8,7 @@ export interface AgentSummary {
   aprSi: number | null;
   sharpe30d: number | null;
   totalCost?: number;
+  creatorWallet?: string; // For creator-free-join check
 }
 
 
