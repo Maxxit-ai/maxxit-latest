@@ -270,38 +270,41 @@ export default function AgentDashboard() {
   const agentIdParam = Array.isArray(agentId) ? agentId[0] : agentId;
 
   useEffect(() => {
-    if (agentIdParam) {
+    if (agentIdParam && typeof agentIdParam === 'string' && agentIdParam.length > 0) {
       fetchAgentData();
-      fetchPositions(1);
-      fetchSignals(1);
     }
   }, [agentIdParam]);
 
   useEffect(() => {
-    if (agentIdParam && authenticated) {
+    if (agentIdParam && typeof agentIdParam === 'string' && agentIdParam.length > 0 && authenticated) {
       fetchDeployment();
     }
   }, [agentIdParam, authenticated]);
 
   useEffect(() => {
-    if (agentIdParam) {
+    if (agentIdParam && typeof agentIdParam === 'string' && agentIdParam.length > 0) {
       fetchPositions(1);
     }
   }, [agentIdParam, positionFilters]);
 
   useEffect(() => {
-    if (agentIdParam) {
+    if (agentIdParam && typeof agentIdParam === 'string' && agentIdParam.length > 0) {
       fetchSignals(1);
     }
   }, [agentIdParam, signalFilters]);
 
   const fetchAgentData = async () => {
+    if (!agentIdParam || typeof agentIdParam !== 'string' || agentIdParam.length === 0) return;
+    
     setLoading(true);
     setError("");
 
     try {
       const agentRes = await fetch(`/api/agents/${agentIdParam}`);
-      if (!agentRes.ok) throw new Error("Failed to fetch agent");
+      if (!agentRes.ok) {
+        const errorData = await agentRes.json().catch(() => ({ error: "Failed to fetch agent" }));
+        throw new Error(errorData.error || "Failed to fetch agent");
+      }
       const agentData = await agentRes.json();
       setAgent(agentData);
       setLoading(false);
@@ -312,7 +315,7 @@ export default function AgentDashboard() {
   };
 
   const fetchPositions = async (page = positionsMeta.page) => {
-    if (!agentIdParam) return;
+    if (!agentIdParam || typeof agentIdParam !== 'string' || agentIdParam.length === 0) return;
     setPositionsLoading(true);
 
     try {
@@ -325,7 +328,10 @@ export default function AgentDashboard() {
       if (positionFilters.symbol) params.set("symbol", positionFilters.symbol);
 
       const positionsRes = await fetch(`/api/agents/${agentIdParam}/positions?${params.toString()}`);
-      if (!positionsRes.ok) throw new Error("Failed to fetch positions");
+      if (!positionsRes.ok) {
+        const errorData = await positionsRes.json().catch(() => ({ error: "Failed to fetch positions" }));
+        throw new Error(errorData.error || "Failed to fetch positions");
+      }
 
       const data: PositionResponse = await positionsRes.json();
       setPositions(data.data);
@@ -336,14 +342,16 @@ export default function AgentDashboard() {
       });
       setPositionSummary(data.summary);
     } catch (err: any) {
-      setError(err.message || "Failed to load positions");
+      console.error("Error fetching positions:", err);
+      // Don't set global error for positions, just log it
+      setPositions([]);
     } finally {
       setPositionsLoading(false);
     }
   };
 
   const fetchSignals = async (page = signalsMeta.page) => {
-    if (!agentIdParam) return;
+    if (!agentIdParam || typeof agentIdParam !== 'string' || agentIdParam.length === 0) return;
     setSignalsLoading(true);
 
     try {
@@ -356,7 +364,10 @@ export default function AgentDashboard() {
       if (signalFilters.tokenSymbol) params.set("tokenSymbol", signalFilters.tokenSymbol);
 
       const signalsRes = await fetch(`/api/signals?${params.toString()}`);
-      if (!signalsRes.ok) throw new Error("Failed to fetch signals");
+      if (!signalsRes.ok) {
+        const errorData = await signalsRes.json().catch(() => ({ error: "Failed to fetch signals" }));
+        throw new Error(errorData.error || "Failed to fetch signals");
+      }
 
       const data: PaginatedSignalsResponse = await signalsRes.json();
       setSignals(data.data);
@@ -366,16 +377,18 @@ export default function AgentDashboard() {
         total: data.total,
       });
     } catch (err: any) {
-      setError(err.message || "Failed to load signals");
+      console.error("Error fetching signals:", err);
+      // Don't set global error for signals, just log it
+      setSignals([]);
     } finally {
       setSignalsLoading(false);
     }
   };
 
   const fetchDeployment = async () => {
-    if (!agentIdParam) return;
+    if (!agentIdParam || typeof agentIdParam !== 'string' || agentIdParam.length === 0) return;
     if (!authenticated || !user?.wallet?.address) {
-      setError("User not authenticated");
+      setDeployment(null);
       return;
     }
     
@@ -384,13 +397,23 @@ export default function AgentDashboard() {
     try {
       const userWallet = user.wallet.address;
       const deploymentRes = await fetch(`/api/agents/${agentIdParam}/deployments?userWallet=${encodeURIComponent(userWallet)}`);
-      if (!deploymentRes.ok) throw new Error("Failed to fetch deployment");
+      if (!deploymentRes.ok) {
+        // If 404, deployment doesn't exist for this user - that's okay
+        if (deploymentRes.status === 404) {
+          setDeployment(null);
+          return;
+        }
+        const errorData = await deploymentRes.json().catch(() => ({ error: "Failed to fetch deployment" }));
+        throw new Error(errorData.error || "Failed to fetch deployment");
+      }
 
       const deploymentData: Deployment = await deploymentRes.json();
       setDeployment(deploymentData);
       setDeploymentForm(deploymentData);
     } catch (err: any) {
-      setError(err.message || "Failed to load deployment");
+      console.error("Error fetching deployment:", err);
+      // Don't set global error for deployment, just log it
+      setDeployment(null);
     } finally {
       setDeploymentLoading(false);
     }
@@ -431,27 +454,53 @@ export default function AgentDashboard() {
     }
   };
 
-  if (loading) {
+  // Only show full page loader if agent data is loading and we don't have agent yet
+  if (loading && !agent) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="max-w-7xl mx-auto px-4 py-8 flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading agent data...</p>
+          </div>
+        </div>
       </div>
     );
   }
 
-  if (error || !agent) {
+  // Show error only if we have an error and no agent data
+  if (error && !agent) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Error Loading Agent</h2>
-          <p className="text-muted-foreground mb-4">{error || 'Agent not found'}</p>
-          <button
-            onClick={() => router.push('/creator')}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-          >
-            Back to Agents
-          </button>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="max-w-7xl mx-auto px-4 py-8 flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Error Loading Agent</h2>
+            <p className="text-muted-foreground mb-4">{error || 'Agent not found'}</p>
+            <button
+              onClick={() => router.push('/my-deployments')}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              Back to My Deployments
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If no agent but no error, show loading state
+  if (!agent && !loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="max-w-7xl mx-auto px-4 py-8 flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading agent data...</p>
+          </div>
         </div>
       </div>
     );
@@ -479,18 +528,22 @@ export default function AgentDashboard() {
 
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">{agent.name}</h1>
+              <h1 className="text-3xl font-bold mb-2">{agent?.name || 'Loading...'}</h1>
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Target className="h-4 w-4" />
-                  {agent.venue}
-                </span>
-                <span className={`px-2 py-1 rounded text-xs font-medium ${agent.status === 'ACTIVE' ? 'bg-green-500/10 text-green-500' :
-                  agent.status === 'PAUSED' ? 'bg-yellow-500/10 text-yellow-500' :
-                    'bg-gray-500/10 text-gray-500'
-                  }`}>
-                  {agent.status}
-                </span>
+                {agent && (
+                  <>
+                    <span className="flex items-center gap-1">
+                      <Target className="h-4 w-4" />
+                      {agent.venue}
+                    </span>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${agent.status === 'ACTIVE' ? 'bg-green-500/10 text-green-500' :
+                      agent.status === 'PAUSED' ? 'bg-yellow-500/10 text-yellow-500' :
+                        'bg-gray-500/10 text-gray-500'
+                      }`}>
+                      {agent.status}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -504,51 +557,63 @@ export default function AgentDashboard() {
         </div>
 
         {/* Performance Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="p-6 bg-card border border-border rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Total P&L</span>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)} USDC
-            </div>
-            <div className={`text-xs ${totalPnlPercentage >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {totalPnlPercentage >= 0 ? '+' : ''}{totalPnlPercentage.toFixed(2)}%
-            </div>
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="p-6 bg-card border border-border rounded-lg">
+                <div className="flex items-center justify-center h-24">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              </div>
+            ))}
           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="p-6 bg-card border border-border rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Total P&L</span>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)} USDC
+              </div>
+              <div className={`text-xs ${totalPnlPercentage >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {totalPnlPercentage >= 0 ? '+' : ''}{totalPnlPercentage.toFixed(2)}%
+              </div>
+            </div>
 
-          <div className="p-6 bg-card border border-border rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">APR (30d)</span>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <div className="p-6 bg-card border border-border rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">APR (30d)</span>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-2xl font-bold">
+                {agent?.apr30d ? `${agent.apr30d.toFixed(2)}%` : 'N/A'}
+              </div>
+              <div className="text-xs text-muted-foreground">Last 30 days</div>
             </div>
-            <div className="text-2xl font-bold">
-              {agent.apr30d ? `${agent.apr30d.toFixed(2)}%` : 'N/A'}
-            </div>
-            <div className="text-xs text-muted-foreground">Last 30 days</div>
-          </div>
 
-          <div className="p-6 bg-card border border-border rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
-              <Activity className="h-4 w-4 text-muted-foreground" />
+            <div className="p-6 bg-card border border-border rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-2xl font-bold">
+                {agent?.sharpe30d ? agent.sharpe30d.toFixed(2) : 'N/A'}
+              </div>
+              <div className="text-xs text-muted-foreground">Risk-adjusted return</div>
             </div>
-            <div className="text-2xl font-bold">
-              {agent.sharpe30d ? agent.sharpe30d.toFixed(2) : 'N/A'}
-            </div>
-            <div className="text-xs text-muted-foreground">Risk-adjusted return</div>
-          </div>
 
-          <div className="p-6 bg-card border border-border rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Open Positions</span>
-              <Target className="h-4 w-4 text-muted-foreground" />
+            <div className="p-6 bg-card border border-border rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Open Positions</span>
+                <Target className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-2xl font-bold">{positionSummary.openCount}</div>
+              <div className="text-xs text-muted-foreground">{positionSummary.closedCount} closed</div>
             </div>
-            <div className="text-2xl font-bold">{positionSummary.openCount}</div>
-            <div className="text-xs text-muted-foreground">{positionSummary.closedCount} closed</div>
           </div>
-        </div>
+        )}
 
         {/* Deployment Configuration */}
         <div className="mb-8">

@@ -11,6 +11,7 @@ const pricingTiers = [
         name: "FREE",
         price: "$0",
         credits: "0 Credits",
+        trades: 0,
         description: "Explorer plan for those starting their trading journey.",
         features: [
             "Access to basic agents",
@@ -26,11 +27,12 @@ const pricingTiers = [
         name: "STARTER",
         price: "$19",
         credits: "1,000 Credits",
+        trades: 100,
         description: "Kickstart your automated trading with essential credits.",
         features: [
             "1,000 Trading Credits",
+            "100 Trades Included",
             "Priority agent access",
-            "Advanced analytics",
             "Email support"
         ],
         accent: "var(--accent)",
@@ -41,11 +43,12 @@ const pricingTiers = [
         name: "PRO",
         price: "$49",
         credits: "5,000 Credits",
+        trades: 200,
         description: "The sweet spot for active traders seeking efficiency.",
         features: [
             "5,000 Trading Credits",
+            "200 Trades Included",
             "Custom agent deployment",
-            "Early access to new features",
             "Priority support"
         ],
         accent: "var(--accent)",
@@ -56,10 +59,11 @@ const pricingTiers = [
         name: "WHALE",
         price: "$99",
         credits: "15,000 Credits",
+        trades: 400,
         description: "Maximum power for serious institutional-grade trading.",
         features: [
             "15,000 Trading Credits",
-            "Lowest cost per credit",
+            "400 Trades Included",
             "Dedicated account manager",
             "Custom API access"
         ],

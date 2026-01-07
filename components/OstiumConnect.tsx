@@ -204,8 +204,7 @@ export function OstiumConnect({
 
             if (approvalData.hasApproval) {
               // User has valid USDC approval - they've done the flow before
-              // Skip ALL approval steps and go to complete step
-              console.log('[OstiumConnect] ✅ Wallet already has approvals - skipping to complete step');
+              console.log('[OstiumConnect] ✅ Wallet already has approvals');
               setAgentAddress(setupData.addresses.ostium);
               setDelegateApproved(true);
               setUsdcApproved(true);
@@ -234,19 +233,19 @@ export function OstiumConnect({
           console.log('[OstiumConnect] 🆕 First time for this wallet - generating new address');
           setStep('agent');
           setLoading(false);
-          await assignAgent();
+          // Don't auto-assign - user will click button
         }
       } else {
         console.log('[OstiumConnect] Setup check failed - starting from agent step');
         setStep('agent');
         setLoading(false);
-        await assignAgent();
+        // Don't auto-assign - user will click button
       }
     } catch (err) {
       console.error('[OstiumConnect] Error checking setup status:', err);
       setStep('agent');
       setLoading(false);
-      await assignAgent();
+      // Don't auto-assign - user will click button
     } finally {
       isCheckingRef.current = false;
     }
@@ -303,7 +302,7 @@ export function OstiumConnect({
       // Don't create deployment here - just assign the agent address
       // Deployment will be created when user clicks "Join Agent" in the complete step
       console.log('[OstiumConnect] Agent address assigned, skipping deployment creation');
-      setStep('approvals');
+      // Don't auto-advance - user will click Next button
     } catch (err: any) {
       console.error('[OstiumConnect] Failed to assign agent:', err);
       setError(err.message || 'Failed to assign agent wallet');
@@ -526,14 +525,7 @@ export function OstiumConnect({
         console.log('[OstiumConnect] USDC already sufficiently approved');
         setUsdcApproved(true);
         setUsdcAllowanceStatus(true);
-
-        // If both are done, move to complete
-        if (delegateApproved) {
-          setStep('complete');
-          if (onSuccess) {
-            onSuccess();
-          }
-        }
+        // Don't auto-advance - user will click Next button
         setLoading(false);
         return;
       }
@@ -585,11 +577,7 @@ export function OstiumConnect({
 
     setUsdcApproved(true);
     setUsdcAllowanceStatus(true);
-
-    // If both approvals are done, move to complete
-    if (delegateApproved) {
-      setStep('complete');
-    }
+    // Don't auto-advance - user will click Next button
     setLoading(false);
   };
 
@@ -645,14 +633,7 @@ export function OstiumConnect({
         console.log('[OstiumConnect] USDC already sufficiently approved');
         setUsdcApproved(true);
         setUsdcAllowanceStatus(true);
-
-        // If both are done, move to complete
-        if (delegateApproved && usdcApproved) {
-          setStep('complete');
-          if (onSuccess) {
-            onSuccess();
-          }
-        }
+        // Don't auto-advance - user will click Next button
         return;
       }
 
@@ -686,7 +667,10 @@ export function OstiumConnect({
     // console.log('[OstiumConnect] Trading preferences set:', preferences);
     tradingPreferencesRef.current = preferences;
     setTradingPreferences(preferences);
+    // Don't auto-advance - user will click "Next" button
+  };
 
+  const handlePreferencesNext = () => {
     // After preferences are set, proceed to check setup status with fresh prefs
     setLoading(true);
     checkSetupStatus();
@@ -767,14 +751,7 @@ export function OstiumConnect({
         console.log('[OstiumConnect] USDC allowance status:', hasApproval);
       }
 
-      // If both are done, move to complete
-      if (isDelegated && hasApproval) {
-        setStep('complete');
-        if (onSuccess) {
-          onSuccess();
-        }
-      }
-
+      // Don't auto-advance - user will click Next button
       return { isDelegated, hasApproval };
     } catch (err) {
       console.error('[OstiumConnect] Error checking approval status:', err);
@@ -815,14 +792,8 @@ export function OstiumConnect({
         return;
       }
 
-      // Both are done, move to complete
-      if (isDelegated && hasApproval) {
-        setStep('complete');
-        if (onSuccess) {
-          onSuccess();
-        }
-        setLoading(false);
-      }
+      // Both are done - user can click Next button to proceed
+      setLoading(false);
     } catch (err: any) {
       console.error('[OstiumConnect] Error enabling 1-click trading:', err);
       if (err.code === 4001 || err.message?.includes('rejected')) {
@@ -833,6 +804,21 @@ export function OstiumConnect({
       setLoading(false);
     }
   };
+
+  // Automatically assign agent when entering agent step
+  useEffect(() => {
+    if (step === 'agent' && user?.wallet?.address && !agentAddress && !loading && !isAssigningRef.current) {
+      assignAgent();
+    }
+  }, [step, user?.wallet?.address, agentAddress, loading]);
+
+  // When returning to preferences step within the same flow,
+  // restore the last saved preferences from the ref into local state.
+  useEffect(() => {
+    if (step === 'preferences' && tradingPreferencesRef.current && !tradingPreferences) {
+      setTradingPreferences(tradingPreferencesRef.current);
+    }
+  }, [step, tradingPreferences]);
 
   // Check approval status when entering approvals step
   useEffect(() => {
@@ -1124,20 +1110,72 @@ export function OstiumConnect({
                           onBack={goBack}
                           localOnly={true}
                           onSaveLocal={handlePreferencesSet}
-                          primaryLabel={loading ? 'Saving...' : 'Save & Continue'}
-                          initialPreferences={firstDeploymentPreferences || tradingPreferences || undefined}
+                          primaryLabel="Save and Next"
+                          // Prefer the most recent in-memory preferences, then fall back
+                          initialPreferences={
+                            tradingPreferencesRef.current ||
+                            firstDeploymentPreferences ||
+                            tradingPreferences ||
+                            undefined
+                          }
+                          onNext={handlePreferencesNext}
+                          nextDisabled={loading}
+                          nextLoading={loading}
                         />
                       )}
                     </div>
                   </div>
                 ) : step === 'agent' ? (
-                  <div className="text-center space-y-4 py-8">
-                    <Activity className="w-16 h-16 mx-auto text-[var(--accent)] animate-pulse" />
+                  <div className="space-y-6 py-4">
                     <div>
-                      <h3 className="font-display text-lg mb-2">ASSIGNING AGENT...</h3>
-                      <p className="text-sm text-[var(--text-muted)]">
-                        Assigning your agent wallet
+                      <h3 className="font-display text-2xl mb-2">Assign Agent Wallet</h3>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Generate a unique agent wallet address for this deployment.
                       </p>
+                    </div>
+
+                    {loading ? (
+                      <div className="text-center space-y-4 py-8">
+                        <Activity className="w-16 h-16 mx-auto text-[var(--accent)] animate-pulse" />
+                        <div>
+                          <h3 className="font-display text-lg mb-2">ASSIGNING AGENT...</h3>
+                          <p className="text-sm text-[var(--text-muted)]">
+                            Assigning your agent wallet
+                          </p>
+                        </div>
+                      </div>
+                    ) : agentAddress ? (
+                      <div className="border border-[var(--accent)]/60 bg-[var(--accent)]/5 p-4 rounded">
+                        <p className="text-xs font-semibold text-[var(--accent)] mb-2 uppercase">Agent Address Assigned</p>
+                        <p className="text-xs text-[var(--text-secondary)] font-mono break-all">{agentAddress}</p>
+                      </div>
+                    ) : (
+                      <div className="border border-[var(--border)] p-4 rounded">
+                        <p className="text-sm text-[var(--text-secondary)] mb-4">
+                          Generating your agent wallet address...
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        onClick={goBack}
+                        className="px-4 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
+                        type="button"
+                        disabled={loading}
+                      >
+                        Back
+                      </button>
+                      {agentAddress && (
+                        <button
+                          onClick={() => setStep('approvals')}
+                          className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center gap-2"
+                          type="button"
+                        >
+                          Next
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : step === 'approvals' ? (
@@ -1230,30 +1268,36 @@ export function OstiumConnect({
                         >
                           Back
                         </button>
-                        <button
-                          onClick={enableOneClickTrading}
-                          disabled={loading || checkingApprovalStatus || (delegateApproved && usdcApproved)}
-                          className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                          {checkingApprovalStatus ? (
-                            <>
-                              <Activity className="w-5 h-5 animate-spin" />
-                              CHECKING STATUS...
-                            </>
-                          ) : loading ? (
-                            <>
-                              <Activity className="w-5 h-5 animate-pulse" />
-                              SIGNING...
-                            </>
-                          ) : delegateApproved && usdcApproved ? (
-                            <>
-                              <CheckCircle className="w-5 h-5" />
-                              ALL APPROVALS COMPLETE
-                            </>
-                          ) : (
-                            'ENABLE 1-CLICK TRADING'
-                          )}
-                        </button>
+                        {delegateApproved && usdcApproved ? (
+                          <button
+                            onClick={() => setStep('complete')}
+                            className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
+                          >
+                            <CheckCircle className="w-5 h-5" />
+                            Next
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={enableOneClickTrading}
+                            disabled={loading || checkingApprovalStatus}
+                            className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            {checkingApprovalStatus ? (
+                              <>
+                                <Activity className="w-5 h-5 animate-spin" />
+                                CHECKING STATUS...
+                              </>
+                            ) : loading ? (
+                              <>
+                                <Activity className="w-5 h-5 animate-pulse" />
+                                SIGNING...
+                              </>
+                            ) : (
+                              'ENABLE 1-CLICK TRADING'
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </>

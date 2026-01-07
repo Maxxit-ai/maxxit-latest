@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { ethers } from 'ethers';
 import { CreditService } from '@lib/credit-service';
+import { TradeQuotaService } from '@lib/trade-quota-service';
 
 // For consistency with frontend toggle
 const IS_TESTNET = process.env.USE_TESTNET === 'true';
@@ -21,10 +22,10 @@ const NETWORKS = {
 const ACTIVE_NETWORK = IS_TESTNET ? NETWORKS.TESTNET : NETWORKS.MAINNET;
 const TREASURY_WALLET = process.env.NEXT_PUBLIC_TREASURY_WALLET_ADDRESS?.toLowerCase();
 
-const pricingTiers: Record<string, { price: number; credits: number }> = {
-    "STARTER": { price: 19, credits: 1000 },
-    "PRO": { price: 49, credits: 5000 },
-    "WHALE": { price: 99, credits: 15000 }
+const pricingTiers: Record<string, { price: number; credits: number; trades: number }> = {
+    "STARTER": { price: 19, credits: 1000, trades: 100 },
+    "PRO": { price: 49, credits: 5000, trades: 200 },
+    "WHALE": { price: 99, credits: 15000, trades: 400 }
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -90,7 +91,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             { txHash, network: ACTIVE_NETWORK.chainId, amount_sent: ethers.utils.formatUnits(amountSent, 6) }
         );
 
-        console.log(`✅ Web3 Verification Success: ${userWallet} credited with ${tier.credits}`);
+        // 4. Mint Trade Quota
+        await TradeQuotaService.mintTradeQuota(
+            userWallet,
+            tier.trades,
+            `web3-trades-${txHash}`
+        );
+
+        console.log(`✅ Web3 Verification Success: ${userWallet} credited with ${tier.credits} credits and ${tier.trades} trades`);
 
         return res.status(200).json({ success: true, entry: userEntry });
 

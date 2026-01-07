@@ -73,7 +73,7 @@ export default function Dashboard() {
         totalUnrealizedPnlPercent: 0
     });
     const [balance, setBalance] = useState<{ usdc: string; eth: string; credits: string } | null>(null);
-    const [tradeQuota, setTradeQuota] = useState<{ trades_total: number; trades_used: number; remaining: number } | null>(null);
+    const [tradeQuota, setTradeQuota] = useState<{ trades_total: number; trades_used: number; trades_remaining: number } | null>(null);
 
     useEffect(() => {
         if (authenticated && user?.wallet?.address) {
@@ -387,7 +387,7 @@ export default function Dashboard() {
                             <div className="h-2 bg-[var(--bg-deep)] border border-[var(--border)] overflow-hidden mb-6">
                                 <div
                                     className="h-full bg-[var(--accent)] transition-all duration-500"
-                                    style={{ width: tradeQuota && tradeQuota.trades_total > 0 ? `${(tradeQuota.trades_used / tradeQuota.trades_total) * 100}%` : '0%' }}
+                                    style={{ width: tradeQuota && tradeQuota.trades_total > 0 ? `${(tradeQuota.trades_remaining / tradeQuota.trades_total) * 100}%` : '0%' }}
                                 />
                             </div>
                             <Link href="/pricing">

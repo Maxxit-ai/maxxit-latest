@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { AgentSummary } from './types';
 import { useState } from 'react';
-import { ArrowRight, Zap, Wallet, Copy, Check, CheckCircle, AlertCircle, Settings, Plus } from 'lucide-react';
+import { ArrowRight, Zap, Wallet, Copy, Check, CheckCircle, AlertCircle, Settings, Plus, Activity } from 'lucide-react';
 import { OstiumDelegationModal } from '../OstiumDelegationModal';
 import { OstiumUsdcApprovalModal } from '../OstiumUsdcApprovalModal';
 
@@ -334,25 +334,29 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                 <div className="p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Delegation</span>
-                    {ostiumDelegationStatus?.isDelegatedToAgent ? (
+                    {ostiumDelegationStatus === null || ostiumDelegationStatus === undefined ? (
+                      <Activity className="w-4 h-4 text-[var(--accent)] animate-spin" />
+                    ) : ostiumDelegationStatus.isDelegatedToAgent ? (
                       <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
                     ) : (
                       <AlertCircle className="w-4 h-4 text-[var(--danger)]" />
                     )}
                   </div>
                   <p className="text-sm font-mono text-[var(--text-primary)]">
-                    {ostiumDelegationStatus?.isDelegatedToAgent
-                      ? 'Delegated to agent'
-                      : ostiumDelegationStatus?.hasDelegation
-                        ? 'Delegated to other address'
-                        : 'Not delegated'}
+                    {ostiumDelegationStatus === null || ostiumDelegationStatus === undefined
+                      ? 'Checking...'
+                      : ostiumDelegationStatus.isDelegatedToAgent
+                        ? 'Delegated to agent'
+                        : ostiumDelegationStatus.hasDelegation
+                          ? 'Delegated to other address'
+                          : 'Not delegated'}
                   </p>
                   {ostiumDelegationStatus?.delegatedAddress && (
                     <p className="text-xs font-mono text-[var(--text-muted)] mt-1 truncate" title={ostiumDelegationStatus.delegatedAddress}>
                       {formatAddress(ostiumDelegationStatus.delegatedAddress)}
                     </p>
                   )}
-                  {!ostiumDelegationStatus?.isDelegatedToAgent && (
+                  {ostiumDelegationStatus !== null && ostiumDelegationStatus !== undefined && !ostiumDelegationStatus.isDelegatedToAgent && (
                     <button
                       onClick={() => setShowDelegationModal(true)}
                       className="mt-3 w-full py-2 px-3 bg-[var(--accent)] text-[var(--bg-deep)] text-xs font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-1"
@@ -367,23 +371,27 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                 <div className="p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-[var(--text-muted)] uppercase">USDC Allowance</span>
-                    {ostiumUsdcAllowance?.hasApproval ? (
+                    {ostiumUsdcAllowance === null || ostiumUsdcAllowance === undefined ? (
+                      <Activity className="w-4 h-4 text-[var(--accent)] animate-spin" />
+                    ) : ostiumUsdcAllowance.hasApproval ? (
                       <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
                     ) : (
                       <AlertCircle className="w-4 h-4 text-[var(--danger)]" />
                     )}
                   </div>
                   <p className="text-sm font-mono text-[var(--text-primary)]">
-                    {ostiumUsdcAllowance
-                      ? `$${ostiumUsdcAllowance.usdcAllowance.toLocaleString()}`
-                      : 'Checking...'}
+                    {ostiumUsdcAllowance === null || ostiumUsdcAllowance === undefined
+                      ? 'Checking...'
+                      : `$${ostiumUsdcAllowance.usdcAllowance.toLocaleString()}`}
                   </p>
                   <p className="text-xs text-[var(--text-muted)] mt-1">
-                    {ostiumUsdcAllowance?.hasApproval
-                      ? 'Sufficient for trading'
-                      : 'Insufficient for trading'}
+                    {ostiumUsdcAllowance === null || ostiumUsdcAllowance === undefined
+                      ? 'Checking status...'
+                      : ostiumUsdcAllowance.hasApproval
+                        ? 'Sufficient for trading'
+                        : 'Insufficient for trading'}
                   </p>
-                  {ostiumUsdcAllowance && !ostiumUsdcAllowance.hasApproval && (
+                  {ostiumUsdcAllowance !== null && ostiumUsdcAllowance !== undefined && !ostiumUsdcAllowance.hasApproval && (
                     <button
                       onClick={() => setShowUsdcApprovalModal(true)}
                       className="mt-3 w-full py-2 px-3 bg-[var(--accent)] text-[var(--bg-deep)] text-xs font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-1"

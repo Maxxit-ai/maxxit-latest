@@ -135,10 +135,10 @@ model agents {
   description               String?
   venue                     venue_t
   weights                   Int[]                       @db.SmallInt
-  apr_30d                   Float?                      @db.Real
-  apr_90d                   Float?                      @db.Real
-  apr_si                    Float?                      @db.Real
-  sharpe_30d                Float?                      @db.Real
+  apr_30d                   Float?                      @default(0) @db.Real
+  apr_90d                   Float?                      @default(0) @db.Real
+  apr_si                    Float?                      @default(0) @db.Real
+  sharpe_30d                Float?                      @default(0) @db.Real
   profit_receiver_address   String
   proof_of_intent_message   String?
   proof_of_intent_signature String?
@@ -713,6 +713,16 @@ model system_treasury {
   total_minted   Decimal  @default(0) @db.Decimal(20, 8)
   total_consumed Decimal  @default(0) @db.Decimal(20, 8)
   updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+}
+
+model user_trade_quota {
+  user_wallet       String   @id
+  trades_total      Int      @default(0)  // Lifetime trades purchased
+  trades_used       Int      @default(0)  // Trades consumed
+  trades_remaining  Int      @default(0)  // Available trades (trades_total - trades_used)
+  updated_at        DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([user_wallet])
 }
 
 model top_traders {

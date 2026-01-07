@@ -66,6 +66,8 @@ export default function Home() {
             : Promise.resolve([]),
         ]);
 
+        // console.log('agentsData', agentsData);
+
         setAgents(agentsData || []);
 
         // Set user agent addresses if available (API converts snake_case to camelCase)

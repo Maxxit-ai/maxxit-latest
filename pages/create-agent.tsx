@@ -201,14 +201,15 @@ export default function CreateAgent() {
     setIsSubmitting(true);
     setError(null);
     try {
-      const { description, ...agentData } = data;
-      const creatorWallet = user?.wallet?.address || data.creatorWallet;
+      const agentData: InsertAgent = { ...data };
+      agentData.creatorWallet = user?.wallet?.address || data.creatorWallet;
+      agentData.description = data.description ? data.description : null;
 
       const payload = {
         agentData: {
           ...agentData,
-          creatorWallet,
-          profitReceiverAddress: agentData.profitReceiverAddress || creatorWallet,
+          creatorWallet: agentData.creatorWallet,
+          profitReceiverAddress: agentData.profitReceiverAddress || agentData.creatorWallet,
           proofOfIntentMessage: proofOfIntent?.message,
           proofOfIntentSignature: proofOfIntent?.signature,
           proofOfIntentTimestamp: proofOfIntent?.timestamp.toISOString(),
@@ -718,7 +719,7 @@ export default function CreateAgent() {
           {step === 5 && (
             <div className="space-y-6" data-tour="step-5">
               <h2 className="font-display text-2xl mb-2">TELEGRAM ALPHA</h2>
-              <p className="text-[var(--text-secondary)] text-sm mb-6">Select Telegram users whose DM signals your agent should follow.</p>
+              <p className="text-[var(--text-secondary)] text-sm mb-6">Select Telegram users whose alpha signals your agent should follow.</p>
               <TelegramAlphaUserSelector
                 selectedIds={selectedTelegramUsers}
                 onToggle={(id) => {
