@@ -88,140 +88,139 @@ async function generateAllSignals() {
 
     if (pendingPosts.length === 0) {
       console.log("[SignalGenerator] ✅ No pending telegram posts to process");
-      return;
-    }
-
-    // Process each post
-    for (const post of pendingPosts) {
-      try {
-        console.log(
-          `[SignalGenerator] 🔄 Processing post ${post.id.substring(0, 8)}...`
-        );
-        console.log(
-          `[SignalGenerator]    Content: "${post.message_text.substring(
-            0,
-            100
-          )}..."`
-        );
-        console.log(`[SignalGenerator]    Signal: ${post.signal_type}`);
-        console.log(
-          `[SignalGenerator]    Confidence: ${(
-            post.confidence_score || 0
-          ).toFixed(2)}`
-        );
-
-        // Get agents based on the source of the post
-        let agents: any[] = [];
-        let influencerImpactFactor = 50; // Default to 50 (neutral) - will be updated if alpha_user_id exists
-
-
-        if (post.alpha_user_id) {
-          // For Telegram Alpha Users: find agents linked via agent_telegram_users
-          // This is the proper way - only agents explicitly subscribed to this alpha user
-          const alphaUser = await prisma.telegram_alpha_users.findUnique({
-            where: { id: post.alpha_user_id },
-          });
-
-          if (!alphaUser) {
-            console.log(`[SignalGenerator] ⚠️  Alpha user not found for post`);
-            continue;
-          }
-
-          // Get the source user's flags
-          const isLazyTrader = (alphaUser as any)?.lazy_trader === true;
-          const isPublicSource = (alphaUser as any)?.public_source === true;
-
-          // Get the influencer's impact factor (historical performance)
-          influencerImpactFactor = (alphaUser as any)?.impact_factor ?? 50; // Default to 50 (neutral) if not set
-          console.log(`[SignalGenerator]    Impact Factor of source: ${influencerImpactFactor}/100`);
-
+    } else {
+      // Process each post
+      for (const post of pendingPosts) {
+        try {
           console.log(
-            `[SignalGenerator]    Source: @${alphaUser.telegram_username || alphaUser.first_name
-            }`
+            `[SignalGenerator] 🔄 Processing post ${post.id.substring(0, 8)}...`
           );
           console.log(
-            `[SignalGenerator]    Flags: lazy_trader=${isLazyTrader}, public_source=${isPublicSource}`
+            `[SignalGenerator]    Content: "${post.message_text.substring(
+              0,
+              100
+            )}..."`
+          );
+          console.log(`[SignalGenerator]    Signal: ${post.signal_type}`);
+          console.log(
+            `[SignalGenerator]    Confidence: ${(
+              post.confidence_score || 0
+            ).toFixed(2)}`
           );
 
-          // Skip if source is neither lazy_trader nor public_source (invalid signal source)
-          if (!isLazyTrader && !isPublicSource) {
+          // Get agents based on the source of the post
+          let agents: any[] = [];
+          let influencerImpactFactor = 50; // Default to 50 (neutral) - will be updated if alpha_user_id exists
+
+
+          if (post.alpha_user_id) {
+            // For Telegram Alpha Users: find agents linked via agent_telegram_users
+            // This is the proper way - only agents explicitly subscribed to this alpha user
+            const alphaUser = await prisma.telegram_alpha_users.findUnique({
+              where: { id: post.alpha_user_id },
+            });
+
+            if (!alphaUser) {
+              console.log(`[SignalGenerator] ⚠️  Alpha user not found for post`);
+              continue;
+            }
+
+            // Get the source user's flags
+            const isLazyTrader = (alphaUser as any)?.lazy_trader === true;
+            const isPublicSource = (alphaUser as any)?.public_source === true;
+
+            // Get the influencer's impact factor (historical performance)
+            influencerImpactFactor = (alphaUser as any)?.impact_factor ?? 50; // Default to 50 (neutral) if not set
+            console.log(`[SignalGenerator]    Impact Factor of source: ${influencerImpactFactor}/100`);
+
             console.log(
-              `[SignalGenerator] ⏭️  Skipping - source is neither lazy_trader nor public_source`
+              `[SignalGenerator]    Source: @${alphaUser.telegram_username || alphaUser.first_name
+              }`
             );
-            continue;
-          }
+            console.log(
+              `[SignalGenerator]    Flags: lazy_trader=${isLazyTrader}, public_source=${isPublicSource}`
+            );
 
-          // Get agents linked to this telegram alpha user
-          const agentLinks = await prisma.agent_telegram_users.findMany({
-            where: { telegram_alpha_user_id: post.alpha_user_id },
-            include: {
-              agents: {
-                include: {
-                  agent_deployments: {
-                    where: {
-                      status: "ACTIVE",
+            // Skip if source is neither lazy_trader nor public_source (invalid signal source)
+            if (!isLazyTrader && !isPublicSource) {
+              console.log(
+                `[SignalGenerator] ⏭️  Skipping - source is neither lazy_trader nor public_source`
+              );
+              continue;
+            }
+
+            // Get agents linked to this telegram alpha user
+            const agentLinks = await prisma.agent_telegram_users.findMany({
+              where: { telegram_alpha_user_id: post.alpha_user_id },
+              include: {
+                agents: {
+                  include: {
+                    agent_deployments: {
+                      where: {
+                        status: "ACTIVE",
+                      },
                     },
                   },
                 },
               },
-            },
-          });
+            });
 
-          // Filter agents based on source user's flags and agent status:
-          //
-          // For PUBLIC agents: only include if source is public_source
-          // For PRIVATE agents: include if source is lazy_trader OR public_source
-          //   - lazy_trader=true: lazy trader agents receiving their own signals
-          //   - public_source=true: normal private agents subscribed to public alphas
-          // DRAFT agents: never include
-          agents = agentLinks
-            .map((link) => link.agents)
-            .filter((agent) => {
-              // Skip agents with no active deployments
-              if (
-                !agent.agent_deployments ||
-                agent.agent_deployments.length === 0
-              ) {
-                return false;
-              }
+            // Filter agents based on source user's flags and agent status:
+            //
+            // For PUBLIC agents: only include if source is public_source
+            // For PRIVATE agents: include if source is lazy_trader OR public_source
+            //   - lazy_trader=true: lazy trader agents receiving their own signals
+            //   - public_source=true: normal private agents subscribed to public alphas
+            // DRAFT agents: never include
+            agents = agentLinks
+              .map((link) => link.agents)
+              .filter((agent) => {
+                // Skip agents with no active deployments
+                if (
+                  !agent.agent_deployments ||
+                  agent.agent_deployments.length === 0
+                ) {
+                  return false;
+                }
 
-              if (agent.status === "PUBLIC") {
-                if (!isPublicSource) {
+                if (agent.status === "PUBLIC") {
+                  if (!isPublicSource) {
+                    console.log(
+                      `[SignalGenerator]    ⏭️  Skipping PUBLIC agent ${agent.name}: source is not public_source`
+                    );
+                    return false;
+                  }
+                  return true;
+                }
+
+                if (agent.status === "PRIVATE") {
+                  if (isLazyTrader || isPublicSource) {
+                    return true;
+                  }
                   console.log(
-                    `[SignalGenerator]    ⏭️  Skipping PUBLIC agent ${agent.name}: source is not public_source`
+                    `[SignalGenerator]    ⏭️  Skipping PRIVATE agent ${agent.name}: source is neither lazy_trader nor public_source`
                   );
                   return false;
                 }
-                return true;
-              }
 
-              if (agent.status === "PRIVATE") {
-                if (isLazyTrader || isPublicSource) {
-                  return true;
-                }
-                console.log(
-                  `[SignalGenerator]    ⏭️  Skipping PRIVATE agent ${agent.name}: source is neither lazy_trader nor public_source`
-                );
+                // DRAFT agents should never receive signals
                 return false;
-              }
-
-              // DRAFT agents should never receive signals
-              return false;
-            });
-        } else if (post.source_id) {
-          // For Telegram Channels: find agents linked via research_institutes
-          const telegramSource = await prisma.telegram_sources.findUnique({
-            where: { id: post.source_id },
-            include: {
-              research_institutes: {
-                include: {
-                  agent_research_institutes: {
-                    include: {
-                      agents: {
-                        include: {
-                          agent_deployments: {
-                            where: {
-                              status: "ACTIVE",
+              });
+          } else if (post.source_id) {
+            // For Telegram Channels: find agents linked via research_institutes
+            const telegramSource = await prisma.telegram_sources.findUnique({
+              where: { id: post.source_id },
+              include: {
+                research_institutes: {
+                  include: {
+                    agent_research_institutes: {
+                      include: {
+                        agents: {
+                          include: {
+                            agent_deployments: {
+                              where: {
+                                status: "ACTIVE",
+                              },
                             },
                           },
                         },
@@ -230,83 +229,82 @@ async function generateAllSignals() {
                   },
                 },
               },
-            },
-          });
+            });
 
-          if (telegramSource?.research_institutes) {
-            agents =
-              telegramSource.research_institutes.agent_research_institutes
-                .map((ari) => ari.agents)
-                .filter((agent) => {
-                  // Skip agents with no active deployments
-                  if (
-                    !agent.agent_deployments ||
-                    agent.agent_deployments.length === 0
-                  ) {
-                    return false;
-                  }
-                  // For telegram channels, only PUBLIC agents receive signals
-                  return agent.status === "PUBLIC";
-                });
-          }
-        } else {
-          console.log(
-            `[SignalGenerator] ⚠️  Post has no alpha_user_id or source_id, skipping`
-          );
-          continue;
-        }
-
-        if (agents.length === 0) {
-          console.log(
-            "[SignalGenerator] ⚠️  No eligible agents found for this source"
-          );
-          // Mark as processed even if no agents
-          await prisma.telegram_posts.update({
-            where: { id: post.id },
-            data: { processed_for_signals: true },
-          });
-          continue;
-        }
-
-        console.log(
-          `[SignalGenerator] 🤖 Found ${agents.length} eligible agent(s)`
-        );
-
-        // Extract tokens from classified post
-        const extractedTokens = post.extracted_tokens || [];
-
-        if (extractedTokens.length === 0) {
-          console.log("[SignalGenerator] ⏭️  No tokens extracted, skipping");
-          continue;
-        }
-
-        console.log(
-          `[SignalGenerator] 🪙 Tokens: ${extractedTokens.join(", ")}`
-        );
-
-        // Generate signal for each deployment, agent, and token combination
-        // Each deployment has its own trading preferences, so we generate separate signals
-        for (const agent of agents) {
-          // Check if this is a Lazy Trader agent
-          // Lazy Trader agents are PRIVATE agents with names containing "Lazy" and "Trader" (case-insensitive)
-          // This handles variations like "Lazy Trader", "Lazyz rader", etc.
-          const isLazyTraderAgent =
-            agent.status === "PRIVATE" &&
-            agent.name &&
-            agent.name.toLowerCase().includes("lazy") &&
-            agent.name.toLowerCase().includes("trader");
-
-          console.log("checking lazy trader agent", agent.status + " " + agent.name + " " + isLazyTraderAgent)
-
-          console.log(
-            `[SignalGenerator]    🔍 Checking Lazy Trader agent: ${agent.name}, isLazyTraderAgent: ${isLazyTraderAgent}`
-          );
-
-          if (isLazyTraderAgent) {
+            if (telegramSource?.research_institutes) {
+              agents =
+                telegramSource.research_institutes.agent_research_institutes
+                  .map((ari) => ari.agents)
+                  .filter((agent) => {
+                    // Skip agents with no active deployments
+                    if (
+                      !agent.agent_deployments ||
+                      agent.agent_deployments.length === 0
+                    ) {
+                      return false;
+                    }
+                    // For telegram channels, only PUBLIC agents receive signals
+                    return agent.status === "PUBLIC";
+                  });
+            }
+          } else {
             console.log(
-              `[SignalGenerator]    🔍 Detected Lazy Trader agent: ${agent.name} - will deprioritize confidence score`
+              `[SignalGenerator] ⚠️  Post has no alpha_user_id or source_id, skipping`
             );
+            continue;
           }
+
+          if (agents.length === 0) {
+            console.log(
+              "[SignalGenerator] ⚠️  No eligible agents found for this source"
+            );
+            // Mark as processed even if no agents
+            await prisma.telegram_posts.update({
+              where: { id: post.id },
+              data: { processed_for_signals: true },
+            });
+            continue;
+          }
+
+          console.log(
+            `[SignalGenerator] 🤖 Found ${agents.length} eligible agent(s)`
+          );
+
+          // Extract tokens from classified post
+          const extractedTokens = post.extracted_tokens || [];
+
+          if (extractedTokens.length === 0) {
+            console.log("[SignalGenerator] ⏭️  No tokens extracted, skipping");
+            continue;
+          }
+
+          console.log(
+            `[SignalGenerator] 🪙 Tokens: ${extractedTokens.join(", ")}`
+          );
+
+          // Generate signal for each deployment, agent, and token combination
+          // Each deployment has its own trading preferences, so we generate separate signals
+          for (const agent of agents) {
+            // Check if this is a Lazy Trader agent
+            // Lazy Trader agents are PRIVATE agents with names containing "Lazy" and "Trader" (case-insensitive)
+            // This handles variations like "Lazy Trader", "Lazyz rader", etc.
+            const isLazyTraderAgent =
+              agent.status === "PRIVATE" &&
+              agent.name &&
+              agent.name.toLowerCase().includes("lazy") &&
+              agent.name.toLowerCase().includes("trader");
+
+            console.log("checking lazy trader agent",agent.status + " " + agent.name + " " + isLazyTraderAgent)
+
+            console.log(
+              `[SignalGenerator]    🔍 Checking Lazy Trader agent: ${agent.name}, isLazyTraderAgent: ${isLazyTraderAgent}`
+            );
+
+            if (isLazyTraderAgent) {
+              console.log(
+                `[SignalGenerator]    🔍 Detected Lazy Trader agent: ${agent.name} - will deprioritize confidence score`
+              );
+            }
 
           for (const deployment of agent.agent_deployments) {
             // Check trade quota before generating signal
@@ -364,16 +362,188 @@ async function generateAllSignals() {
           }
         }
 
-        // Mark post as processed after attempting to generate signals for all deployments
-        await prisma.telegram_posts.update({
-          where: { id: post.id },
-          data: {
-            processed_for_signals: true,
+          // Mark post as processed after attempting to generate signals for all deployments
+          await prisma.telegram_posts.update({
+            where: { id: post.id },
+            data: {
+              processed_for_signals: true,
+            },
+          });
+        } catch (error: any) {
+          console.error(
+            `[SignalGenerator] ❌ Error processing post ${post.id}:`,
+            error.message
+          );
+        }
+      }
+    }
+
+    // ========================================================================
+    // Process Trader Trades (Copy Trading Alpha Clubs)
+    // ========================================================================
+
+    const pendingTraderTrades = await prisma.trader_trades.findMany({
+      where: {
+        processed_for_signals: false,
+      },
+      orderBy: {
+        trade_timestamp: "desc",
+      }
+    });
+
+    console.log(
+      `[SignalGenerator] 📊 Found ${pendingTraderTrades.length} trader trades to process`
+    );
+
+    for (const traderTrade of pendingTraderTrades) {
+      try {
+        console.log(
+          `[SignalGenerator] 🔄 Processing trader trade ${traderTrade.id.substring(0, 8)}...`
+        );
+        console.log(
+          `[SignalGenerator]    Token: ${traderTrade.token_symbol} | Side: ${traderTrade.side}`
+        );
+        console.log(
+          `[SignalGenerator]    Trader: ${traderTrade.trader_wallet.substring(0, 10)}...`
+        );
+
+        // Get the agent and its deployments
+        const agent = await prisma.agents.findUnique({
+          where: { id: traderTrade.agent_id },
+          include: {
+            agent_deployments: {
+              where: { status: "ACTIVE" },
+            },
+            agent_top_traders: {
+              where: { is_active: true },
+              include: {
+                top_traders: {
+                  select: { impact_factor: true },
+                },
+              },
+            },
           },
+        });
+
+        if (!agent) {
+          console.log(`[SignalGenerator] ⚠️  Agent not found, marking as processed`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        if (agent.status !== "PUBLIC" && agent.status !== "PRIVATE") {
+          console.log(`[SignalGenerator] ⏭️  Agent is DRAFT, skipping`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        const deployments = agent.agent_deployments;
+        if (deployments.length === 0) {
+          console.log(`[SignalGenerator] ⚠️  No active deployments (club members)`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        console.log(
+          `[SignalGenerator] 🤖 Found ${deployments.length} club member(s) to receive signals`
+        );
+
+        // Get the top trader's impact factor for this trade
+        const topTrader = await prisma.top_traders.findFirst({
+          where: { wallet_address: traderTrade.trader_wallet.toLowerCase() },
+          select: { impact_factor: true },
+        });
+        const traderImpactFactor = topTrader?.impact_factor ?? 50;
+        console.log(
+          `[SignalGenerator]    Trader Impact Factor: ${traderImpactFactor.toFixed(2)}/100`
+        );
+
+        const entryPrice = Number(traderTrade.entry_price.toString());
+        const takeProfitPrice = traderTrade.take_profit_price ? Number(traderTrade.take_profit_price.toString()) : null;
+        const stopLossPrice = traderTrade.stop_loss_price ? Number(traderTrade.stop_loss_price.toString()) : null;
+
+        let takeProfitPercent = 0.10;
+        let stopLossPercent = 0.05;
+
+        if (entryPrice > 0) {
+          if (takeProfitPrice && takeProfitPrice > 0) {
+            if (traderTrade.side === "LONG") {
+              takeProfitPercent = Math.abs((takeProfitPrice - entryPrice) / entryPrice);
+            } else {
+              takeProfitPercent = Math.abs((entryPrice - takeProfitPrice) / entryPrice);
+            }
+          }
+
+          if (stopLossPrice && stopLossPrice > 0) {
+            if (traderTrade.side === "LONG") {
+              stopLossPercent = Math.abs((entryPrice - stopLossPrice) / entryPrice);
+            } else {
+              stopLossPercent = Math.abs((stopLossPrice - entryPrice) / entryPrice);
+            }
+          }
+        }
+
+        console.log(
+          `[SignalGenerator]    TP: ${(takeProfitPercent * 100).toFixed(2)}% (${takeProfitPrice ? 'from trader' : 'default'}) | SL: ${(stopLossPercent * 100).toFixed(2)}% (${stopLossPrice ? 'from trader' : 'default'})`
+        );
+
+        const normalizedTraderTrade = {
+          id: traderTrade.id,
+          message_id: traderTrade.source_trade_id,
+          message_text: `Copy trade from top trader: ${traderTrade.side} ${traderTrade.token_symbol} with ${traderTrade.leverage}x leverage`,
+          message_created_at: traderTrade.trade_timestamp,
+          signal_type: traderTrade.side,
+          extracted_tokens: [traderTrade.token_symbol],
+          confidence_score: 0.7,
+          alpha_user_id: null,
+          source_id: null,
+          take_profit: takeProfitPercent,
+          stop_loss: stopLossPercent,
+          take_profit_price: takeProfitPrice,
+          stop_loss_price: stopLossPrice,
+          timeline_window: null,
+        };
+
+        // Generate signals for each deployment
+        for (const deployment of deployments) {
+          try {
+            const success = await generateSignalForAgentAndToken(
+              normalizedTraderTrade,
+              agent,
+              deployment,
+              traderTrade.token_symbol,
+              false,
+              traderImpactFactor
+            );
+
+            if (success) {
+              console.log(
+                `[SignalGenerator] ✅ Signal created for ${agent.name} (deployment ${deployment.id.substring(0, 8)}): ${traderTrade.token_symbol}`
+              );
+            }
+          } catch (error: any) {
+            console.error(
+              `[SignalGenerator] ❌ Failed to generate signal for ${agent.name} (deployment ${deployment.id.substring(0, 8)}): ${traderTrade.token_symbol}: ${error.message}`
+            );
+          }
+        }
+
+        await prisma.trader_trades.update({
+          where: { id: traderTrade.id },
+          data: { processed_for_signals: true },
         });
       } catch (error: any) {
         console.error(
-          `[SignalGenerator] ❌ Error processing post ${post.id}:`,
+          `[SignalGenerator] ❌ Error processing trader trade ${traderTrade.id}:`,
           error.message
         );
       }
@@ -971,8 +1141,8 @@ async function generateSignalForAgentAndToken(
               impactFactor: 0,
             },
             risk_model: {
-              stopLoss: 0.1,
-              takeProfit: 0.05,
+              stopLoss: post.stop_loss || 0.05,
+              takeProfit: post.take_profit || 0.1,
               leverage: signalVenue === "OSTIUM" ? tradeDecision.leverage : 3,
             },
             source_tweets: [post.message_id],
@@ -1030,8 +1200,8 @@ async function generateSignalForAgentAndToken(
             impactFactor: 0,
           },
           risk_model: {
-            stopLoss: 0.1, // 10% stop loss (default)
-            takeProfit: 0.05, // 5% take profit
+            stopLoss: post.stop_loss || 0.05,
+            takeProfit: post.take_profit || 0.10,
             leverage: signalVenue === "OSTIUM" ? tradeDecision.leverage : 3, // Use LLM leverage for Ostium, default for Hyperliquid
           },
           source_tweets: [post.message_id],

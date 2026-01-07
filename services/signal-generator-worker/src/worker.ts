@@ -129,14 +129,26 @@ async function generateSignals() {
       take: 20, // Process 20 signals per cycle
     })) as any[];
 
+    // Get unprocessed trader trades (from tracked traders / Alpha Clubs)
+    const unprocessedTraderTrades = await prisma.trader_trades.findMany({
+      where: {
+        processed_for_signals: false,
+      },
+      orderBy: {
+        trade_timestamp: "desc",
+      },
+      take: 20, // Process 20 trades per cycle
+    });
+
     console.log(
-      `📊 Found ${unprocessedTweets.length} Twitter + ${unprocessedTelegram.length} Telegram + ${unprocessedResearchSignals.length} Research unprocessed signal candidate(s)\n`
+      `📊 Found ${unprocessedTweets.length} Twitter + ${unprocessedTelegram.length} Telegram + ${unprocessedResearchSignals.length} Research + ${unprocessedTraderTrades.length} Trader unprocessed signal candidate(s)\n`
     );
 
     if (
       unprocessedTweets.length === 0 &&
       unprocessedTelegram.length === 0 &&
-      unprocessedResearchSignals.length === 0
+      unprocessedResearchSignals.length === 0 &&
+      unprocessedTraderTrades.length === 0
     ) {
       console.log("✅ No signals to generate\n");
       return;
@@ -390,12 +402,189 @@ async function generateSignals() {
       }
     }
 
+    // Process Trader Trades (from Alpha Clubs / copy-trading)
+    for (const traderTrade of unprocessedTraderTrades) {
+      try {
+        console.log(`[TraderTrade ${traderTrade.id.slice(0, 8)}...] Processing...`);
+        console.log(`  Token: ${traderTrade.token_symbol} | Side: ${traderTrade.side}`);
+        console.log(`  Trader: ${traderTrade.trader_wallet.slice(0, 10)}...`);
+
+        // Get the agent and its deployments
+        const agent = await prisma.agents.findUnique({
+          where: { id: traderTrade.agent_id },
+          include: {
+            agent_deployments: {
+              where: { status: "ACTIVE" },
+            },
+          },
+        });
+
+        if (!agent) {
+          console.log(`  ⏭️ Agent not found, marking as processed\n`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        if (agent.status !== "PUBLIC") {
+          console.log(`  ⏭️ Agent is not PUBLIC, skipping\n`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        const deployments = agent.agent_deployments;
+        if (deployments.length === 0) {
+          console.log(`  ⏭️ No active deployments (club members)\n`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
+
+        console.log(`  🤖 ${deployments.length} club member(s) to receive signals`);
+
+        // Create a normalized tweet-like object for the signal generator
+        const normalizedTraderTrade = {
+          tweet_id: traderTrade.source_trade_id,
+          tweet_text: `Copy trade: ${traderTrade.side} ${traderTrade.token_symbol}`,
+          tweet_created_at: traderTrade.trade_timestamp,
+          signal_type: traderTrade.side,
+          extracted_tokens: [traderTrade.token_symbol],
+          confidence_score: 0.8, // High confidence for direct copy trades
+          ct_accounts: {
+            impact_factor: 0.7, // Default impact factor for copy trades
+          },
+        };
+
+        // Get static LunarCrush data for the token
+        const lunarCrushData = getStaticLunarCrushData(
+          traderTrade.token_symbol,
+          0.8 // High confidence for copy trades
+        );
+
+        // Generate signal for each deployment (club member)
+        for (const deployment of deployments) {
+          try {
+            // Check for existing signal in current 6-hour bucket
+            const now = new Date();
+            const bucket6hStart = new Date(
+              Math.floor(now.getTime() / (6 * 60 * 60 * 1000)) * 6 * 60 * 60 * 1000
+            );
+
+            const existingSignal = await prisma.signals.findFirst({
+              where: {
+                agent_id: agent.id,
+                deployment_id: deployment.id,
+                token_symbol: traderTrade.token_symbol.toUpperCase(),
+                created_at: {
+                  gte: bucket6hStart,
+                },
+              },
+            });
+
+            if (existingSignal) {
+              console.log(`    ⏭️ Signal already exists for ${traderTrade.token_symbol} (deployment ${deployment.id.slice(0, 8)}...)`);
+              continue;
+            }
+
+            // Check if token is available on a venue
+            let signalVenue: venue_t = agent.venue;
+            if (agent.venue === "MULTI") {
+              // Check Ostium first, then Hyperliquid
+              const ostiumMarket = await prisma.venue_markets.findFirst({
+                where: {
+                  token_symbol: traderTrade.token_symbol.toUpperCase(),
+                  venue: "OSTIUM",
+                  is_active: true,
+                },
+              });
+              if (ostiumMarket) {
+                signalVenue = "OSTIUM";
+              } else {
+                const hlMarket = await prisma.venue_markets.findFirst({
+                  where: {
+                    token_symbol: traderTrade.token_symbol.toUpperCase(),
+                    venue: "HYPERLIQUID",
+                    is_active: true,
+                  },
+                });
+                if (hlMarket) {
+                  signalVenue = "HYPERLIQUID";
+                } else {
+                  console.log(`    ⏭️ Token ${traderTrade.token_symbol} not available on any venue`);
+                  continue;
+                }
+              }
+            }
+
+            // Calculate position size from LunarCrush
+            const positionSizePercent = lunarCrushData.score
+              ? Math.max(0.5, Math.min(10, lunarCrushData.score * 10))
+              : 5;
+
+            // Create signal for this deployment
+            await prisma.signals.create({
+              data: {
+                agent_id: agent.id,
+                deployment_id: deployment.id,
+                token_symbol: traderTrade.token_symbol.toUpperCase(),
+                venue: signalVenue,
+                side: traderTrade.side,
+                size_model: {
+                  type: "balance-percentage",
+                  value: positionSizePercent,
+                  impactFactor: 0.7,
+                  source: "copy-trade",
+                  sourceTradeId: traderTrade.source_trade_id,
+                },
+                risk_model: {
+                  stopLoss: 0.1,
+                  takeProfit: 0.05,
+                  leverage: Number(traderTrade.leverage) || 3,
+                },
+                source_tweets: [traderTrade.source_trade_id],
+                lunarcrush_score: lunarCrushData.score,
+                lunarcrush_reasoning: lunarCrushData.reasoning,
+                lunarcrush_breakdown: lunarCrushData.breakdown,
+              },
+            });
+
+            signalsGenerated++;
+            console.log(`    ✅ Signal created for deployment ${deployment.id.slice(0, 8)}...`);
+          } catch (err: any) {
+            if (err.code === "P2002") {
+              console.log(`    ⏭️ Signal already exists (race condition)`);
+            } else {
+              console.error(`    ❌ Error creating signal:`, err.message);
+            }
+          }
+        }
+
+        // Mark trader trade as processed
+        await prisma.trader_trades.update({
+          where: { id: traderTrade.id },
+          data: { processed_for_signals: true },
+        });
+
+        console.log(`  ✅ Trader trade processed\n`);
+      } catch (error: any) {
+        console.error(`[TraderTrade ${traderTrade.id}] ❌ Error:`, error.message);
+      }
+    }
+
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("📊 SIGNAL GENERATION SUMMARY");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log(`  Twitter Tweets: ${unprocessedTweets.length}`);
     console.log(`  Telegram Messages: ${unprocessedTelegram.length}`);
     console.log(`  Research Signals: ${unprocessedResearchSignals.length}`);
+    console.log(`  Trader Trades: ${unprocessedTraderTrades.length}`);
     console.log(`  Signals Generated: ${signalsGenerated}`);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
   } catch (error: any) {
