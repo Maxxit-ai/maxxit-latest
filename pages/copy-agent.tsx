@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -27,7 +29,7 @@ const wizardSchema = insertAgentSchema.extend({
 
 type WizardFormData = z.infer<typeof wizardSchema>;
 
-export default function CreateAgent() {
+export default function CopyAgent() {
   const router = useRouter();
   const { authenticated, user, login } = usePrivy();
   const [step, setStep] = useState(1);
@@ -114,7 +116,7 @@ export default function CreateAgent() {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
             const validSteps = parsed.filter(
-              (n: unknown) => typeof n === 'number' && n >= 1 && n <= 8
+              (n: unknown) => typeof n === 'number' && n >= 1 && n <= 9
             ) as number[];
             setCompletedTourSteps(validSteps);
           }
@@ -205,19 +207,17 @@ export default function CreateAgent() {
     setIsSubmitting(true);
     setError(null);
     try {
-      const agentData: InsertAgent = { ...data };
-      agentData.creatorWallet = user?.wallet?.address || data.creatorWallet;
-      agentData.description = data.description ? data.description : null;
+      const { description, ...agentData } = data;
+      const creatorWallet = user?.wallet?.address || data.creatorWallet;
 
       const payload = {
         agentData: {
           ...agentData,
-          creatorWallet: agentData.creatorWallet,
-          profitReceiverAddress: agentData.profitReceiverAddress || agentData.creatorWallet,
+          creatorWallet,
+          profitReceiverAddress: agentData.profitReceiverAddress || creatorWallet,
           proofOfIntentMessage: proofOfIntent?.message,
           proofOfIntentSignature: proofOfIntent?.signature,
           proofOfIntentTimestamp: proofOfIntent?.timestamp.toISOString(),
-          isCopyTradeClub: selectedTopTraders.length > 0,
         },
         linkingData: {
           ctAccountIds: Array.from(selectedCtAccounts),
@@ -742,7 +742,7 @@ export default function CreateAgent() {
 
           {/* Step 5: CT Accounts */}
           {step === 5 && (
-            <div data-tour="step-5">
+            <div data-tour="step-4">
               <CtAccountSelector
                 selectedIds={selectedCtAccounts}
                 onToggle={toggleCtAccount}
@@ -756,7 +756,7 @@ export default function CreateAgent() {
           {step === 6 && (
             <div className="space-y-6" data-tour="step-6">
               <h2 className="font-display text-2xl mb-2">TELEGRAM ALPHA</h2>
-              <p className="text-[var(--text-secondary)] text-sm mb-6">Select Telegram users whose alpha signals your agent should follow.</p>
+              <p className="text-[var(--text-secondary)] text-sm mb-6">Select Telegram users whose DM signals your agent should follow.</p>
               <TelegramAlphaUserSelector
                 selectedIds={selectedTelegramUsers}
                 onToggle={(id) => {

@@ -2220,7 +2220,7 @@ def set_stop_loss():
         "market": "BTC",
         "tradeIndex": 2,
         "stopLossPercent": 0.10,
-        "currentPrice": 90000,
+        "entryPrice": 90000,
         "pairIndex": 0,
         "useDelegation": true
     }
@@ -2232,19 +2232,19 @@ def set_stop_loss():
         market = data.get('market')
         trade_index = data.get('tradeIndex')
         stop_loss_percent = float(data.get('stopLossPercent', 0.10))
-        current_price = float(data.get('currentPrice'))
+        entry_price = float(data.get('entryPrice') or data.get('currentPrice'))
         pair_index = data.get('pairIndex')
         use_delegation = data.get('useDelegation', True)
         
-        if not all([agent_address, user_address, market, trade_index is not None, current_price, pair_index is not None]):
+        if not all([agent_address, user_address, market, trade_index is not None, entry_price, pair_index is not None]):
             return jsonify({
                 "success": False,
-                "error": "Missing required fields"
+                "error": "Missing required fields (entryPrice is required for SL calculation)"
             }), 400
         
         logger.info(f"Setting SL for {market} (trade_index={trade_index}, pair_index={pair_index})")
         logger.info(f"   User: {user_address}, Agent: {agent_address}")
-        logger.info(f"   SL%: {stop_loss_percent * 100:.1f}%, Current Price: ${current_price:.4f}")
+        logger.info(f"   SL%: {stop_loss_percent * 100:.1f}%, Entry Price: ${entry_price:.4f}")
         
         try:
             import psycopg2
@@ -2310,17 +2310,19 @@ def set_stop_loss():
             if liquidation_price:
                 logger.info(f"   Liquidation Price: ${liquidation_price:.4f}")
             else:
-                logger.warning(f"   ⚠️  Liquidation price not available from SDK")
+                logger.warning(f"   ⚠️  Liquidation price not available from SDK (metrics keys: {list(metrics.keys()) if metrics else 'None'})")
         except Exception as liq_error:
             logger.warning(f"   ⚠️  Could not fetch liquidation price: {liq_error}")
+            logger.warning(traceback.format_exc())
             logger.warning(f"   Proceeding with SL calculation without validation")
         
         is_long = data.get('side', 'long').lower() == 'long'
-        sl_price = current_price * (1 - stop_loss_percent) if is_long else current_price * (1 + stop_loss_percent)
+        sl_price = entry_price * (1 - stop_loss_percent) if is_long else entry_price * (1 + stop_loss_percent)
         
-        logger.info(f"   Initial SL: ${sl_price:.4f} ({stop_loss_percent * 100:.1f}%)")
+        logger.info(f"   Initial SL: ${sl_price:.4f} ({stop_loss_percent * 100:.1f}% from entry)")
         
-        if liquidation_price:
+        # If liquidation price is valid (> 0), use it for validation
+        if liquidation_price and liquidation_price > 0:
             LIQUIDATION_BUFFER = 0.02
             
             if is_long:
@@ -2328,15 +2330,25 @@ def set_stop_loss():
                 if sl_price < min_safe_sl:
                     logger.warning(f"   ⚠️  SL ${sl_price:.4f} too close to liq ${liquidation_price:.4f}")
                     sl_price = min_safe_sl
-                    adjusted_percent = ((current_price - sl_price) / current_price) * 100
+                    adjusted_percent = ((entry_price - sl_price) / entry_price) * 100
                     logger.info(f"   ✅ Adjusted SL: ${sl_price:.4f} ({adjusted_percent:.1f}% below entry, 2% above liq)")
             else:
                 max_safe_sl = liquidation_price * (1 - LIQUIDATION_BUFFER)
                 if sl_price > max_safe_sl:
                     logger.warning(f"   ⚠️  SL ${sl_price:.4f} too close to liq ${liquidation_price:.4f}")
                     sl_price = max_safe_sl
-                    adjusted_percent = ((sl_price - current_price) / current_price) * 100
+                    adjusted_percent = ((sl_price - entry_price) / entry_price) * 100
                     logger.info(f"   ✅ Adjusted SL: ${sl_price:.4f} ({adjusted_percent:.1f}% above entry, 2% below liq)")
+        else:
+            SAFETY_BUFFER = 0.02
+            MAX_SAFE_SL_PERCENT = 0.08
+            
+            if stop_loss_percent > MAX_SAFE_SL_PERCENT:
+                logger.warning(f"   ⚠️  Requested SL {stop_loss_percent*100:.1f}% may be at/beyond liquidation (liq price unavailable)")
+                logger.warning(f"   ⚠️  Capping SL to {MAX_SAFE_SL_PERCENT*100:.1f}% for safety")
+                stop_loss_percent = MAX_SAFE_SL_PERCENT
+                sl_price = entry_price * (1 - stop_loss_percent) if is_long else entry_price * (1 + stop_loss_percent)
+                logger.info(f"   ✅ Adjusted SL: ${sl_price:.4f} ({stop_loss_percent*100:.1f}% from entry)")
         
         logger.info(f"   Setting SL: ${sl_price:.4f}")
         
@@ -2354,14 +2366,25 @@ def set_stop_loss():
                 "message": f"SL set to ${sl_price:.4f}",
                 "slPrice": sl_price,
                 "liquidationPrice": liquidation_price,
-                "adjusted": liquidation_price and abs(sl_price - (current_price * (1 - stop_loss_percent if is_long else 1 + stop_loss_percent))) > 0.01
+                "adjusted": liquidation_price and abs(sl_price - (entry_price * (1 - stop_loss_percent if is_long else 1 + stop_loss_percent))) > 0.01
             })
             
         except Exception as sl_error:
             logger.error(f"   ❌ Failed to set SL: {sl_error}")
+            logger.error(f"   Details: pair_index={pair_index}, trade_index={trade_index}, sl_price=${sl_price:.4f}")
+            logger.error(f"   Entry: ${entry_price:.4f}, SL%: {stop_loss_percent * 100:.2f}%, Side: {'LONG' if is_long else 'SHORT'}")
+            logger.error(f"   Liq price: {liquidation_price}")
+            logger.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "error": str(sl_error)
+                "error": str(sl_error),
+                "details": {
+                    "sl_price": sl_price,
+                    "entry_price": entry_price,
+                    "stop_loss_percent": stop_loss_percent,
+                    "liquidation_price": liquidation_price,
+                    "is_long": is_long
+                }
             }), 500
     
     except Exception as e:

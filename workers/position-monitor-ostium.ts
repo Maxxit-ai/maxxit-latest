@@ -33,7 +33,7 @@ async function acquireLock(): Promise<boolean> {
     if (fs.existsSync(LOCK_FILE)) {
       const stats = fs.statSync(LOCK_FILE);
       const lockAge = Date.now() - stats.mtimeMs;
-      
+
       // If lock is older than timeout, assume it's stale and remove it
       if (lockAge > LOCK_TIMEOUT_MS) {
         console.log('⚠️  Found stale lock file, removing...');
@@ -43,13 +43,13 @@ async function acquireLock(): Promise<boolean> {
         return false;
       }
     }
-    
+
     // Create lock file with current timestamp and PID
     fs.writeFileSync(LOCK_FILE, JSON.stringify({
       pid: process.pid,
       startedAt: new Date().toISOString(),
     }));
-    
+
     return true;
   } catch (error: any) {
     console.error('Failed to acquire lock:', error.message);
@@ -154,6 +154,13 @@ export async function monitorOstiumPositions() {
             venue: 'OSTIUM',
             status: { in: ['OPEN', 'CLOSING'] },
           },
+          include: {
+            signals: {
+              select: {
+                risk_model: true,
+              },
+            },
+          },
         });
 
         console.log(`   Positions Monitored: ${dbPositions.length} (OPEN + CLOSING)`);
@@ -163,7 +170,7 @@ export async function monitorOstiumPositions() {
         for (const position of dbPositions) {
           try {
             const tradeId = position.ostium_trade_id;
-            
+
             if (!tradeId) {
               console.log(`   ⚠️  Position ${position.token_symbol} ${position.side} has no tradeId, skipping`);
               continue;
@@ -171,7 +178,7 @@ export async function monitorOstiumPositions() {
 
             let onChainTrade: any = null;
             let isOpenOnChain = false;
-            
+
             try {
               onChainTrade = await getOstiumTradeById(tradeId);
               isOpenOnChain = onChainTrade && onChainTrade.isOpen === true;
@@ -187,7 +194,7 @@ export async function monitorOstiumPositions() {
             if (position.status === 'CLOSING') {
               if (!isOpenOnChain) {
                 console.log(`   ✅ CLOSING → CLOSED: Close order fulfilled by keeper`);
-                
+
                 await prisma.positions.update({
                   where: { id: position.id },
                   data: {
@@ -197,20 +204,20 @@ export async function monitorOstiumPositions() {
                     pnl: 0,
                   },
                 });
-                
+
                 totalPositionsClosed++;
-                
+
                 updateMetricsForDeployment(deployment.id).catch(err => {
                   console.error('Failed to update metrics:', err.message);
                 });
-                
+
                 continue;
               } else {
                 const positionAge = Date.now() - (position.closed_at?.getTime() || Date.now());
                 const minutesWaiting = Math.round(positionAge / 1000 / 60);
-                
+
                 console.log(`   ⏳ CLOSING: Waiting for keeper to fulfill close order (${minutesWaiting} min)`);
-                
+
                 if (minutesWaiting > 10) {
                   console.log(`   ⚠️  WARNING: Close order pending for ${minutesWaiting} minutes - reopening position`);
                   await prisma.positions.update({
@@ -221,7 +228,7 @@ export async function monitorOstiumPositions() {
                     },
                   });
                 }
-                
+
                 continue;
               }
             }
@@ -231,14 +238,14 @@ export async function monitorOstiumPositions() {
               const entryPrice = Number(position.entry_price?.toString() || 0);
               const positionAge = Date.now() - position.opened_at.getTime();
               const isRecent = positionAge < 5 * 60 * 1000; // 5 minutes
-              
+
               if (entryPrice === 0 && isRecent) {
                 console.log(`   ⏳ Position is pending (waiting for keeper), age: ${Math.round(positionAge / 1000)}s`);
                 continue;
               }
-              
+
               console.log(`   ⚠️  Position closed externally - marking as CLOSED`);
-              
+
               await prisma.positions.update({
                 where: { id: position.id },
                 data: {
@@ -251,18 +258,18 @@ export async function monitorOstiumPositions() {
               });
 
               totalPositionsClosed++;
-              
+
               updateMetricsForDeployment(deployment.id).catch(err => {
                 console.error('Failed to update metrics:', err.message);
               });
-              
+
               continue;
             }
 
             // Position is OPEN on-chain - monitor it
             const tradeIndex = parseInt(onChainTrade.index);
             const pairIndex = onChainTrade.pair?.id;
-            
+
             // Sync trade index if different
             if (tradeIndex !== undefined && position.ostium_trade_index !== tradeIndex) {
               console.log(`   🔄 Syncing trade index: DB=${position.ostium_trade_index} → Ostium=${tradeIndex}`);
@@ -278,7 +285,7 @@ export async function monitorOstiumPositions() {
               const tokenSymbol = position.token_symbol.replace('/USD', '').replace('/USDT', '');
               const ostiumServiceUrl = process.env.OSTIUM_SERVICE_URL || 'http://localhost:5002';
               const priceResponse = await axios.get(`${ostiumServiceUrl}/price/${tokenSymbol}`, { timeout: 5000 });
-              
+
               if (priceResponse.data.success && priceResponse.data.price) {
                 currentPrice = parseFloat(priceResponse.data.price);
                 console.log(`   💰 Current Price: $${currentPrice.toFixed(4)} | Entry: $${position.entry_price.toFixed(4)}`);
@@ -290,52 +297,70 @@ export async function monitorOstiumPositions() {
               currentPrice = Number(position.entry_price.toString());
             }
 
-            // Check if TP/SL need to be set
-            const stopLossPrice = parseFloat(onChainTrade.stopLossPrice || 0) / 1e18;
-            const takeProfitPrice = parseFloat(onChainTrade.takeProfitPrice || 0) / 1e18;
-            const needsSL = stopLossPrice === 0;
-            const needsTP = takeProfitPrice === 0;
+            const onChainSLPrice = parseFloat(onChainTrade.stopLossPrice || 0) / 1e18;
+            const needsProtection = onChainSLPrice === 0;
 
-            if (needsSL || needsTP) {
-              console.log(`   🎯 Position needs protection - setting ${needsSL ? 'SL' : ''}${needsSL && needsTP ? ' and ' : ''}${needsTP ? 'TP' : ''}...`);
-              
+            if (needsProtection) {
+              console.log(`   🎯 Position needs protection - setting SL and TP...`);
+
               try {
                 const userAgentAddress = await prisma.user_agent_addresses.findUnique({
                   where: { user_wallet: deployment.user_wallet.toLowerCase() },
                   select: { ostium_agent_address: true },
                 });
-                
+
                 if (!userAgentAddress?.ostium_agent_address) {
                   console.log(`   ⚠️  Agent address not found, skipping SL/TP setting`);
                 } else {
-                  const stopLossPercent = 0.05;
-                  const takeProfitPercent = 0.10;
+                  const riskModel = (position as any).signals?.risk_model as { stopLoss?: number; takeProfit?: number } | null;
+
+                  const DEFAULT_SL_PERCENT = 0.05;
+                  const DEFAULT_TP_PERCENT = 0.10;
+
+                  let stopLossPercent = riskModel?.stopLoss || 0;
+                  if (stopLossPercent === 0 || stopLossPercent < 0.01) {
+                    stopLossPercent = DEFAULT_SL_PERCENT;
+                    console.log(`   📊 SL: ${(stopLossPercent * 100).toFixed(1)}% (default - trader did not set)`);
+                  } else {
+                    console.log(`   📊 SL: ${(stopLossPercent * 100).toFixed(1)}% (from trader)`);
+                  }
+
+                  let takeProfitPercent = riskModel?.takeProfit || 0;
+                  if (takeProfitPercent === 0 || takeProfitPercent < 0.01) {
+                    takeProfitPercent = DEFAULT_TP_PERCENT;
+                    console.log(`   📊 TP: ${(takeProfitPercent * 100).toFixed(1)}% (default - trader did not set)`);
+                  } else {
+                    console.log(`   📊 TP: ${(takeProfitPercent * 100).toFixed(1)}% (from trader)`);
+                  }
+
                   const tokenSymbol = position.token_symbol.replace('/USD', '').replace('/USDT', '');
                   const ostiumServiceUrl = process.env.OSTIUM_SERVICE_URL || 'http://localhost:5002';
-                  
-                  if (needsSL) {
-                    const slResponse = await axios.post(`${ostiumServiceUrl}/set-stop-loss`, {
-                      agentAddress: userAgentAddress.ostium_agent_address,
-                      userAddress: deployment.safe_wallet,
-                      market: tokenSymbol,
-                      tradeIndex: tradeIndex,
-                      stopLossPercent: stopLossPercent,
-                      currentPrice: currentPrice,
-                      pairIndex: pairIndex,
-                      side: position.side.toLowerCase(),
-                      useDelegation: true,
-                    }, { timeout: 60000 });
-                    
-                    if (slResponse.data.success) {
-                      console.log(`   ✅ SL set: ${slResponse.data.message || 'Done'}`);
-                    } else {
-                      console.log(`   ⚠️  SL failed: ${slResponse.data.error}`);
+                  const entryPrice = Number(position.entry_price.toString());
+
+                  if (entryPrice > 0) {
+                    try {
+                      const slResponse = await axios.post(`${ostiumServiceUrl}/set-stop-loss`, {
+                        agentAddress: userAgentAddress.ostium_agent_address,
+                        userAddress: deployment.safe_wallet,
+                        market: tokenSymbol,
+                        tradeIndex: tradeIndex,
+                        stopLossPercent: stopLossPercent,
+                        entryPrice: entryPrice,
+                        pairIndex: pairIndex,
+                        side: position.side.toLowerCase(),
+                        useDelegation: true,
+                      }, { timeout: 60000 });
+
+                      if (slResponse.data.success) {
+                        console.log(`   ✅ SL set: ${slResponse.data.message || 'Done'}`);
+                      } else {
+                        console.log(`   ⚠️  SL failed: ${slResponse.data.error}`);
+                      }
+                    } catch (slError: any) {
+                      console.error(`   ⚠️  Error setting SL: ${slError.message}`);
                     }
-                  }
-                  
-                  if (needsTP) {
-                    const entryPrice = Number(position.entry_price.toString());
-                    if (entryPrice > 0) {
+
+                    try {
                       const tpResponse = await axios.post(`${ostiumServiceUrl}/set-take-profit`, {
                         agentAddress: userAgentAddress.ostium_agent_address,
                         userAddress: deployment.safe_wallet,
@@ -347,12 +372,14 @@ export async function monitorOstiumPositions() {
                         side: position.side.toLowerCase(),
                         useDelegation: true,
                       }, { timeout: 60000 });
-                      
+
                       if (tpResponse.data.success) {
                         console.log(`   ✅ TP set: ${tpResponse.data.message || 'Done'}`);
                       } else {
                         console.log(`   ⚠️  TP failed: ${tpResponse.data.error}`);
                       }
+                    } catch (tpError: any) {
+                      console.error(`   ⚠️  Error setting TP: ${tpError.message}`);
                     }
                   }
                 }
@@ -366,18 +393,18 @@ export async function monitorOstiumPositions() {
             const leverage = parseFloat(onChainTrade.leverage || 100) / 100;
             const entryPriceNum = Number(position.entry_price.toString());
             const isLong = position.side === 'LONG' || position.side === 'BUY';
-            
+
             const positionSizeInTokens = (collateral * leverage) / entryPriceNum;
-            
+
             let pnlUSD = 0;
             if (isLong) {
               pnlUSD = positionSizeInTokens * (currentPrice - entryPriceNum);
             } else {
               pnlUSD = positionSizeInTokens * (entryPriceNum - currentPrice);
             }
-            
+
             const pnlPercent = collateral > 0 ? (pnlUSD / collateral) * 100 : 0;
-            
+
             console.log(`   📈 P&L: $${pnlUSD.toFixed(2)} (${pnlPercent.toFixed(2)}%) | Collateral: $${collateral.toFixed(2)}, Leverage: ${leverage}x`);
 
             // Check trailing stop logic
@@ -386,7 +413,7 @@ export async function monitorOstiumPositions() {
             let closeReason = '';
 
             const HARD_STOP_LOSS = 10;
-            
+
             if (pnlPercent <= -HARD_STOP_LOSS) {
               shouldClose = true;
               closeReason = 'HARD_STOP_LOSS';
@@ -396,12 +423,12 @@ export async function monitorOstiumPositions() {
             if (!shouldClose && trailingParams?.enabled) {
               const trailingPercent = trailingParams.trailingPercent || 1;
               const activationThreshold = 3;
-              
-              const highestPnlPercent = trailingParams.highestPnlPercent !== undefined 
-                ? trailingParams.highestPnlPercent 
+
+              const highestPnlPercent = trailingParams.highestPnlPercent !== undefined
+                ? trailingParams.highestPnlPercent
                 : 0;
               const newHighestPnl = Math.max(highestPnlPercent, pnlPercent);
-              
+
               if (newHighestPnl > highestPnlPercent) {
                 await prisma.positions.update({
                   where: { id: position.id },
@@ -431,9 +458,9 @@ export async function monitorOstiumPositions() {
 
             if (shouldClose) {
               console.log(`   🔴 Closing position (Reason: ${closeReason})`);
-              
+
               const closeResult = await executor.closePosition(position.id);
-              
+
               if (closeResult.success) {
                 console.log(`   ✅ Position closed successfully`);
                 totalPositionsClosed++;
@@ -485,7 +512,7 @@ export async function monitorOstiumPositions() {
 // Run monitor if executed directly
 if (require.main === module) {
   console.log('Starting Ostium Position Monitor...\n');
-  
+
   // Run immediately
   monitorOstiumPositions().then(result => {
     if (result.success) {

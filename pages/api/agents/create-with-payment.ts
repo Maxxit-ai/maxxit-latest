@@ -15,6 +15,7 @@ const createWithPaymentSchema = z.object({
         ctAccountIds: z.array(z.string().uuid()).optional().default([]),
         researchInstituteIds: z.array(z.string().uuid()).optional().default([]),
         telegramAlphaUserIds: z.array(z.string().uuid()).optional().default([]),
+        topTraderIds: z.array(z.string().uuid()).optional().default([]),
     })
 });
 
@@ -104,7 +105,7 @@ export default async function handler(
             );
 
             return { agent, paymentResult };
-        }, { timeout: 30000 });
+        }, { timeout: 60000 });
 
         // 3. Return response
         const camelCaseAgent = convertKeysToCamelCase(result.agent);
