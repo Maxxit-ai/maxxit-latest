@@ -11,7 +11,7 @@ import dotenv from "dotenv";
 import express from "express";
 import { prisma } from "@maxxit/database";
 import { setupGracefulShutdown, registerCleanup } from "@maxxit/common";
-import { checkDatabaseHealth } from "@maxxit/database";
+import { checkDatabaseHealth, TradeQuotaService } from "@maxxit/database";
 import { venue_t } from "@prisma/client";
 import { makeTradeDecision } from "./lib/llm-trade-decision";
 import {
@@ -130,7 +130,7 @@ async function generateAllSignals() {
           // Get the source user's flags
           const isLazyTrader = (alphaUser as any)?.lazy_trader === true;
           const isPublicSource = (alphaUser as any)?.public_source === true;
-          
+
           // Get the influencer's impact factor (historical performance)
           influencerImpactFactor = (alphaUser as any)?.impact_factor ?? 50; // Default to 50 (neutral) if not set
           console.log(`[SignalGenerator]    Impact Factor of source: ${influencerImpactFactor}/100`);
@@ -296,7 +296,7 @@ async function generateAllSignals() {
             agent.name.toLowerCase().includes("lazy") &&
             agent.name.toLowerCase().includes("trader");
 
-          console.log("checking lazy trader agent",agent.status + " " + agent.name + " " + isLazyTraderAgent)
+          console.log("checking lazy trader agent", agent.status + " " + agent.name + " " + isLazyTraderAgent)
 
           console.log(
             `[SignalGenerator]    🔍 Checking Lazy Trader agent: ${agent.name}, isLazyTraderAgent: ${isLazyTraderAgent}`
@@ -309,6 +309,21 @@ async function generateAllSignals() {
           }
 
           for (const deployment of agent.agent_deployments) {
+            // Check trade quota before generating signal
+            try {
+              const hasQuota = await TradeQuotaService.hasAvailableTrades(deployment.user_wallet);
+              if (!hasQuota) {
+                console.log(
+                  `[SignalGenerator]    ⏭️  User ${deployment.user_wallet.substring(0, 10)}... has no trade quota - skipping deployment`
+                );
+                continue;
+              }
+            } catch (quotaCheckError: any) {
+              console.log(
+                `[SignalGenerator]    ⚠️  Failed to check trade quota: ${quotaCheckError.message} - proceeding anyway`
+              );
+            }
+
             for (const token of extractedTokens) {
               try {
                 const success = await generateSignalForAgentAndToken(
@@ -325,6 +340,18 @@ async function generateAllSignals() {
                     `[SignalGenerator] ✅ Signal created for ${agent.name
                     } (deployment ${deployment.id.substring(0, 8)}): ${token}`
                   );
+
+                  // Deduct trade quota after successful signal creation
+                  try {
+                    await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+                    console.log(
+                      `[SignalGenerator]    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+                    );
+                  } catch (quotaDeductError: any) {
+                    console.error(
+                      `[SignalGenerator]    ⚠️  Failed to deduct trade quota: ${quotaDeductError.message}`
+                    );
+                  }
                 }
               } catch (error: any) {
                 console.error(
@@ -474,6 +501,18 @@ async function generateSignalForAgentAndToken(
               8
             )}: ${token} - Token not supported in OSTIUM`
           );
+
+          // Deduct trade quota for processing this signal
+          try {
+            await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+            console.log(
+              `    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+            );
+          } catch (quotaError: any) {
+            console.error(
+              `    ⚠️  Failed to deduct trade quota: ${quotaError.message}`
+            );
+          }
         } catch (error) {
           console.error(`    ❌ Error storing skipped signal: ${error}`);
         }
@@ -538,6 +577,18 @@ async function generateSignalForAgentAndToken(
               8
             )}: ${token} - Token not supported in ${agent.venue}`
           );
+
+          // Deduct trade quota for processing this signal
+          try {
+            await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+            console.log(
+              `    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+            );
+          } catch (quotaError: any) {
+            console.error(
+              `    ⚠️  Failed to deduct trade quota: ${quotaError.message}`
+            );
+          }
         } catch (error) {
           console.error(`    ❌ Error storing skipped signal: ${error}`);
         }
@@ -945,6 +996,18 @@ async function generateSignalForAgentAndToken(
           )}: ${side} ${token} on ${signalVenue}`
         );
         console.log(`    💭 Skipped reason: ${tradeDecision.reason}`);
+
+        // Deduct trade quota for processing this signal
+        try {
+          await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+          console.log(
+            `    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+          );
+        } catch (quotaError: any) {
+          console.error(
+            `    ⚠️  Failed to deduct trade quota: ${quotaError.message}`
+          );
+        }
       } catch (error) {
         console.error(`    ❌ Error storing skipped signal: ${error}`);
       }

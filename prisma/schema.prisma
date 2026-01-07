@@ -715,6 +715,16 @@ model system_treasury {
   updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 }
 
+model user_trade_quota {
+  user_wallet       String   @id
+  trades_total      Int      @default(0)  // Lifetime trades purchased
+  trades_used       Int      @default(0)  // Trades consumed
+  trades_remaining  Int      @default(0)  // Available trades (trades_total - trades_used)
+  updated_at        DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([user_wallet])
+}
+
 model top_traders {
   id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   wallet_address      String   @unique

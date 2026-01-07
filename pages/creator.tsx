@@ -60,7 +60,7 @@ export default function Creator() {
       // Fetch agents created by this wallet and user agent addresses in parallel
       const [agentsData, addressesData] = await Promise.all([
         db.get("agents", {
-          creatorWallet: `eq.${user.wallet.address.toLowerCase()}`,
+          creatorWallet: `ieq.${user.wallet.address}`,
           order: "apr30d.desc.nullslast",
           select: "*",
         }),
@@ -519,13 +519,12 @@ export default function Creator() {
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
-                          className={`px-2 py-1 text-xs rounded-md ${
-                            agent.status === "PUBLIC"
-                              ? "bg-primary/20 text-primary"
-                              : agent.status === "PRIVATE"
+                          className={`px-2 py-1 text-xs rounded-md ${agent.status === "PUBLIC"
+                            ? "bg-primary/20 text-primary"
+                            : agent.status === "PRIVATE"
                               ? "bg-yellow-500/20 text-yellow-500"
                               : "bg-muted text-muted-foreground"
-                          }`}
+                            }`}
                         >
                           {agent.status}
                         </span>
@@ -625,11 +624,10 @@ export default function Creator() {
                             </p>
                           </div>
                           <span
-                            className={`px-2 py-1 text-xs rounded-md ${
-                              deployment.status === "ACTIVE"
-                                ? "bg-primary/20 text-primary"
-                                : "bg-muted text-muted-foreground"
-                            }`}
+                            className={`px-2 py-1 text-xs rounded-md ${deployment.status === "ACTIVE"
+                              ? "bg-primary/20 text-primary"
+                              : "bg-muted text-muted-foreground"
+                              }`}
                           >
                             {deployment.status}
                           </span>
@@ -679,11 +677,10 @@ export default function Creator() {
                           </p>
                         </div>
                         <span
-                          className={`px-2 py-1 text-xs rounded-md ${
-                            position.status === "OPEN"
-                              ? "bg-primary/20 text-primary"
-                              : "bg-muted text-muted-foreground"
-                          }`}
+                          className={`px-2 py-1 text-xs rounded-md ${position.status === "OPEN"
+                            ? "bg-primary/20 text-primary"
+                            : "bg-muted text-muted-foreground"
+                            }`}
                         >
                           {position.status}
                         </span>
@@ -699,11 +696,10 @@ export default function Creator() {
                           <div>
                             <span className="text-muted-foreground">PnL:</span>
                             <span
-                              className={`ml-2 font-semibold ${
-                                parseFloat(position.pnl) >= 0
-                                  ? "text-primary"
-                                  : "text-destructive"
-                              }`}
+                              className={`ml-2 font-semibold ${parseFloat(position.pnl) >= 0
+                                ? "text-primary"
+                                : "text-destructive"
+                                }`}
                             >
                               ${parseFloat(position.pnl).toFixed(2)}
                             </span>

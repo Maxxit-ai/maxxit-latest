@@ -143,7 +143,10 @@ function parseQuery(query: Record<string, any>) {
       
       for (const val of values) {
         if (typeof val === 'string') {
-          if (val.startsWith('eq.')) {
+          if (val.startsWith('ieq.')) {
+            // Case-insensitive equals
+            fieldFilters[snakeKey].push({ op: 'ieq', value: coerceValue(val.substring(4)) });
+          } else if (val.startsWith('eq.')) {
             fieldFilters[snakeKey].push({ op: 'eq', value: coerceValue(val.substring(3)) });
           } else if (val.startsWith('neq.')) {
             fieldFilters[snakeKey].push({ op: 'neq', value: coerceValue(val.substring(4)) });
@@ -167,17 +170,25 @@ function parseQuery(query: Record<string, any>) {
   // Build where clause from collected filters
   for (const [field, filters] of Object.entries(fieldFilters)) {
     if (filters.length === 0) continue;
-    
+
     // Separate neq filters from others
     const neqFilters = filters.filter(f => f.op === 'neq');
     const otherFilters = filters.filter(f => f.op !== 'neq');
-    
+
     // Build filter object using explicit Prisma keys
     let fieldFilter: any = {};
-    
+
+    // Handle case-insensitive eq filters (ieq)
+    const ieqFilters = otherFilters.filter(f => f.op === 'ieq');
+    if (ieqFilters.length > 0) {
+      // Use Prisma's case-insensitive mode
+      fieldFilter.equals = ieqFilters[0].value;
+      fieldFilter.mode = 'insensitive';
+    }
+
     // Handle eq filters (check for contradictions)
     const eqFilters = otherFilters.filter(f => f.op === 'eq');
-    if (eqFilters.length > 0) {
+    if (eqFilters.length > 0 && ieqFilters.length === 0) {
       // Multiple eq with different values = contradiction, use impossible condition
       const uniqueEqValues = [...new Set(eqFilters.map(f => JSON.stringify(f.value)))];
       if (uniqueEqValues.length > 1) {
@@ -187,40 +198,40 @@ function parseQuery(query: Record<string, any>) {
         fieldFilter.equals = eqFilters[0].value;
       }
     }
-    
+
     // Handle in filters (intersect if multiple)
     const inFilters = otherFilters.filter(f => f.op === 'in');
     if (inFilters.length > 0) {
       let intersection = inFilters[0].value;
       for (let i = 1; i < inFilters.length; i++) {
-        intersection = intersection.filter((v: any) => 
+        intersection = intersection.filter((v: any) =>
           inFilters[i].value.some((v2: any) => JSON.stringify(v) === JSON.stringify(v2))
         );
       }
       fieldFilter.in = intersection;
     }
-    
+
     // Handle range filters (narrow bounds)
     const gteFilters = otherFilters.filter(f => f.op === 'gte');
     if (gteFilters.length > 0) {
       fieldFilter.gte = Math.max(...gteFilters.map(f => Number(f.value)));
     }
-    
+
     const lteFilters = otherFilters.filter(f => f.op === 'lte');
     if (lteFilters.length > 0) {
       fieldFilter.lte = Math.min(...lteFilters.map(f => Number(f.value)));
     }
-    
+
     const gtFilters = otherFilters.filter(f => f.op === 'gt');
     if (gtFilters.length > 0) {
       fieldFilter.gt = Math.max(...gtFilters.map(f => Number(f.value)));
     }
-    
+
     const ltFilters = otherFilters.filter(f => f.op === 'lt');
     if (ltFilters.length > 0) {
       fieldFilter.lt = Math.min(...ltFilters.map(f => Number(f.value)));
     }
-    
+
     // Handle multiple neq filters
     if (neqFilters.length > 0) {
       const notValues = neqFilters.map(f => f.value);
@@ -231,7 +242,7 @@ function parseQuery(query: Record<string, any>) {
         fieldFilter.notIn = notValues;
       }
     }
-    
+
     // If only one key and it's 'equals', use shorthand
     if (Object.keys(fieldFilter).length === 1 && fieldFilter.equals !== undefined) {
       where[field] = fieldFilter.equals;
@@ -249,7 +260,7 @@ export default async function handler(
 ) {
   const startTime = Date.now();
   const { path, ...query } = req.query;
-  
+
   const pathSegments = Array.isArray(path) ? path.join('/') : path || '';
   const tableName = pathSegments;
 
@@ -262,9 +273,9 @@ export default async function handler(
 
   try {
     const model = tableModelMap[tableName];
-    
+
     if (!model) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: `Table '${tableName}' not found`,
         available: Object.keys(tableModelMap),
       });
@@ -328,13 +339,13 @@ export default async function handler(
     return res.status(200).json(camelCaseResult);
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    
+
     console.error('[DB API] Error:', {
       error: error.message,
       path: tableName,
       duration,
     });
-    
+
     return res.status(500).json({
       error: error.message || 'Database request failed',
       details: isDevelopment ? error : undefined,
