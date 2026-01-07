@@ -72,11 +72,32 @@ export interface GenerateSignalJobData extends BaseJobData {
   token: string;
 }
 
+/**
+ * Job data for generating a signal from a telegram post with LLM decision
+ * Each job represents: one post + one deployment + one token
+ */
+export interface GenerateTelegramSignalJobData extends BaseJobData {
+  type: 'GENERATE_TELEGRAM_SIGNAL';
+  /** telegram_posts.id */
+  postId: string;
+  /** agents.id */
+  agentId: string;
+  /** agent_deployments.id */
+  deploymentId: string;
+  /** Token symbol (e.g., "BTC") */
+  token: string;
+  /** Is this a Lazy Trader agent */
+  isLazyTraderAgent: boolean;
+  /** Influencer impact factor (0-100) */
+  influencerImpactFactor: number;
+}
+
 export type SignalGenerationJobData = 
   | ProcessTweetsJobData 
   | ProcessTelegramJobData 
   | ProcessResearchJobData
-  | GenerateSignalJobData;
+  | GenerateSignalJobData
+  | GenerateTelegramSignalJobData;
 
 // ============================================
 // Position Monitor Queue Jobs

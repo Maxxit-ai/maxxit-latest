@@ -169,3 +169,10 @@ export function getPositionMonitorLockKey(positionId: string): string {
 export function getMessageClassificationLockKey(messageId: string): string {
   return `message-classification:${messageId}`;
 }
+
+/**
+ * Generate a lock key for signal generation (post + deployment + token)
+ */
+export function getSignalGenerationLockKey(postId: string, deploymentId: string, token: string): string {
+  return `signal-generation:${postId}:${deploymentId}:${token}`;
+}

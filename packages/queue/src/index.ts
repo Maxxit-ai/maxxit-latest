@@ -61,6 +61,7 @@ export {
   type ProcessTelegramJobData,
   type ProcessResearchJobData,
   type GenerateSignalJobData,
+  type GenerateTelegramSignalJobData,
   // Position Monitor types
   type PositionMonitorJobData,
   type MonitorPositionJobData,
@@ -111,6 +112,7 @@ export {
   getSignalDeploymentLockKey,
   getPositionMonitorLockKey,
   getMessageClassificationLockKey,
+  getSignalGenerationLockKey,
 } from './distributed-lock';
 
 // Scheduler

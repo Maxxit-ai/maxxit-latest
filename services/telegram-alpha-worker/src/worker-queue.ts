@@ -16,6 +16,7 @@ import { prisma, checkDatabaseHealth, disconnectPrisma } from "@maxxit/database"
 import { setupGracefulShutdown, registerCleanup, createHealthCheckHandler } from "@maxxit/common";
 import {
   createWorkerPool,
+  createQueue,
   addJob,
   getQueueStats,
   startIntervalTrigger,
@@ -30,6 +31,11 @@ import {
   Job,
 } from "@maxxit/queue";
 import { createLLMClassifier } from "./lib/llm-classifier";
+
+// Bull Board imports
+import { createBullBoard } from "@bull-board/api";
+import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
+import { ExpressAdapter } from "@bull-board/express";
 
 dotenv.config();
 
@@ -71,6 +77,32 @@ const server = app.listen(PORT, () => {
 });
 
 /**
+ * Setup Bull Board for queue visualization
+ * Access at: http://localhost:PORT/admin/queues
+ */
+function setupBullBoard() {
+  const serverAdapter = new ExpressAdapter();
+  serverAdapter.setBasePath("/admin/queues");
+
+  // Create queues for Bull Board (they connect to existing Redis queues)
+  const telegramAlphaQueue = createQueue(QueueName.TELEGRAM_ALPHA_CLASSIFICATION);
+//   const tradeExecutionQueue = createQueue(QueueName.TRADE_EXECUTION);
+//   const signalGenerationQueue = createQueue(QueueName.SIGNAL_GENERATION);
+
+  createBullBoard({
+    queues: [
+      new BullMQAdapter(telegramAlphaQueue),
+    //   new BullMQAdapter(tradeExecutionQueue),
+    //   new BullMQAdapter(signalGenerationQueue),
+    ],
+    serverAdapter,
+  });
+
+  app.use("/admin/queues", serverAdapter.getRouter());
+  console.log(`📊 Bull Board available at http://localhost:${PORT}/admin/queues`);
+}
+
+/**
  * Process a single message classification job
  */
 async function processClassificationJob(
@@ -106,6 +138,7 @@ async function processClassificationJob(
 
 /**
  * Classify a single message using LLM
+ * Creates separate records for each token classification (matching worker.ts logic)
  */
 async function classifyMessage(messageId: string): Promise<JobResult> {
   try {
@@ -136,6 +169,7 @@ async function classifyMessage(messageId: string): Promise<JobResult> {
 
     const user = message.telegram_alpha_users;
     const username = user?.telegram_username || user?.first_name || "Unknown";
+    const userImpactFactor = user?.impact_factor ?? 50; // Default to 50 (neutral) if not set
 
     console.log(`[Classifier] 🔄 Processing: "${message.message_text.substring(0, 50)}..."`);
 
@@ -147,49 +181,94 @@ async function classifyMessage(messageId: string): Promise<JobResult> {
       throw new Error("LLM Classifier not available - will retry");
     }
 
-    // Classify message
-    const classification = await classifier.classifyTweet(message.message_text);
+    // Classify message - returns array of classifications (one per token)
+    const classifications = await classifier.classifyTweet(
+      message.message_text,
+      userImpactFactor
+    );
 
-    // Update message with classification
-    await prisma.telegram_posts.update({
+    // Process each token classification separately (matching worker.ts logic)
+    let tokenSignalsCreated = 0;
+
+    for (const classification of classifications) {
+      // Skip non-signals
+      if (!classification.isSignalCandidate || classification.extractedTokens.length === 0) {
+        console.log(`[Classifier] ℹ️  [${username}] Not a signal (or no tokens extracted)`);
+        continue;
+      }
+
+      const token = classification.extractedTokens[0]; // Only one token per classification now
+
+      // Create NEW record for this specific token
+      await prisma.telegram_posts.create({
+        data: {
+          // Link to original user
+          alpha_user_id: message.alpha_user_id,
+          source_id: message.source_id,
+
+          // Make message_id unique per token
+          message_id: `${message.message_id}_${token}`,
+
+          // Original message metadata
+          message_text: message.message_text,
+          message_created_at: message.message_created_at,
+          sender_id: message.sender_id,
+          sender_username: message.sender_username,
+
+          // Token-specific classification
+          is_signal_candidate: classification.isSignalCandidate,
+          extracted_tokens: [token],
+          confidence_score: classification.confidence,
+          signal_type:
+            classification.sentiment === "bullish"
+              ? "LONG"
+              : classification.sentiment === "bearish"
+              ? "SHORT"
+              : null,
+          token_price:
+            typeof classification.tokenPrice === "number"
+              ? classification.tokenPrice
+              : null,
+          timeline_window: classification.timelineWindow || null,
+          take_profit: classification.takeProfit ?? 0,
+          stop_loss: classification.stopLoss ?? 0,
+
+          // EigenAI verification data
+          llm_signature: classification.signature,
+          llm_raw_output: classification.rawOutput,
+          llm_model_used: classification.model,
+          llm_chain_id: classification.chainId,
+          llm_reasoning: classification.reasoning,
+          llm_market_context: classification.marketContext,
+          llm_full_prompt: classification.fullPrompt,
+        },
+      });
+
+      tokenSignalsCreated++;
+
+      console.log(
+        `[Classifier] ✅ [${username}] Signal for ${token}: ${classification.sentiment} (confidence: ${(
+          classification.confidence * 100
+        ).toFixed(0)}%)`
+      );
+    }
+
+    // Delete original webhook message after creating token-specific records
+    // This prevents confusing NULL rows - only actual signal records remain
+    await prisma.telegram_posts.delete({
       where: { id: messageId },
-      data: {
-        is_signal_candidate: classification.isSignalCandidate,
-        extracted_tokens: classification.extractedTokens,
-        confidence_score: classification.confidence,
-        signal_type:
-          classification.sentiment === "bullish"
-            ? "LONG"
-            : classification.sentiment === "bearish"
-            ? "SHORT"
-            : null,
-        // EigenAI signature verification fields
-        llm_signature: classification.signature,
-        llm_raw_output: classification.rawOutput,
-        llm_model_used: classification.model,
-        llm_chain_id: classification.chainId,
-        llm_reasoning: classification.reasoning,
-        llm_market_context: classification.marketContext,
-      },
     });
 
-    if (classification.isSignalCandidate) {
-      console.log(
-        `[Classifier] ✅ [${username}] Signal: ${classification.extractedTokens.join(", ")} - ${
-          classification.sentiment
-        } (${(classification.confidence * 100).toFixed(0)}%)`
-      );
-    } else {
-      console.log(`[Classifier] ℹ️  [${username}] Not a signal`);
+    if (tokenSignalsCreated === 0) {
+      console.log(`[Classifier] ℹ️  [${username}] No actionable signals found in message`);
     }
 
     return {
       success: true,
-      message: classification.isSignalCandidate ? "Signal detected" : "Not a signal",
+      message: tokenSignalsCreated > 0 ? `Created ${tokenSignalsCreated} signal(s)` : "No signals found",
       data: {
-        isSignal: classification.isSignalCandidate,
-        tokens: classification.extractedTokens,
-        sentiment: classification.sentiment,
+        signalsCreated: tokenSignalsCreated,
+        classificationsProcessed: classifications.length,
       },
     };
   } catch (error: any) {
@@ -314,6 +393,9 @@ async function runWorker() {
       throw new Error("Redis connection failed. Check REDIS_URL environment variable.");
     }
     console.log("✅ Redis connection: OK");
+
+    // Setup Bull Board for queue visualization
+    setupBullBoard();
 
     // Check LLM classifier availability
     const classifier = createLLMClassifier();
