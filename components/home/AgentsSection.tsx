@@ -26,9 +26,11 @@ interface AgentsSectionProps {
     hasApproval: boolean;
   } | null;
   fromHome?: boolean;
+  creditBalance?: number; // User's current credit balance
+  userWallet?: string; // User's wallet address for creator check
 }
 
-const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {}, ostiumDelegationStatus, ostiumUsdcAllowance, fromHome = true }: AgentsSectionProps) => {
+const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {}, ostiumDelegationStatus, ostiumUsdcAllowance, fromHome = true, creditBalance = 0, userWallet = '' }: AgentsSectionProps) => {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
@@ -483,6 +485,9 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                       </div>
                     )}
 
+
+                    {/* Metrics Section - Unified Design */}
+                    <div className="flex-1 flex flex-col justify-center">
                     {/* Price Section */}
                     <div className="mb-4 sm:mb-5 pb-3 sm:pb-4 border-b border-[#ededed]/20">
                       <div className="flex items-center justify-between">
@@ -496,9 +501,6 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                         </p>
                       </div>
                     </div>
-
-                    {/* Metrics Section - Unified Design */}
-                    <div className="flex-1 flex flex-col justify-center">
                       {/* Primary Metric - 30D Return */}
                       <div className="mb-3 sm:mb-4">
                         <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 sm:mb-1.5 opacity-70">
@@ -545,21 +547,59 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
                     {/* Button Section */}
                     <div className="pt-4 sm:pt-6">
-                      <button
-                        onMouseEnter={() => setHoveredButton(agent.id)}
-                        onMouseLeave={() => setHoveredButton(null)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeployClick(agent);
-                        }}
-                        className="button-animated w-full py-2.5 sm:py-3 border-2 border-[var(--border)] text-xs sm:text-sm font-bold bg-[var(--bg-elevated)] flex items-center justify-center gap-2 group/btn relative"
-                      >
-                        <span className="relative z-10 font-bold">JOIN CLUB</span>
-                        <ArrowRight
-                          className={`relative z-10 transition-transform w-3.5 h-3.5 sm:w-4 sm:h-4 ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
-                          size={16}
-                        />
-                      </button>
+                      {(() => {
+                        const agentCost = agent.totalCost || 0;
+                        const isCreator = userWallet && agent.creatorWallet &&
+                          userWallet.toLowerCase() === agent.creatorWallet.toLowerCase();
+                        const alreadyDeployed = agentDeployments[agent.id]?.length > 0;
+                        const hasInsufficientCredits = !isCreator && !alreadyDeployed && agentCost > 0 && creditBalance < agentCost;
+
+                        return (
+                          <button
+                            onMouseEnter={() => setHoveredButton(agent.id)}
+                            onMouseLeave={() => setHoveredButton(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!hasInsufficientCredits) {
+                                onDeployClick(agent);
+                              }
+                            }}
+                            disabled={hasInsufficientCredits}
+                            className={`w-full py-2.5 sm:py-3 border-2 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 relative transition-all ${hasInsufficientCredits
+                              ? 'border-red-500/50 bg-red-500/5 text-red-500 cursor-not-allowed opacity-70'
+                              : 'button-animated border-[var(--border)] bg-[var(--bg-elevated)] group/btn'
+                              }`}
+                          >
+                            {alreadyDeployed ? (
+                              <>
+                                <CheckCircle className="relative z-10" size={16} />
+                                <span className="relative z-10 font-bold">JOINED</span>
+                              </>
+                            ) : hasInsufficientCredits ? (
+                              <>
+                                <AlertCircle className="relative z-10" size={16} />
+                                <span className="relative z-10 font-bold">INSUFFICIENT CREDITS</span>
+                              </>
+                            ) : isCreator ? (
+                              <>
+                                <span className="relative z-10 font-bold">JOIN CLUB (FREE)</span>
+                                <ArrowRight
+                                  className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
+                                  size={16}
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <span className="relative z-10 font-bold">JOIN CLUB</span>
+                                <ArrowRight
+                                  className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
+                                  size={16}
+                                />
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

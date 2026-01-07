@@ -42,6 +42,7 @@ export default function Home() {
     usdcAllowance: number;
     hasApproval: boolean;
   } | null>(null);
+  const [creditBalance, setCreditBalance] = useState<number>(0);
 
   useEffect(() => {
     async function fetchAgents() {
@@ -49,7 +50,7 @@ export default function Home() {
         const userWallet = authenticated && user?.wallet?.address ? user.wallet.address.toLowerCase() : null;
 
         // Fetch agents, user agent addresses, and deployments in parallel
-        const [agentsData, addressesData, deploymentsData] = await Promise.all([
+        const [agentsData, addressesData, deploymentsData, creditData] = await Promise.all([
           fetch(`/api/agents?status=PUBLIC&order=apr30d.desc&limit=20`).then(res => res.json()),
           // Only fetch addresses if user is authenticated
           userWallet
@@ -64,11 +65,18 @@ export default function Home() {
               status: 'eq.ACTIVE',
             }).catch(() => [])
             : Promise.resolve([]),
+          // Fetch credit balance if authenticated
+          userWallet
+            ? fetch(`/api/user/credits/balance?wallet=${user?.wallet?.address}`).then(res => res.ok ? res.json() : { balance: 0 }).catch(() => ({ balance: 0 }))
+            : Promise.resolve({ balance: 0 }),
         ]);
 
         // console.log('agentsData', agentsData);
 
         setAgents(agentsData || []);
+
+        // Set credit balance
+        setCreditBalance(parseFloat(creditData?.balance || '0'));
 
         // Set user agent addresses if available (API converts snake_case to camelCase)
         if (addressesData && Array.isArray(addressesData) && addressesData.length > 0) {
@@ -215,6 +223,8 @@ export default function Home() {
         agentDeployments={agentDeployments}
         ostiumDelegationStatus={ostiumDelegationStatus}
         ostiumUsdcAllowance={ostiumUsdcAllowance}
+        creditBalance={creditBalance}
+        userWallet={user?.wallet?.address || ''}
       />
       <CTASection />
       <FooterSection />

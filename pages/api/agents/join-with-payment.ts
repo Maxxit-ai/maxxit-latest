@@ -48,6 +48,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(404).json({ error: 'Agent not found' });
         }
 
+        // Check if the joining user is the club creator (creator already paid during creation)
+        const isCreator = agent.creator_wallet.toLowerCase() === normalizedWallet;
+
         // Check if deployment already exists
         const existingDeployment = await prisma.agent_deployments.findFirst({
             where: {
@@ -70,7 +73,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const result = await withTransaction(async (tx) => {
             // 2. Handle Payment if required and not already joined
-            if (alphaInfos.length > 0 && !existingDeployment) {
+            // Skip charging if user is the creator (they paid during club creation)
+            if (alphaInfos.length > 0 && !existingDeployment && !isCreator) {
                 console.log(`[Join with Payment] Charging ${normalizedWallet} for ${alphaInfos.length} alpha sources`);
 
                 // Final pre-flight balance check with insensitive matching

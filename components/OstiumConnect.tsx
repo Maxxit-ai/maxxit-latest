@@ -93,6 +93,7 @@ export function OstiumConnect({
   const [selectedTier, setSelectedTier] = useState<any>(null);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [showTopUpUI, setShowTopUpUI] = useState(false);
+  const [isCreator, setIsCreator] = useState(false); // Track if current user is the club creator
 
   useEffect(() => {
     if (authenticated && user?.wallet?.address) {
@@ -128,6 +129,13 @@ export function OstiumConnect({
       if (response.ok) {
         const data = await response.json();
         setAgentData(data);
+
+        // Check if current user is the club creator
+        const userWallet = user?.wallet?.address?.toLowerCase() || '';
+        const creatorWallet = (data.creator_wallet || '').toLowerCase();
+        const creatorFlag = userWallet && creatorWallet && userWallet === creatorWallet;
+        setIsCreator(creatorFlag);
+        console.log('[OstiumConnect] Creator check:', { userWallet, creatorWallet, isCreator: creatorFlag });
 
         // Calculate total cost
         let subtotal = 0;
@@ -313,8 +321,8 @@ export function OstiumConnect({
   };
 
   const joinAgent = async () => {
-    // 1. Check if user has enough credits
-    if (totalCost > 0 && creditBalance < totalCost) {
+    // 1. Check if user has enough credits (skip for creators - they join for free)
+    if (!isCreator && totalCost > 0 && creditBalance < totalCost) {
       console.log('[OstiumConnect] Insufficient credits to join, showing top-up UI');
       setShowTopUpUI(true);
       return;
@@ -1396,44 +1404,67 @@ export function OstiumConnect({
                         <div className="mt-4 pt-4 border-t border-[var(--border)]">
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Credit Summary</p>
-                            <span className="text-[10px] px-2 py-0.5 border border-[var(--accent)]/30 text-[var(--accent)] font-bold rounded">PAID ACCESS</span>
+                            <span className={`text-[10px] px-2 py-0.5 border font-bold rounded ${isCreator ? 'border-green-500/30 text-green-500' : 'border-[var(--accent)]/30 text-[var(--accent)]'}`}>
+                              {isCreator ? 'CREATOR - FREE ACCESS' : 'PAID ACCESS'}
+                            </span>
                           </div>
 
-                          <div className="mb-4 space-y-1">
-                            {agentData?.agent_telegram_users?.map((au: any, idx: number) => {
-                              if (au.telegram_alpha_users?.credit_price && parseFloat(au.telegram_alpha_users.credit_price) > 0) {
-                                return (
-                                  <div key={idx} className="flex justify-between text-[10px]">
-                                    <span className="text-[var(--text-secondary)] italic">Alpha Access: {au.telegram_alpha_users.telegram_username || 'Provider'}</span>
-                                    <span className="text-[var(--text-primary)]">{parseFloat(au.telegram_alpha_users.credit_price).toFixed(0)} CREDS</span>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })}
-                            <div className="flex justify-between text-[10px] pt-1 border-t border-[var(--border)] border-dashed">
-                              <span className="text-[var(--text-muted)]">Platform Fee (10%)</span>
-                              <span className="text-[var(--text-primary)]">{(totalCost * (10 / 110)).toFixed(0)} CREDS</span>
+                          {!isCreator && (
+                            <div className="mb-4 space-y-1">
+                              {agentData?.agent_telegram_users?.map((au: any, idx: number) => {
+                                if (au.telegram_alpha_users?.credit_price && parseFloat(au.telegram_alpha_users.credit_price) > 0) {
+                                  return (
+                                    <div key={idx} className="flex justify-between text-[10px]">
+                                      <span className="text-[var(--text-secondary)] italic">Alpha Access: {au.telegram_alpha_users.telegram_username || 'Provider'}</span>
+                                      <span className="text-[var(--text-primary)]">{parseFloat(au.telegram_alpha_users.credit_price).toFixed(0)} CREDS</span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })}
+                              <div className="flex justify-between text-[10px] pt-1 border-t border-[var(--border)] border-dashed">
+                                <span className="text-[var(--text-muted)]">Platform Fee (10%)</span>
+                                <span className="text-[var(--text-primary)]">{(totalCost * (10 / 110)).toFixed(0)} CREDS</span>
+                              </div>
                             </div>
-                          </div>
+                          )}
 
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <p className="text-[10px] text-[var(--text-muted)] uppercase">Cost to Join</p>
-                              <p className="text-xl font-display text-[var(--text-primary)]">{totalCost.toFixed(0)} <span className="text-[10px] text-[var(--text-secondary)]">CREDS</span></p>
-                            </div>
-                            <div className="space-y-1 text-right">
-                              <p className="text-[10px] text-[var(--text-muted)] uppercase">Your Balance</p>
-                              <p className="text-xl font-display text-[var(--text-primary)]">{creditBalance.toFixed(0)} <span className="text-[10px] text-[var(--text-secondary)]">CREDS</span></p>
-                            </div>
-                          </div>
-
-                          {creditBalance >= totalCost && (
-                            <div className="mt-3 bg-[var(--accent)]/5 p-2 border border-[var(--accent)]/10">
-                              <p className="text-[10px] text-[var(--accent)] font-bold text-center">
-                                NEW BALANCE AFTER JOIN: {(creditBalance - totalCost).toFixed(0)} CREDS
+                          {isCreator ? (
+                            <div className="bg-green-500/5 p-3 border border-green-500/20 rounded">
+                              <p className="text-[11px] text-green-500 font-bold text-center">
+                                ✓ AS THE CREATOR, YOU JOIN FOR FREE
+                              </p>
+                              <p className="text-[9px] text-[var(--text-muted)] text-center mt-1">
+                                You already paid when creating this club
                               </p>
                             </div>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <p className="text-[10px] text-[var(--text-muted)] uppercase">Cost to Join</p>
+                                  <p className="text-xl font-display text-[var(--text-primary)]">{totalCost.toFixed(0)} <span className="text-[10px] text-[var(--text-secondary)]">CREDS</span></p>
+                                </div>
+                                <div className="space-y-1 text-right">
+                                  <p className="text-[10px] text-[var(--text-muted)] uppercase">Your Balance</p>
+                                  <p className={`text-xl font-display ${creditBalance < totalCost ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>{creditBalance.toFixed(0)} <span className="text-[10px] text-[var(--text-secondary)]">CREDS</span></p>
+                                </div>
+                              </div>
+
+                              {creditBalance >= totalCost ? (
+                                <div className="mt-3 bg-[var(--accent)]/5 p-2 border border-[var(--accent)]/10">
+                                  <p className="text-[10px] text-[var(--accent)] font-bold text-center">
+                                    NEW BALANCE AFTER JOIN: {(creditBalance - totalCost).toFixed(0)} CREDS
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="mt-3 bg-red-500/5 p-2 border border-red-500/20">
+                                  <p className="text-[10px] text-red-500 font-bold text-center">
+                                    ⚠ INSUFFICIENT CREDITS - NEED {(totalCost - creditBalance).toFixed(0)} MORE
+                                  </p>
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
@@ -1449,8 +1480,8 @@ export function OstiumConnect({
                       </button>
                       <button
                         onClick={joinAgent}
-                        disabled={joiningAgent}
-                        className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center gap-2"
+                        disabled={joiningAgent || (!isCreator && totalCost > 0 && creditBalance < totalCost)}
+                        className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         type="button"
                       >
                         {joiningAgent ? (
@@ -1458,10 +1489,15 @@ export function OstiumConnect({
                             <Activity className="w-5 h-5 animate-spin" />
                             JOINING AGENT...
                           </>
+                        ) : !isCreator && totalCost > 0 && creditBalance < totalCost ? (
+                          <>
+                            <AlertCircle className="w-5 h-5" />
+                            INSUFFICIENT CREDITS
+                          </>
                         ) : (
                           <>
                             <Zap className="w-5 h-5" />
-                            {totalCost > 0 ? `JOIN AGENT (${totalCost.toFixed(0)} CREDS)` : 'JOIN AGENT (FREE)'}
+                            {isCreator ? 'JOIN AGENT (FREE - CREATOR)' : totalCost > 0 ? `JOIN AGENT (${totalCost.toFixed(0)} CREDS)` : 'JOIN AGENT (FREE)'}
                           </>
                         )}
                       </button>
