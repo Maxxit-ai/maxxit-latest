@@ -168,12 +168,20 @@ export type PositionMonitorJobData =
 
 export interface SendNotificationJobData extends BaseJobData {
   type: 'SEND_NOTIFICATION';
-  /** signals.id */
-  signalId: string;
+  /** signals.id - optional for QUOTA_EXCEEDED notifications */
+  signalId?: string;
   /** User's wallet address (lowercase) */
   userWallet: string;
   /** Type of notification to send */
-  notificationType: 'SIGNAL_EXECUTED' | 'SIGNAL_NOT_TRADED' | 'POSITION_CLOSED' | 'STOP_LOSS_HIT' | 'TAKE_PROFIT_HIT';
+  notificationType: 'SIGNAL_EXECUTED' | 'SIGNAL_NOT_TRADED' | 'QUOTA_EXCEEDED' | 'POSITION_CLOSED' | 'STOP_LOSS_HIT' | 'TAKE_PROFIT_HIT';
+  /** Additional context for the notification (optional) */
+  context?: {
+    token?: string;
+    side?: string;
+    venue?: string;
+    agentName?: string;
+    reason?: string;
+  };
 }
 
 export type TelegramNotificationJobData = SendNotificationJobData;

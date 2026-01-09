@@ -112,8 +112,12 @@ function escapeTelegramMarkdown(text: string): string {
 /**
  * Get notification lock key for deduplication
  */
-function getNotificationLockKey(signalId: string, userWallet: string): string {
-    return `notification:${signalId}:${userWallet.toLowerCase()}`;
+function getNotificationLockKey(signalId: string | undefined, userWallet: string, notificationType?: string): string {
+    if (signalId) {
+        return `notification:${signalId}:${userWallet.toLowerCase()}`;
+    }
+    // For notifications without signalId (like QUOTA_EXCEEDED), use type and timestamp
+    return `notification:${notificationType || 'unknown'}:${userWallet.toLowerCase()}:${Date.now()}`;
 }
 
 /**
@@ -131,8 +135,29 @@ async function processNotificationJob(
         };
     }
 
-    const { signalId, userWallet, notificationType } = data as SendNotificationJobData;
-    const lockKey = getNotificationLockKey(signalId, userWallet);
+    const jobData = data as SendNotificationJobData;
+    const { signalId, userWallet, notificationType, context } = jobData;
+    const lockKey = getNotificationLockKey(signalId, userWallet, notificationType);
+
+    // Handle QUOTA_EXCEEDED notifications (no signalId needed)
+    if (notificationType === "QUOTA_EXCEEDED") {
+        const result = await withLock(lockKey, async () => {
+            return await sendQuotaExceededNotification(userWallet, context);
+        });
+        return result || { success: true, message: "Job skipped - lock not acquired" };
+    }
+
+    // Handle signal-based notifications
+    if (!signalId) {
+        // For SIGNAL_NOT_TRADED with context (from signal generator)
+        if (notificationType === "SIGNAL_NOT_TRADED" && context) {
+            const result = await withLock(lockKey, async () => {
+                return await sendContextBasedNotification(userWallet, notificationType, context);
+            });
+            return result || { success: true, message: "Job skipped - lock not acquired" };
+        }
+        return { success: false, error: "Signal ID required for this notification type" };
+    }
 
     // Use distributed lock to prevent duplicate notifications
     const result = await withLock(lockKey, async () => {
@@ -446,6 +471,130 @@ function formatDecisionAsBullets(text: string): string {
             return bullet + escapeTelegramMarkdown(sentence);
         })
         .join("\n");
+}
+
+/**
+ * Send QUOTA_EXCEEDED notification to user
+ */
+async function sendQuotaExceededNotification(
+    userWallet: string,
+    context?: { token?: string; agentName?: string }
+): Promise<JobResult> {
+    try {
+        console.log(`[Notification] 🔔 Processing QUOTA_EXCEEDED for ${userWallet.slice(0, 6)}...`);
+
+        // Get user's Telegram connection
+        const userTelegram = await prisma.user_telegram_notifications.findUnique({
+            where: { user_wallet: userWallet.toLowerCase() },
+        });
+
+        if (!userTelegram || !userTelegram.is_active) {
+            return { success: true, message: "No active Telegram connection" };
+        }
+
+        // Format message
+        let message = `⚠️ *Trade Quota Exceeded*\n\n`;
+        message += `You've used all your available trade credits.\n\n`;
+        if (context?.token) {
+            message += `📊 Signal for *${context.token}* was skipped.\n`;
+        }
+        if (context?.agentName) {
+            message += `🤖 Agent: ${escapeTelegramMarkdown(context.agentName)}\n`;
+        }
+        message += `\n💳 Purchase more credits to continue receiving signals and executing trades.\n`;
+        message += `\n💡 [Purchase Credits](https://maxxit.ai/pricing)`;
+
+        const result = await sendTelegramMessage(userTelegram.telegram_chat_id, message);
+
+        if (result.success) {
+            await prisma.notification_logs.create({
+                data: {
+                    user_wallet: userWallet.toLowerCase(),
+                    position_id: null,
+                    signal_id: null,
+                    notification_type: "QUOTA_EXCEEDED" as any,
+                    message_content: message,
+                    telegram_message_id: result.messageId,
+                    status: "SENT",
+                    sent_at: new Date(),
+                },
+            });
+            console.log(`[Notification] ✅ QUOTA_EXCEEDED sent successfully!`);
+            return { success: true, message: "Quota exceeded notification sent" };
+        } else {
+            console.error(`[Notification] ❌ Failed: ${result.error}`);
+            return { success: false, error: result.error };
+        }
+    } catch (error: any) {
+        console.error(`[Notification] ❌ Error:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Send context-based notification (when signalId is not available)
+ */
+async function sendContextBasedNotification(
+    userWallet: string,
+    notificationType: string,
+    context: { token?: string; side?: string; venue?: string; agentName?: string; reason?: string }
+): Promise<JobResult> {
+    try {
+        console.log(`[Notification] 🔔 Processing context-based ${notificationType} for ${userWallet.slice(0, 6)}...`);
+
+        // Get user's Telegram connection
+        const userTelegram = await prisma.user_telegram_notifications.findUnique({
+            where: { user_wallet: userWallet.toLowerCase() },
+        });
+
+        if (!userTelegram || !userTelegram.is_active) {
+            return { success: true, message: "No active Telegram connection" };
+        }
+
+        // Format message based on context
+        const sideEmoji = context.side === "LONG" ? "📈" : "📉";
+        const venueEmoji = context.venue === "HYPERLIQUID" ? "🔵" : context.venue === "OSTIUM" ? "🟢" : "⚪";
+
+        let message = `📊 *Signal Generated (Not Traded)*\n\n`;
+        if (context.side && context.token) {
+            message += `${sideEmoji} ${context.side} ${context.token}\n`;
+        }
+        if (context.venue) {
+            message += `${venueEmoji} Venue: ${context.venue}\n`;
+        }
+        if (context.agentName) {
+            message += `🤖 Agent: ${escapeTelegramMarkdown(context.agentName)}\n`;
+        }
+        if (context.reason) {
+            message += `\n💭 *Why Not Traded:*\n${formatDecisionAsBullets(context.reason)}\n`;
+        }
+        message += `\n💡 View all signals on your [Maxxit Dashboard](https://maxxit.ai/my-trades)`;
+
+        const result = await sendTelegramMessage(userTelegram.telegram_chat_id, message);
+
+        if (result.success) {
+            await prisma.notification_logs.create({
+                data: {
+                    user_wallet: userWallet.toLowerCase(),
+                    position_id: null,
+                    signal_id: null,
+                    notification_type: "SIGNAL_NOT_TRADED",
+                    message_content: message,
+                    telegram_message_id: result.messageId,
+                    status: "SENT",
+                    sent_at: new Date(),
+                },
+            });
+            console.log(`[Notification] ✅ Context-based notification sent successfully!`);
+            return { success: true, message: "Context-based notification sent" };
+        } else {
+            console.error(`[Notification] ❌ Failed: ${result.error}`);
+            return { success: false, error: result.error };
+        }
+    } catch (error: any) {
+        console.error(`[Notification] ❌ Error:`, error.message);
+        throw error;
+    }
 }
 
 /**

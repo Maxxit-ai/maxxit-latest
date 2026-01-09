@@ -39,6 +39,7 @@ import {
   GenerateTelegramSignalJobData,
   GenerateTraderTradeSignalJobData,
   SignalGenerationJobData,
+  SendNotificationJobData,
   JobResult,
   Job,
 } from "@maxxit/queue";
@@ -127,6 +128,50 @@ function setupBullBoard() {
 
 // Stablecoins should NOT be traded (they are base currency)
 const EXCLUDED_TOKENS = ["USDC", "USDT", "DAI", "USDC.E", "BUSD", "FRAX"];
+
+/**
+ * Queue a notification job for the user
+ * This sends immediate notifications for skipped signals, quota exceeded, etc.
+ */
+async function queueNotification(params: {
+  userWallet: string;
+  notificationType: SendNotificationJobData['notificationType'];
+  signalId?: string;
+  context?: {
+    token?: string;
+    side?: string;
+    venue?: string;
+    agentName?: string;
+    reason?: string;
+  };
+}): Promise<void> {
+  try {
+    const jobId = params.signalId
+      ? `notify-${params.signalId}-${params.userWallet}`
+      : `notify-${params.notificationType}-${params.userWallet}-${Date.now()}`;
+
+    await addJob(
+      QueueName.TELEGRAM_NOTIFICATION,
+      "send-notification",
+      {
+        type: "SEND_NOTIFICATION" as const,
+        signalId: params.signalId,
+        userWallet: params.userWallet.toLowerCase(),
+        notificationType: params.notificationType,
+        context: params.context,
+        timestamp: Date.now(),
+      },
+      { jobId }
+    );
+    console.log(
+      `[SignalGen] 📤 Queued ${params.notificationType} notification for ${params.userWallet.substring(0, 10)}...`
+    );
+  } catch (notifyError: any) {
+    console.error(
+      `[SignalGen] ⚠️  Failed to queue notification: ${notifyError.message}`
+    );
+  }
+}
 
 /**
  * Process a single signal generation job
@@ -228,6 +273,17 @@ async function generateTelegramSignalForJob(
             10
           )}... has no trade quota - skipping`
         );
+
+        // Send quota exceeded notification
+        await queueNotification({
+          userWallet: deployment.user_wallet.toLowerCase(),
+          notificationType: "QUOTA_EXCEEDED",
+          context: {
+            token: token,
+            agentName: agent.name || "Unknown Agent",
+          },
+        });
+
         return { success: true, message: "No trade quota available" };
       }
     } catch (quotaCheckError: any) {
@@ -329,8 +385,7 @@ async function generateTelegramSignalForJob(
     });
 
     console.log(
-      `[SignalGen] 📊 LLM Decision: ${
-        tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
+      `[SignalGen] 📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
       } | ${token}`
     );
 
@@ -470,6 +525,17 @@ async function generateTraderTradeSignalForJob(
             10
           )}... has no trade quota - skipping`
         );
+
+        // Send quota exceeded notification
+        await queueNotification({
+          userWallet: deployment.user_wallet.toLowerCase(),
+          notificationType: "QUOTA_EXCEEDED",
+          context: {
+            token: tokenSymbol,
+            agentName: agentName || "Unknown Agent",
+          },
+        });
+
         return { success: true, message: "No trade quota available" };
       }
     } catch (quotaCheckError: any) {
@@ -591,8 +657,7 @@ async function generateTraderTradeSignalForJob(
     });
 
     console.log(
-      `[SignalGen] 📊 LLM Decision: ${
-        tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
+      `[SignalGen] 📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
       } | ${tokenSymbol}`
     );
 
@@ -805,8 +870,7 @@ async function getCurrentPositions(
   try {
     if (venue === "OSTIUM") {
       const positionsResponse = await fetch(
-        `${
-          process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
+        `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
         }/positions`,
         {
           method: "POST",
@@ -938,6 +1002,21 @@ async function createSkippedSignal(
   }
 
   console.log(`[SignalGen] ⏭️  Skipped signal for ${token}: ${reason}`);
+
+  // Queue immediate notification for skipped signal
+  // This replaces the fallback polling mechanism for faster notifications
+  await queueNotification({
+    userWallet: deployment.user_wallet.toLowerCase(),
+    signalId: undefined, // Signal ID not needed as the notification worker will fetch by userWallet
+    notificationType: "SIGNAL_NOT_TRADED",
+    context: {
+      token: token,
+      side: side,
+      venue: venue,
+      agentName: agent.name || "Unknown Agent",
+      reason: reason,
+    },
+  });
 }
 
 /**
@@ -1305,8 +1384,7 @@ async function runWorker() {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("✅ Signal Generator Worker started successfully");
     console.log(
-      `📊 Effective parallel capacity: ${
-        WORKER_COUNT * WORKER_CONCURRENCY
+      `📊 Effective parallel capacity: ${WORKER_COUNT * WORKER_CONCURRENCY
       } concurrent LLM calls`
     );
   } catch (error: any) {
