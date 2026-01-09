@@ -13,7 +13,7 @@
 
 import dotenv from "dotenv";
 import express from "express";
-import { prisma, checkDatabaseHealth, disconnectPrisma } from "@maxxit/database";
+import { prisma, checkDatabaseHealth, disconnectPrisma, TradeQuotaService } from "@maxxit/database";
 import { setupGracefulShutdown, registerCleanup, createHealthCheckHandler } from "@maxxit/common";
 import { venue_t } from "@prisma/client";
 import {
@@ -28,6 +28,7 @@ import {
   getSignalGenerationLockKey,
   QueueName,
   GenerateTelegramSignalJobData,
+  GenerateTraderTradeSignalJobData,
   SignalGenerationJobData,
   JobResult,
   Job,
@@ -45,7 +46,7 @@ dotenv.config();
 const PORT = process.env.PORT || 5008;
 const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || "3");
 const WORKER_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "3");
-const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "30000"); // 30 seconds
+const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "60000"); // 60 seconds
 
 // Duplicate signal check configuration
 const DUPLICATE_CHECK_ENABLED = process.env.DUPLICATE_SIGNAL_CHECK_ENABLED !== "false";
@@ -112,37 +113,56 @@ async function processSignalGenerationJob(
 ): Promise<JobResult> {
   const { data } = job;
 
-  if (data.type !== "GENERATE_TELEGRAM_SIGNAL") {
-    return {
-      success: false,
-      error: `Unknown job type: ${(data as any).type}`,
-    };
+  if (data.type === "GENERATE_TELEGRAM_SIGNAL") {
+    const jobData = data as GenerateTelegramSignalJobData;
+    const { postId, deploymentId, token } = jobData;
+
+    const lockKey = getSignalGenerationLockKey(postId, deploymentId, token);
+
+    // Use distributed lock to prevent duplicate signal generation
+    const result = await withLock(lockKey, async () => {
+      return await generateTelegramSignalForJob(jobData);
+    });
+
+    if (result === undefined) {
+      return {
+        success: true,
+        message: "Job skipped - another worker is processing this signal",
+      };
+    }
+
+    return result;
+  } else if (data.type === "GENERATE_TRADER_TRADE_SIGNAL") {
+    const jobData = data as GenerateTraderTradeSignalJobData;
+    const { tradeId, deploymentId, tokenSymbol } = jobData;
+
+    const lockKey = getSignalGenerationLockKey(tradeId, deploymentId, tokenSymbol);
+
+    // Use distributed lock to prevent duplicate signal generation
+    const result = await withLock(lockKey, async () => {
+      return await generateTraderTradeSignalForJob(jobData);
+    });
+
+    if (result === undefined) {
+      return {
+        success: true,
+        message: "Job skipped - another worker is processing this signal",
+      };
+    }
+
+    return result;
   }
 
-  const jobData = data as GenerateTelegramSignalJobData;
-  const { postId, agentId, deploymentId, token, isLazyTraderAgent, influencerImpactFactor } = jobData;
-
-  const lockKey = getSignalGenerationLockKey(postId, deploymentId, token);
-
-  // Use distributed lock to prevent duplicate signal generation
-  const result = await withLock(lockKey, async () => {
-    return await generateSignalForJob(jobData);
-  });
-
-  if (result === undefined) {
-    return {
-      success: true,
-      message: "Job skipped - another worker is processing this signal",
-    };
-  }
-
-  return result;
+  return {
+    success: false,
+    error: `Unknown job type: ${(data as any).type}`,
+  };
 }
 
 /**
- * Generate signal for a specific job
+ * Generate signal for a specific telegram signal job
  */
-async function generateSignalForJob(
+async function generateTelegramSignalForJob(
   jobData: GenerateTelegramSignalJobData
 ): Promise<JobResult> {
   const { postId, agentId, deploymentId, token, isLazyTraderAgent, influencerImpactFactor } = jobData;
@@ -170,7 +190,7 @@ async function generateSignalForJob(
     const venueResult = await checkVenueAvailability(agent, token);
     if (!venueResult.available) {
       const skipReason = venueResult.reason || `Token ${token} not available`;
-      await createSkippedSignal(agent, deployment, post, token, venueResult.venue, skipReason);
+      await createSkippedSignal(agent, deployment, post, token, venueResult.venue, skipReason, null, null);
       return { success: true, message: skipReason };
     }
 
@@ -256,10 +276,11 @@ async function generateSignalForJob(
           type: "balance-percentage",
           value: tradeDecision.fundAllocation,
           impactFactor: 0,
+          sourceTradeId: (post as any).sourceTradeId || null,
         },
         risk_model: {
-          stopLoss: 0.1,
-          takeProfit: 0.05,
+          stopLoss: (post as any).stop_loss || 0.05,
+          takeProfit: (post as any).take_profit || 0.10,
           leverage: signalVenue === "OSTIUM" ? tradeDecision.leverage : 3,
         },
         source_tweets: [post.message_id],
@@ -290,6 +311,216 @@ async function generateSignalForJob(
   } catch (error: any) {
     console.error(`[SignalGen] ❌ Error:`, error.message);
     throw error; // Re-throw to trigger BullMQ retry
+  }
+}
+
+/**
+ * Generate signal for a specific trader trade job (copy-trading)
+ */
+async function generateTraderTradeSignalForJob(
+  jobData: GenerateTraderTradeSignalJobData
+): Promise<JobResult> {
+  const {
+    tradeId,
+    agentId,
+    deploymentId,
+    tokenSymbol,
+    side,
+    traderWallet,
+    leverage,
+    entryPrice,
+    takeProfitPrice,
+    stopLossPrice,
+    takeProfitPercent,
+    stopLossPercent,
+    sourceTradeId,
+    traderImpactFactor,
+    agentName,
+    agentDescription,
+    tokenFilters,
+  } = jobData;
+
+  try {
+    // Fetch agent and deployment
+    const [agent, deployment] = await Promise.all([
+      prisma.agents.findUnique({ where: { id: agentId } }),
+      prisma.agent_deployments.findUnique({ where: { id: deploymentId } }),
+    ]);
+
+    if (!agent || !deployment) {
+      console.log(`[SignalGen] ⚠️  Data not found: agent=${!!agent}, deployment=${!!deployment}`);
+      return { success: false, error: "Agent or deployment not found" };
+    }
+
+    // Check trade quota before generating signal
+    try {
+      const hasQuota = await TradeQuotaService.hasAvailableTrades(deployment.user_wallet);
+      if (!hasQuota) {
+        console.log(`[SignalGen] ⏭️  User ${deployment.user_wallet.substring(0, 10)}... has no trade quota - skipping`);
+        return { success: true, message: "No trade quota available" };
+      }
+    } catch (quotaCheckError: any) {
+      console.log(`[SignalGen] ⚠️  Failed to check trade quota: ${quotaCheckError.message} - proceeding anyway`);
+    }
+
+    // Skip stablecoins
+    if (EXCLUDED_TOKENS.includes(tokenSymbol.toUpperCase())) {
+      console.log(`[SignalGen] ⏭️  Skipping stablecoin ${tokenSymbol}`);
+      return { success: true, message: `Skipped stablecoin ${tokenSymbol}` };
+    }
+
+    // Check venue availability
+    const venueResult = await checkVenueAvailability(agent, tokenSymbol);
+    if (!venueResult.available) {
+      const skipReason = venueResult.reason || `Token ${tokenSymbol} not available`;
+
+      // Create a normalized post object for skipped signal
+      const normalizedPost = {
+        signal_type: side,
+        message_id: sourceTradeId,
+        stop_loss: stopLossPercent,
+        take_profit: takeProfitPercent,
+        sourceTradeId: sourceTradeId,
+      };
+
+      await createSkippedSignal(agent, deployment, normalizedPost, tokenSymbol, venueResult.venue, skipReason, null, sourceTradeId);
+      return { success: true, message: skipReason };
+    }
+
+    const signalVenue = venueResult.venue;
+
+    // Check for duplicate signal
+    if (DUPLICATE_CHECK_ENABLED) {
+      const duplicate = await checkDuplicateSignal(agent.id, deploymentId, tokenSymbol);
+      if (duplicate) {
+        console.log(`[SignalGen] ⏭️  Duplicate signal exists for ${tokenSymbol}`);
+        return { success: true, message: `Duplicate signal for ${tokenSymbol}` };
+      }
+    }
+
+    // Get trading preferences
+    const userTradingPreferences = {
+      risk_tolerance: deployment.risk_tolerance,
+      trade_frequency: deployment.trade_frequency,
+      social_sentiment_weight: deployment.social_sentiment_weight,
+      price_momentum_focus: deployment.price_momentum_focus,
+      market_rank_priority: deployment.market_rank_priority,
+    };
+
+    // Get user balance and positions
+    const userBalance = await getUserBalance(deployment, signalVenue);
+    const currentPositions = await getCurrentPositions(deployment, signalVenue);
+    const { maxLeverage, makerMaxLeverage } = await getMaxLeverage(tokenSymbol, signalVenue);
+
+    // Get LunarCrush data if available
+    let lunarcrushData: any = null;
+    if (canUseLunarCrush()) {
+      try {
+        const rawDataResult = await getLunarCrushRawData(tokenSymbol);
+        if (rawDataResult.success && rawDataResult.data) {
+          lunarcrushData = {
+            data: rawDataResult.data,
+            descriptions: rawDataResult.descriptions,
+          };
+        }
+      } catch (error) {
+        console.log(`[SignalGen] ⚠️  Failed to fetch LunarCrush data`);
+      }
+    }
+
+    // Make LLM trade decision
+    console.log(`[SignalGen] 🤖 Making LLM trade decision for ${tokenSymbol} (copy-trade: ${agentName})...`);
+    const tradeDecision = await makeTradeDecision({
+      message: `Copy trade from top trader: ${side} ${tokenSymbol} with ${leverage}x leverage`,
+      confidenceScore: 0.7,
+      lunarcrushData,
+      userTradingPreferences,
+      userBalance,
+      venue: signalVenue,
+      token: tokenSymbol,
+      side: side as "LONG" | "SHORT",
+      maxLeverage,
+      makerMaxLeverage,
+      currentPositions,
+      isLazyTraderAgent: false,
+      influencerImpactFactor: traderImpactFactor,
+      copyTradeClubContext: {
+        clubName: agentName,
+        clubDescription: agentDescription || null,
+        tokenFilters: tokenFilters || [],
+      },
+    });
+
+    console.log(`[SignalGen] 📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"} | ${tokenSymbol}`);
+
+    // Create signal based on LLM decision
+    if (!tradeDecision.shouldOpenNewPosition) {
+      const normalizedPost = {
+        signal_type: side,
+        message_id: sourceTradeId,
+        stop_loss: stopLossPercent,
+        take_profit: takeProfitPercent,
+        sourceTradeId: sourceTradeId,
+      };
+      await createSkippedSignal(agent, deployment, normalizedPost, tokenSymbol, signalVenue, tradeDecision.reason, tradeDecision, sourceTradeId);
+      return { success: true, message: `Skipped: ${tradeDecision.reason}` };
+    }
+
+    // Create the actual signal
+    await prisma.signals.create({
+      data: {
+        agent_id: agent.id,
+        deployment_id: deploymentId,
+        token_symbol: tokenSymbol,
+        venue: signalVenue,
+        side: side,
+        size_model: {
+          type: "balance-percentage",
+          value: tradeDecision.fundAllocation,
+          impactFactor: 0,
+          sourceTradeId: sourceTradeId,
+        },
+        risk_model: {
+          stopLoss: stopLossPercent,
+          takeProfit: takeProfitPercent,
+          leverage: signalVenue === "OSTIUM" ? tradeDecision.leverage : 3,
+        },
+        source_tweets: [sourceTradeId],
+        llm_decision: tradeDecision.reason,
+        llm_should_trade: true,
+        llm_fund_allocation: tradeDecision.fundAllocation,
+        llm_leverage: tradeDecision.leverage,
+        llm_close_trade_id: tradeDecision.closeExistingPositionIds?.length > 0
+          ? JSON.stringify(tradeDecision.closeExistingPositionIds)
+          : null,
+        llm_net_position_change: tradeDecision.netPositionChange || "NONE",
+        trade_executed: null,
+      },
+    });
+
+    console.log(`[SignalGen] ✅ Signal created (copy-trade): ${side} ${tokenSymbol} on ${signalVenue} (${tradeDecision.fundAllocation.toFixed(2)}%)`);
+
+    // Deduct trade quota after successful signal creation
+    try {
+      await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+      console.log(`[SignalGen] 💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`);
+    } catch (quotaDeductError: any) {
+      console.error(`[SignalGen] ⚠️  Failed to deduct trade quota: ${quotaDeductError.message}`);
+    }
+
+    return {
+      success: true,
+      message: `Signal created: ${side} ${tokenSymbol}`,
+      data: {
+        token: tokenSymbol,
+        side,
+        venue: signalVenue,
+        fundAllocation: tradeDecision.fundAllocation,
+      },
+    };
+  } catch (error: any) {
+    console.error(`[SignalGen] ❌ Error (copy-trade):`, error.message);
+    throw error;
   }
 }
 
@@ -448,7 +679,8 @@ async function createSkippedSignal(
   token: string,
   venue: venue_t,
   reason: string,
-  tradeDecision?: any
+  tradeDecision?: any,
+  sourceTradeId?: string | null
 ): Promise<void> {
   const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
 
@@ -459,8 +691,17 @@ async function createSkippedSignal(
       token_symbol: token,
       venue: venue,
       side: side,
-      size_model: { type: "balance-percentage", value: 0, impactFactor: 0 },
-      risk_model: { stopLoss: 0.1, takeProfit: 0.05, leverage: 1 },
+      size_model: {
+        type: "balance-percentage",
+        value: 0,
+        impactFactor: 0,
+        sourceTradeId: sourceTradeId || post.sourceTradeId || null,
+      },
+      risk_model: {
+        stopLoss: post.stop_loss || 0.05,
+        takeProfit: post.take_profit || 0.10,
+        leverage: 1,
+      },
       source_tweets: [post.message_id],
       skipped_reason: reason,
       llm_decision: reason,
@@ -489,72 +730,217 @@ async function checkAndQueuePendingPosts(): Promise<void> {
       take: 20,
     });
 
-    if (pendingPosts.length === 0) return;
+    if (pendingPosts.length === 0) {
+      console.log("[Trigger] No pending telegram posts to process");
+    } else {
+      console.log(`[Trigger] Found ${pendingPosts.length} pending posts`);
 
-    console.log(`[Trigger] Found ${pendingPosts.length} pending posts`);
+      let jobsQueued = 0;
 
-    let jobsQueued = 0;
+      for (const post of pendingPosts) {
+        try {
+          // Get agents and deployments for this post
+          const { agents, influencerImpactFactor } = await getAgentsForPost(post);
 
-    for (const post of pendingPosts) {
-      try {
-        // Get agents and deployments for this post
-        const { agents, influencerImpactFactor } = await getAgentsForPost(post);
+          if (agents.length === 0) {
+            // Mark as processed if no agents
+            await prisma.telegram_posts.update({
+              where: { id: post.id },
+              data: { processed_for_signals: true },
+            });
+            continue;
+          }
 
-        if (agents.length === 0) {
-          // Mark as processed if no agents
+          const extractedTokens = post.extracted_tokens || [];
+          if (extractedTokens.length === 0) continue;
+
+          // Queue jobs for each agent/deployment/token combination
+          for (const agent of agents) {
+            const isLazyTraderAgent =
+              agent.status === "PRIVATE" &&
+              agent.name?.toLowerCase().includes("lazy") &&
+              agent.name?.toLowerCase().includes("trader");
+
+            for (const deployment of agent.agent_deployments || []) {
+              for (const token of extractedTokens) {
+                await addJob(
+                  QueueName.SIGNAL_GENERATION,
+                  "generate-telegram-signal",
+                  {
+                    type: "GENERATE_TELEGRAM_SIGNAL" as const,
+                    postId: post.id,
+                    agentId: agent.id,
+                    deploymentId: deployment.id,
+                    token: token,
+                    isLazyTraderAgent,
+                    influencerImpactFactor,
+                    timestamp: Date.now(),
+                  },
+                  {
+                    jobId: `signal-${post.id}-${deployment.id}-${token}`,
+                  }
+                );
+                jobsQueued++;
+              }
+            }
+          }
+
+          // Mark post as processed
           await prisma.telegram_posts.update({
             where: { id: post.id },
+            data: { processed_for_signals: true },
+          });
+        } catch (error: any) {
+          console.error(`[Trigger] Error processing post ${post.id}:`, error.message);
+        }
+      }
+
+      if (jobsQueued > 0) {
+        console.log(`[Trigger] Queued ${jobsQueued} telegram signal generation jobs`);
+      }
+    }
+
+    // ========================================================================
+    // Process Trader Trades (Copy Trading Alpha Clubs)
+    // ========================================================================
+
+    const pendingTraderTrades = await prisma.trader_trades.findMany({
+      where: {
+        processed_for_signals: false,
+      },
+      orderBy: {
+        trade_timestamp: "desc",
+      },
+    });
+
+    console.log(`[Trigger] Found ${pendingTraderTrades.length} trader trades to process`);
+
+    let traderJobsQueued = 0;
+
+    for (const traderTrade of pendingTraderTrades) {
+      try {
+        console.log(`[Trigger] Processing trader trade ${traderTrade.id.substring(0, 8)}...`);
+
+        // Get the agent and its deployments
+        const agent = await prisma.agents.findUnique({
+          where: { id: traderTrade.agent_id },
+          include: {
+            agent_deployments: {
+              where: { status: "ACTIVE" },
+            },
+          },
+        });
+
+        if (!agent) {
+          console.log(`[Trigger] Agent not found, marking as processed`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
             data: { processed_for_signals: true },
           });
           continue;
         }
 
-        const extractedTokens = post.extracted_tokens || [];
-        if (extractedTokens.length === 0) continue;
+        if (agent.status !== "PUBLIC" && agent.status !== "PRIVATE") {
+          console.log(`[Trigger] Agent is DRAFT, skipping`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
 
-        // Queue jobs for each agent/deployment/token combination
-        for (const agent of agents) {
-          const isLazyTraderAgent =
-            agent.status === "PRIVATE" &&
-            agent.name?.toLowerCase().includes("lazy") &&
-            agent.name?.toLowerCase().includes("trader");
+        const deployments = agent.agent_deployments;
+        if (deployments.length === 0) {
+          console.log(`[Trigger] No active deployments (club members)`);
+          await prisma.trader_trades.update({
+            where: { id: traderTrade.id },
+            data: { processed_for_signals: true },
+          });
+          continue;
+        }
 
-          for (const deployment of agent.agent_deployments || []) {
-            for (const token of extractedTokens) {
-              await addJob(
-                QueueName.SIGNAL_GENERATION,
-                "generate-telegram-signal",
-                {
-                  type: "GENERATE_TELEGRAM_SIGNAL" as const,
-                  postId: post.id,
-                  agentId: agent.id,
-                  deploymentId: deployment.id,
-                  token: token,
-                  isLazyTraderAgent,
-                  influencerImpactFactor,
-                  timestamp: Date.now(),
-                },
-                {
-                  jobId: `signal-${post.id}-${deployment.id}-${token}`,
-                }
-              );
-              jobsQueued++;
+        console.log(`[Trigger] Found ${deployments.length} club member(s) to receive signals`);
+
+        // Get the top trader's impact factor
+        const topTrader = await prisma.top_traders.findFirst({
+          where: { wallet_address: traderTrade.trader_wallet.toLowerCase() },
+          select: { impact_factor: true },
+        });
+        const traderImpactFactor = topTrader?.impact_factor ?? 50;
+
+        // Calculate TP/SL percentages from trader values
+        const entryPrice = Number(traderTrade.entry_price.toString());
+        const takeProfitPrice = traderTrade.take_profit_price ? Number(traderTrade.take_profit_price.toString()) : null;
+        const stopLossPrice = traderTrade.stop_loss_price ? Number(traderTrade.stop_loss_price.toString()) : null;
+
+        let takeProfitPercent = 0.10;
+        let stopLossPercent = 0.05;
+
+        if (entryPrice > 0) {
+          if (takeProfitPrice && takeProfitPrice > 0) {
+            if (traderTrade.side === "LONG") {
+              takeProfitPercent = Math.abs((takeProfitPrice - entryPrice) / entryPrice);
+            } else {
+              takeProfitPercent = Math.abs((entryPrice - takeProfitPrice) / entryPrice);
+            }
+          }
+
+          if (stopLossPrice && stopLossPrice > 0) {
+            if (traderTrade.side === "LONG") {
+              stopLossPercent = Math.abs((entryPrice - stopLossPrice) / entryPrice);
+            } else {
+              stopLossPercent = Math.abs((stopLossPrice - entryPrice) / entryPrice);
             }
           }
         }
 
-        // Mark post as processed
-        await prisma.telegram_posts.update({
-          where: { id: post.id },
+        console.log(`[Trigger] TP: ${(takeProfitPercent * 100).toFixed(2)}% | SL: ${(stopLossPercent * 100).toFixed(2)}%`);
+
+        // Queue jobs for each deployment
+        for (const deployment of deployments) {
+          await addJob(
+            QueueName.SIGNAL_GENERATION,
+            "generate-trader-trade-signal",
+            {
+              type: "GENERATE_TRADER_TRADE_SIGNAL" as const,
+              tradeId: traderTrade.id,
+              agentId: agent.id,
+              deploymentId: deployment.id,
+              tokenSymbol: traderTrade.token_symbol,
+              side: traderTrade.side,
+              traderWallet: traderTrade.trader_wallet,
+              leverage: Number(traderTrade.leverage),
+              entryPrice: entryPrice,
+              takeProfitPrice: takeProfitPrice,
+              stopLossPrice: stopLossPrice,
+              takeProfitPercent: takeProfitPercent,
+              stopLossPercent: stopLossPercent,
+              sourceTradeId: traderTrade.source_trade_id,
+              traderImpactFactor: traderImpactFactor,
+              agentName: agent.name,
+              agentDescription: agent.description,
+              tokenFilters: agent.token_filters || [],
+              timestamp: Date.now(),
+            },
+            {
+              jobId: `trader-signal-${traderTrade.id}-${deployment.id}`,
+            }
+          );
+          traderJobsQueued++;
+        }
+
+        // Mark trade as processed
+        await prisma.trader_trades.update({
+          where: { id: traderTrade.id },
           data: { processed_for_signals: true },
         });
       } catch (error: any) {
-        console.error(`[Trigger] Error processing post ${post.id}:`, error.message);
+        console.error(`[Trigger] Error processing trader trade ${traderTrade.id}:`, error.message);
       }
     }
 
-    if (jobsQueued > 0) {
-      console.log(`[Trigger] Queued ${jobsQueued} signal generation jobs`);
+    if (traderJobsQueued > 0) {
+      console.log(`[Trigger] Queued ${traderJobsQueued} trader trade signal jobs`);
     }
   } catch (error: any) {
     console.error("[Trigger] Error checking pending posts:", error.message);

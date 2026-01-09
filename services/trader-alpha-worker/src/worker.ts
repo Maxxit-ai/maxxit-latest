@@ -27,7 +27,7 @@ const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "60000"); // 1 minute d
 const SUBGRAPH_URL = "https://api.goldsky.com/api/public/project_cmgql529ykrlw01v6b9so0woq/subgraphs/ost-prod/v8/gn";
 
 // Lookback window for fetching trades (in seconds)
-const TRADE_LOOKBACK_SECONDS = parseInt(process.env.TRADE_LOOKBACK_SECONDS || "300"); // 5 minutes
+const TRADE_LOOKBACK_SECONDS = parseInt(process.env.TRADE_LOOKBACK_SECONDS || "86400"); // 24 hours
 
 let workerInterval: NodeJS.Timeout | null = null;
 

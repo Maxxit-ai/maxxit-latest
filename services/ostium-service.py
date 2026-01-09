@@ -175,6 +175,27 @@ def get_sdk(private_key: str, use_delegation: bool = False, force_new: bool = Fa
     return sdk_cache[cache_key]
 
 
+def get_fresh_sdk_for_async(private_key: str, use_delegation: bool = False) -> OstiumSDK:
+    """
+    Create a FRESH (non-cached) SDK instance for async operations.
+    
+    IMPORTANT: The Ostium SDK uses asyncio.Lock internally which gets bound to the
+    first event loop it's used with. Since Flask creates a new event loop for each
+    request, cached SDK instances cause "Lock is bound to a different event loop" errors.
+    
+    This function should be used for any async SDK operations (subgraph queries, etc.)
+    """
+    network = 'mainnet' if OSTIUM_MAINNET else 'testnet'
+    sdk = OstiumSDK(
+        network=network,
+        private_key=private_key,
+        rpc_url=OSTIUM_RPC_URL,
+        use_delegation=use_delegation
+    )
+    logger.debug(f"Created fresh SDK instance for async operations (delegation={use_delegation})")
+    return sdk
+
+
 def get_available_markets(refresh=False):
     """
     Fetch available markets from Database API
@@ -355,16 +376,35 @@ def validate_market(token_symbol: str):
     """
     Validate if a market is available on Ostium
     Returns: (asset_index, is_available, market_name)
+    
+    Handles multiple input formats:
+    - "BTC" -> looks for "BTC" or "BTC/USD" key
+    - "BTC/USD" -> looks for "BTC/USD" or "BTC" key
     """
-    token_symbol = token_symbol.upper()
+    token_symbol = token_symbol.upper().strip()
     markets = get_available_markets()
     
+    # Direct match first
     if token_symbol in markets:
         market_info = markets[token_symbol]
         return market_info['index'], True, market_info['name']
-    else:
-        # Market not found
-        return None, False, None
+    
+    # If input is base symbol (e.g., "BTC"), try with "/USD" suffix
+    if '/' not in token_symbol:
+        usd_pair = f"{token_symbol}/USD"
+        if usd_pair in markets:
+            market_info = markets[usd_pair]
+            return market_info['index'], True, market_info['name']
+    
+    # If input is full pair (e.g., "BTC/USD"), try base symbol
+    if '/' in token_symbol:
+        base_symbol = token_symbol.split('/')[0]
+        if base_symbol in markets:
+            market_info = markets[base_symbol]
+            return market_info['index'], True, market_info['name']
+    
+    # Market not found
+    return None, False, None
 
 
 @app.route('/health', methods=['GET'])
@@ -984,12 +1024,17 @@ def open_position():
             
             logger.info(f"📊 Querying subgraph for trades by {trader_address}...")
             
+            # IMPORTANT: Use fresh SDK for async operations to avoid event loop binding issues
+            async_sdk = get_fresh_sdk_for_async(private_key, use_delegation)
+            
             # Use subgraph API to get open trades (async method)
             import asyncio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            open_trades = loop.run_until_complete(sdk.subgraph.get_open_trades(trader_address))
-            loop.close()
+            try:
+                open_trades = loop.run_until_complete(async_sdk.subgraph.get_open_trades(trader_address))
+            finally:
+                loop.close()
             
             logger.info(f"📊 Found {len(open_trades)} open trades")
             
@@ -1228,7 +1273,7 @@ def close_position():
                 "error": "Missing required fields: agentAddress/privateKey, market"
             }), 400
         
-        # Get SDK
+        # Get SDK for sync operations (trade execution)
         sdk = get_sdk(private_key, use_delegation)
         
         # Check if position exists
@@ -1245,12 +1290,18 @@ def close_position():
         else:
             address_to_check = sdk.ostium.get_public_address()
         
-        # get_open_trades is async, need to run it
+        # IMPORTANT: Use fresh SDK for async operations to avoid event loop binding issues
+        # The SDK's internal asyncio.Lock gets bound to the first event loop it's used with
+        async_sdk = get_fresh_sdk_for_async(private_key, use_delegation)
+        
+        # get_open_trades is async, need to run it with a fresh SDK
         import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(sdk.get_open_trades(trader_address=address_to_check))
-        loop.close()
+        try:
+            result = loop.run_until_complete(async_sdk.get_open_trades(trader_address=address_to_check))
+        finally:
+            loop.close()
         
         # Parse result - SDK returns tuple (trades_list, trader_address)
         open_trades = []

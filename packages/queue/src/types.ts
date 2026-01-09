@@ -14,6 +14,7 @@ export enum QueueName {
   POSITION_MONITOR = 'position-monitor',
   TELEGRAM_NOTIFICATION = 'telegram-notification',
   TELEGRAM_ALPHA_CLASSIFICATION = 'telegram-alpha-classification',
+  TRADER_ALPHA = 'trader-alpha',
 }
 
 /**
@@ -41,8 +42,8 @@ export interface RetryFailedExecutionJobData extends BaseJobData {
   retryCount: number;
 }
 
-export type TradeExecutionJobData = 
-  | ExecuteSignalJobData 
+export type TradeExecutionJobData =
+  | ExecuteSignalJobData
   | RetryFailedExecutionJobData;
 
 // ============================================
@@ -92,12 +93,55 @@ export interface GenerateTelegramSignalJobData extends BaseJobData {
   influencerImpactFactor: number;
 }
 
-export type SignalGenerationJobData = 
-  | ProcessTweetsJobData 
-  | ProcessTelegramJobData 
+/**
+ * Job data for generating a signal from a trader trade (copy-trading)
+ * Each job represents: one trader trade + one deployment + one token
+ */
+export interface GenerateTraderTradeSignalJobData extends BaseJobData {
+  type: 'GENERATE_TRADER_TRADE_SIGNAL';
+  /** trader_trades.id */
+  tradeId: string;
+  /** agents.id */
+  agentId: string;
+  /** agent_deployments.id */
+  deploymentId: string;
+  /** Token symbol (e.g., "BTC") */
+  tokenSymbol: string;
+  /** Trade side ("LONG" or "SHORT") */
+  side: string;
+  /** Trader's wallet address */
+  traderWallet: string;
+  /** Leverage multiplier */
+  leverage: number;
+  /** Entry price */
+  entryPrice: number;
+  /** Take profit price (optional) */
+  takeProfitPrice?: number | null;
+  /** Stop loss price (optional) */
+  stopLossPrice?: number | null;
+  /** Take profit percent (calculated from trader values) */
+  takeProfitPercent: number;
+  /** Stop loss percent (calculated from trader values) */
+  stopLossPercent: number;
+  /** Source trade ID from subgraph */
+  sourceTradeId: string;
+  /** Trader impact factor (0-100) */
+  traderImpactFactor: number;
+  /** Copy-trade club name (e.g., "BTC Kingmakers") */
+  agentName: string;
+  /** Copy-trade club description */
+  agentDescription?: string | null;
+  /** Token filters for this club (e.g., ["BTC"]) */
+  tokenFilters: string[];
+}
+
+export type SignalGenerationJobData =
+  | ProcessTweetsJobData
+  | ProcessTelegramJobData
   | ProcessResearchJobData
   | GenerateSignalJobData
-  | GenerateTelegramSignalJobData;
+  | GenerateTelegramSignalJobData
+  | GenerateTraderTradeSignalJobData;
 
 // ============================================
 // Position Monitor Queue Jobs
@@ -114,8 +158,8 @@ export interface CheckStopLossJobData extends BaseJobData {
   positionId: string;
 }
 
-export type PositionMonitorJobData = 
-  | MonitorPositionJobData 
+export type PositionMonitorJobData =
+  | MonitorPositionJobData
   | CheckStopLossJobData;
 
 // ============================================
@@ -143,6 +187,77 @@ export interface ClassifyMessageJobData extends BaseJobData {
 }
 
 export type TelegramAlphaJobData = ClassifyMessageJobData;
+
+// ============================================
+// Trader Alpha Queue Jobs (Copy-Trading)
+// ============================================
+
+/**
+ * Job data for fetching trades from a tracked trader
+ * Triggered on interval to poll subgraph for new trades
+ */
+export interface FetchTraderTradesJobData extends BaseJobData {
+  type: 'FETCH_TRADER_TRADES';
+  /** Top trader's wallet address */
+  traderWallet: string;
+  /** Agent ID tracking this trader */
+  agentId: string;
+  /** Token filters for the agent (empty = all tokens) */
+  tokenFilters: string[];
+  /** Timestamp to fetch trades since (unix seconds) */
+  sinceTimestamp: number;
+}
+
+/**
+ * Job data for processing a single trader trade into signals
+ * Each job represents: one trade + one agent
+ */
+export interface ProcessTraderTradeJobData extends BaseJobData {
+  type: 'PROCESS_TRADER_TRADE';
+  /** trader_trades.id */
+  tradeId: string;
+  /** agents.id */
+  agentId: string;
+  /** Trader's wallet address */
+  traderWallet: string;
+  /** Token symbol (e.g., "BTC") */
+  tokenSymbol: string;
+  /** Trade side ("LONG" or "SHORT") */
+  side: string;
+  /** Collateral amount in USDC */
+  collateral: number;
+  /** Leverage multiplier */
+  leverage: number;
+  /** Entry price */
+  entryPrice: number;
+  /** Trade timestamp (unix seconds from subgraph) */
+  tradeTimestamp: number;
+  /** Take profit price (optional) */
+  takeProfitPrice?: number;
+  /** Stop loss price (optional) */
+  stopLossPrice?: number;
+}
+
+/**
+ * Job data for checking if a trader's trade is still open
+ * Polls subgraph to detect when source trader closes their position
+ */
+export interface CheckTraderTradeStatusJobData extends BaseJobData {
+  type: 'CHECK_TRADER_TRADE_STATUS';
+  /** Original trade ID from subgraph (e.g., "1145147") */
+  tradeId: string;
+  /** Full source_trade_id from trader_trades (e.g., "1145147-uuid") */
+  sourceTradeId: string;
+  /** agents.id */
+  agentId: string;
+  /** trader_trades.id (uuid) */
+  traderTradeDbId: string;
+}
+
+export type TraderAlphaJobData =
+  | FetchTraderTradesJobData
+  | ProcessTraderTradeJobData
+  | CheckTraderTradeStatusJobData;
 
 // ============================================
 // Job Result Types
@@ -224,6 +339,15 @@ export const DEFAULT_JOB_OPTIONS: Record<QueueName, JobOptions> = {
     backoff: {
       type: 'exponential',
       delay: 3000,
+    },
+    removeOnComplete: 100,
+    removeOnFail: 50,
+  },
+  [QueueName.TRADER_ALPHA]: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
     },
     removeOnComplete: 100,
     removeOnFail: 50,

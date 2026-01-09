@@ -62,6 +62,7 @@ export {
   type ProcessResearchJobData,
   type GenerateSignalJobData,
   type GenerateTelegramSignalJobData,
+  type GenerateTraderTradeSignalJobData,
   // Position Monitor types
   type PositionMonitorJobData,
   type MonitorPositionJobData,
@@ -72,6 +73,11 @@ export {
   // Telegram Alpha Classification types
   type TelegramAlphaJobData,
   type ClassifyMessageJobData,
+  // Trader Alpha types (Copy-Trading)
+  type TraderAlphaJobData,
+  type FetchTraderTradesJobData,
+  type ProcessTraderTradeJobData,
+  type CheckTraderTradeStatusJobData,
 } from './types';
 
 // Queue factory
@@ -113,6 +119,7 @@ export {
   getPositionMonitorLockKey,
   getMessageClassificationLockKey,
   getSignalGenerationLockKey,
+  getTraderTradeLockKey,
 } from './distributed-lock';
 
 // Scheduler
@@ -139,11 +146,11 @@ import { closeConnections as _closeConnections } from './connection';
  */
 export async function shutdownQueueService(): Promise<void> {
   console.log('🛑 Shutting down queue service...');
-  
+
   await _closeAllWorkers();
   await _closeAllQueues();
   await _closeAllSchedulers();
   await _closeConnections();
-  
+
   console.log('✅ Queue service shutdown complete');
 }

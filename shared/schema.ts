@@ -70,10 +70,13 @@ export const insertAgentSchema = z.object({
   venue: VenueEnum.default("MULTI"), // Default to MULTI for Agent Where routing
   status: AgentStatusEnum.default("PUBLIC"), // Default to PUBLIC - all agents are public by default
   weights: z.array(z.number().int().min(0).max(100)).length(8),
-  // Proof of Intent fields (optional for backward compatibility)
-  proofOfIntentMessage: z.string().optional(),
-  proofOfIntentSignature: z.string().optional(),
-  proofOfIntentTimestamp: z.string().datetime().optional(),
+  // Proof of Intent fields (nullish for form compatibility + database null storage)
+  proofOfIntentMessage: z.string().nullish(),
+  proofOfIntentSignature: z.string().nullish(),
+  proofOfIntentTimestamp: z.string().datetime().nullish(),
+  // Copy-trade club fields
+  isCopyTradeClub: z.boolean().optional().default(false),
+  tokenFilters: z.array(z.string()).optional().default([]),
 });
 
 export type InsertAgent = z.infer<typeof insertAgentSchema>;

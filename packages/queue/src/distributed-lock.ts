@@ -23,7 +23,7 @@ export async function acquireLock(
 ): Promise<boolean> {
   const connection = getConnection();
   const lockValue = `${process.pid}-${Date.now()}`;
-  
+
   try {
     const result = await connection.set(
       `lock:${lockKey}`,
@@ -31,7 +31,7 @@ export async function acquireLock(
       'PX', ttl,
       'NX'
     );
-    
+
     return result === 'OK';
   } catch (error) {
     console.error(`Error acquiring lock ${lockKey}:`, error);
@@ -46,7 +46,7 @@ export async function acquireLock(
  */
 export async function releaseLock(lockKey: string): Promise<void> {
   const connection = getConnection();
-  
+
   try {
     await connection.del(`lock:${lockKey}`);
   } catch (error) {
@@ -66,7 +66,7 @@ export async function extendLock(
   ttl: number = DEFAULT_LOCK_TTL
 ): Promise<boolean> {
   const connection = getConnection();
-  
+
   try {
     const result = await connection.pexpire(`lock:${lockKey}`, ttl);
     return result === 1;
@@ -83,7 +83,7 @@ export async function extendLock(
  */
 export async function isLocked(lockKey: string): Promise<boolean> {
   const connection = getConnection();
-  
+
   try {
     const exists = await connection.exists(`lock:${lockKey}`);
     return exists === 1;
@@ -107,12 +107,12 @@ export async function withLock<T>(
   ttl: number = DEFAULT_LOCK_TTL
 ): Promise<T | undefined> {
   const acquired = await acquireLock(lockKey, ttl);
-  
+
   if (!acquired) {
     console.log(`Could not acquire lock: ${lockKey}`);
     return undefined;
   }
-  
+
   try {
     return await fn();
   } finally {
@@ -134,18 +134,18 @@ export async function waitForLock(
   ttl: number = DEFAULT_LOCK_TTL
 ): Promise<boolean> {
   const startTime = Date.now();
-  
+
   while (Date.now() - startTime < timeout) {
     const acquired = await acquireLock(lockKey, ttl);
-    
+
     if (acquired) {
       return true;
     }
-    
+
     // Wait before retrying
     await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_DELAY));
   }
-  
+
   return false;
 }
 
@@ -175,4 +175,11 @@ export function getMessageClassificationLockKey(messageId: string): string {
  */
 export function getSignalGenerationLockKey(postId: string, deploymentId: string, token: string): string {
   return `signal-generation:${postId}:${deploymentId}:${token}`;
+}
+
+/**
+ * Generate a lock key for trader alpha trade processing (trade + agent)
+ */
+export function getTraderTradeLockKey(sourceTradeId: string, agentId: string): string {
+  return `trader-trade:${sourceTradeId}:${agentId}`;
 }

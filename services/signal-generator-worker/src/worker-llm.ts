@@ -306,61 +306,61 @@ async function generateAllSignals() {
               );
             }
 
-          for (const deployment of agent.agent_deployments) {
-            // Check trade quota before generating signal
-            try {
-              const hasQuota = await TradeQuotaService.hasAvailableTrades(deployment.user_wallet);
-              if (!hasQuota) {
-                console.log(
-                  `[SignalGenerator]    ⏭️  User ${deployment.user_wallet.substring(0, 10)}... has no trade quota - skipping deployment`
-                );
-                continue;
-              }
-            } catch (quotaCheckError: any) {
-              console.log(
-                `[SignalGenerator]    ⚠️  Failed to check trade quota: ${quotaCheckError.message} - proceeding anyway`
-              );
-            }
-
-            for (const token of extractedTokens) {
+            for (const deployment of agent.agent_deployments) {
+              // Check trade quota before generating signal
               try {
-                const success = await generateSignalForAgentAndToken(
-                  post,
-                  agent,
-                  deployment,
-                  token,
-                  isLazyTraderAgent,
-                  influencerImpactFactor
-                );
-
-                if (success) {
+                const hasQuota = await TradeQuotaService.hasAvailableTrades(deployment.user_wallet);
+                if (!hasQuota) {
                   console.log(
-                    `[SignalGenerator] ✅ Signal created for ${agent.name
-                    } (deployment ${deployment.id.substring(0, 8)}): ${token}`
+                    `[SignalGenerator]    ⏭️  User ${deployment.user_wallet.substring(0, 10)}... has no trade quota - skipping deployment`
+                  );
+                  continue;
+                }
+              } catch (quotaCheckError: any) {
+                console.log(
+                  `[SignalGenerator]    ⚠️  Failed to check trade quota: ${quotaCheckError.message} - proceeding anyway`
+                );
+              }
+
+              for (const token of extractedTokens) {
+                try {
+                  const success = await generateSignalForAgentAndToken(
+                    post,
+                    agent,
+                    deployment,
+                    token,
+                    isLazyTraderAgent,
+                    influencerImpactFactor
                   );
 
-                  // Deduct trade quota after successful signal creation
-                  try {
-                    await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+                  if (success) {
                     console.log(
-                      `[SignalGenerator]    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+                      `[SignalGenerator] ✅ Signal created for ${agent.name
+                      } (deployment ${deployment.id.substring(0, 8)}): ${token}`
                     );
-                  } catch (quotaDeductError: any) {
-                    console.error(
-                      `[SignalGenerator]    ⚠️  Failed to deduct trade quota: ${quotaDeductError.message}`
-                    );
+
+                    // Deduct trade quota after successful signal creation
+                    try {
+                      await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+                      console.log(
+                        `[SignalGenerator]    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+                      );
+                    } catch (quotaDeductError: any) {
+                      console.error(
+                        `[SignalGenerator]    ⚠️  Failed to deduct trade quota: ${quotaDeductError.message}`
+                      );
+                    }
                   }
+                } catch (error: any) {
+                  console.error(
+                    `[SignalGenerator] ❌ Failed to generate signal for ${agent.name
+                    } (deployment ${deployment.id.substring(0, 8)}): ${token}: ${error.message
+                    }`
+                  );
                 }
-              } catch (error: any) {
-                console.error(
-                  `[SignalGenerator] ❌ Failed to generate signal for ${agent.name
-                  } (deployment ${deployment.id.substring(0, 8)}): ${token}: ${error.message
-                  }`
-                );
               }
             }
           }
-        }
 
           // Mark post as processed after attempting to generate signals for all deployments
           await prisma.telegram_posts.update({
@@ -511,6 +511,7 @@ async function generateAllSignals() {
           take_profit_price: takeProfitPrice,
           stop_loss_price: stopLossPrice,
           timeline_window: null,
+          sourceTradeId: traderTrade.source_trade_id,
         };
 
         // Generate signals for each deployment
@@ -1139,6 +1140,7 @@ async function generateSignalForAgentAndToken(
               type: "balance-percentage",
               value: tradeDecision.fundAllocation,
               impactFactor: 0,
+              sourceTradeId: post.sourceTradeId || null,
             },
             risk_model: {
               stopLoss: post.stop_loss || 0.05,
@@ -1198,6 +1200,7 @@ async function generateSignalForAgentAndToken(
             type: "balance-percentage",
             value: tradeDecision.fundAllocation, // From LLM decision
             impactFactor: 0,
+            sourceTradeId: post.sourceTradeId || null,
           },
           risk_model: {
             stopLoss: post.stop_loss || 0.05,

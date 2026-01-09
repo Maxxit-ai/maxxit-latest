@@ -299,6 +299,7 @@ model positions {
   status                String                  @default("OPEN")
   ostium_trade_index    Int?                   // Actual trade index from Ostium (fixes SDK bug)
   ostium_trade_id       String?                // Order ID / Trade ID from Ostium SDK for precise matching
+  source_trader_trade_id String?               // References trader_trades.source_trade_id for copy-trade positions
   billing_events        billing_events[]
   impact_factor_history impact_factor_history[]
   agent_deployments     agent_deployments       @relation(fields: [deployment_id], references: [id], onDelete: Cascade)
@@ -310,6 +311,7 @@ model positions {
   @@index([signal_id])
   @@index([source])
   @@index([status])
+  @@index([source_trader_trade_id])
 }
 
 model research_institutes {

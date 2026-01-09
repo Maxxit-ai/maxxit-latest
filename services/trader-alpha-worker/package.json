@@ -5,8 +5,10 @@
     "main": "dist/worker.js",
     "scripts": {
         "dev": "tsx watch src/worker.ts",
+        "dev:queue": "tsx watch src/worker-queue.ts",
         "build": "tsc",
-        "start": "node dist/worker.js"
+        "start": "node dist/worker.js",
+        "start:queue": "node dist/worker-queue.js"
     },
     "keywords": [
         "microservice",
@@ -19,6 +21,9 @@
     "dependencies": {
         "@maxxit/database": "*",
         "@maxxit/common": "*",
+        "@maxxit/queue": "*",
+        "@bull-board/api": "^6.13.0",
+        "@bull-board/express": "^6.13.0",
         "dotenv": "^16.3.1",
         "express": "^4.18.2"
     },

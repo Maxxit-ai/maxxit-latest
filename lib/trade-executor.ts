@@ -154,7 +154,7 @@ export class TradeExecutor {
       // Validate Safe wallet (skip for HYPERLIQUID and OSTIUM - use agent EOA wallet instead)
       const chainId = getChainIdForVenue(signal.venue);
       const safeWallet = createSafeWallet(deployment.safe_wallet, chainId);
-      
+
       if (signal.venue !== 'HYPERLIQUID' && signal.venue !== 'OSTIUM') {
         const validation = await safeWallet.validateSafe();
         if (!validation.valid) {
@@ -180,9 +180,9 @@ export class TradeExecutor {
         };
       }
 
-    // Add proof of agreement message to transaction data
-    const proofOfAgreementMessage = `Proof of Agreement: Executor confirms trade execution for signal ${signal.id} at ${new Date().toISOString()}`;
-    console.log('[TradeExecutor] 📝 Proof of Agreement:', proofOfAgreementMessage);
+      // Add proof of agreement message to transaction data
+      const proofOfAgreementMessage = `Proof of Agreement: Executor confirms trade execution for signal ${signal.id} at ${new Date().toISOString()}`;
+      console.log('[TradeExecutor] 📝 Proof of Agreement:', proofOfAgreementMessage);
 
       // Route to appropriate venue
       const result = await this.routeToVenue({
@@ -217,7 +217,7 @@ export class TradeExecutor {
     try {
       // Strip _MANUAL_timestamp suffix if present (from Telegram manual trades)
       const actualTokenSymbol = signal.token_symbol.split('_MANUAL_')[0];
-      
+
       // 1. Check venue availability
       const venueStatus = await prisma.venues_status.findUnique({
         where: {
@@ -238,10 +238,10 @@ export class TradeExecutor {
 
       // 2. Check USDC balance (skip for HYPERLIQUID and OSTIUM - balance is on user wallet)
       let usdcBalance = 0;
-      
+
       if (signal.venue !== 'HYPERLIQUID' && signal.venue !== 'OSTIUM') {
         usdcBalance = await safeWallet.getUSDCBalance();
-        
+
         if (usdcBalance === 0) {
           return {
             canExecute: false,
@@ -273,7 +273,7 @@ export class TradeExecutor {
       if (signal.venue === 'SPOT') {
         const chainId = getChainIdForVenue(signal.venue);
         const chain = chainId === 42161 ? 'arbitrum' : chainId === 8453 ? 'base' : 'sepolia';
-        
+
         const tokenRegistry = await prisma.token_registry.findUnique({
           where: {
             chain_token_symbol: {
@@ -314,21 +314,21 @@ export class TradeExecutor {
     // 🌐 AGENT WHERE: Check if deployment has multi-venue enabled
     const deployment = ctx.deployment as any;
     const enabledVenues = deployment.enabled_venues || null;
-    
+
     if (enabledVenues && enabledVenues.length > 1) {
       console.log('[TradeExecutor] 🌐 Multi-venue deployment detected');
       console.log(`[TradeExecutor] Enabled venues: ${enabledVenues.join(', ')}`);
-      
+
       // Import venue router
       const { routeToVenue } = await import('./vprime-venue-router');
-      
+
       // Route to best available venue
       const routingResult = await routeToVenue({
         tokenSymbol: ctx.signal.token_symbol,
         enabledVenues: enabledVenues,
         signalId: ctx.signal.id,
       });
-      
+
       if (!routingResult.selectedVenue) {
         console.log(`[TradeExecutor] ❌ No venue available for ${ctx.signal.token_symbol}`);
         return {
@@ -337,21 +337,21 @@ export class TradeExecutor {
           reason: routingResult.routingReason,
         };
       }
-      
+
       console.log(`[TradeExecutor] ✅ Routed to ${routingResult.selectedVenue}`);
       console.log(`[TradeExecutor] Reason: ${routingResult.routingReason}`);
       console.log(`[TradeExecutor] Duration: ${routingResult.routingDurationMs}ms`);
-      
+
       // Update signal's venue to the selected one
       ctx.signal.venue = routingResult.selectedVenue as any;
-      
+
       // Update signal in database
       await prisma.signals.update({
         where: { id: ctx.signal.id },
         data: { venue: routingResult.selectedVenue as any },
       });
     }
-    
+
     // Standard venue routing (single-venue or after Agent Where routing)
     switch (ctx.signal.venue) {
       case 'SPOT':
@@ -396,7 +396,7 @@ export class TradeExecutor {
       // Get token addresses
       // Strip _MANUAL_timestamp suffix if present (from Telegram manual trades)
       const actualTokenSymbol = ctx.signal.token_symbol.split('_MANUAL_')[0];
-      
+
       const chain = chainId === 42161 ? 'arbitrum' : chainId === 8453 ? 'base' : 'sepolia';
       const tokenRegistry = await prisma.token_registry.findUnique({
         where: {
@@ -417,9 +417,9 @@ export class TradeExecutor {
       // Calculate amounts based on size model type
       const usdcBalance = summary.usdcBalance || 0;
       const sizeModel = ctx.signal.size_model as any;
-      
+
       let positionSize: number;
-      
+
       if (sizeModel.type === 'fixed-usdc') {
         // Manual trades: Use exact USDC amount specified by user
         positionSize = sizeModel.value || 0;
@@ -439,7 +439,7 @@ export class TradeExecutor {
           type: 'balance-percentage'
         });
       }
-      
+
       // Minimum position size check (0.1 USDC minimum)
       if (positionSize < 0.1) {
         return {
@@ -448,7 +448,7 @@ export class TradeExecutor {
           reason: 'Insufficient balance for minimum trade size',
         };
       }
-      
+
       // Check if user has enough balance for manual trade
       if (sizeModel.type === 'fixed-usdc' && positionSize > usdcBalance) {
         return {
@@ -457,7 +457,7 @@ export class TradeExecutor {
           reason: 'Requested amount exceeds wallet balance',
         };
       }
-      
+
       const amountIn = ethers.utils.parseUnits(positionSize.toFixed(6), 6); // USDC has 6 decimals
 
       // Get USDC address
@@ -497,20 +497,20 @@ export class TradeExecutor {
       // Use Safe Module Service for gasless execution
       const moduleAddress = process.env.TRADING_MODULE_ADDRESS || process.env.MODULE_ADDRESS || '0x6ad58921173219A19B7c4b6f54C07A4c040bf8Cb';
       const executorPrivateKey = process.env.EXECUTOR_PRIVATE_KEY;
-      
+
       if (!executorPrivateKey) {
         return {
           success: false,
           error: 'EXECUTOR_PRIVATE_KEY not configured',
         };
       }
-      
+
       const moduleService = new SafeModuleService({
         moduleAddress,
         chainId,
         executorPrivateKey,
       });
-      
+
       const routerAddress = SpotAdapter.getRouterAddress(chainId);
       if (!routerAddress) {
         return {
@@ -518,11 +518,11 @@ export class TradeExecutor {
           error: `Router not configured for chain ${chainId}`,
         };
       }
-      
+
       // AUTO-SETUP: V3 Module has tokens pre-whitelisted and Safe already approved USDC
       // So we only need to initialize capital if not done yet
       console.log('[TradeExecutor] 🔧 Checking capital initialization...');
-      
+
       try {
         const stats = await moduleService.getSafeStats(ctx.deployment.safe_wallet);
         if (!stats.initialized) {
@@ -541,9 +541,9 @@ export class TradeExecutor {
         console.warn('[TradeExecutor] ⚠️  Could not check/init capital:', error.message);
         // Continue anyway - capital initialization is optional (module will auto-initialize on first trade)
       }
-      
+
       console.log('[TradeExecutor] 🎉 Ready to execute trade!');
-      
+
       // Execute trade through module (gasless!) with proof of agreement
       // Get profit receiver from deployment's agent (more reliable than signal)
       const profitReceiver = ctx.deployment.agents?.profit_receiver_address;
@@ -553,7 +553,7 @@ export class TradeExecutor {
           error: 'No profit receiver address found in deployment',
         };
       }
-      
+
       const result = await moduleService.executeTrade({
         safeAddress: ctx.deployment.safe_wallet,
         fromToken: usdcAddress,
@@ -635,7 +635,7 @@ export class TradeExecutor {
   private async executeGMXTrade(ctx: ExecutionContext): Promise<ExecutionResult> {
     try {
       const chainId = getChainIdForVenue(ctx.signal.venue);
-      
+
       // GMX is only on Arbitrum
       if (chainId !== 42161) {
         return {
@@ -677,16 +677,16 @@ export class TradeExecutor {
       // Calculate collateral and leverage
       const sizeModel = ctx.signal.sizeModel as any;
       const leverage = sizeModel.leverage || 1;
-      
+
       // Get USDC balance
       const usdcAbi = ['function balanceOf(address) view returns (uint256)'];
       const usdcAddress = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
       const usdc = new ethers.Contract(usdcAddress, usdcAbi, provider);
       const usdcBalance = await usdc.balanceOf(ctx.deployment.safe_wallet);
       const usdcBalanceNum = parseFloat(ethers.utils.formatUnits(usdcBalance, 6));
-      
+
       let collateralUSDC: number;
-      
+
       if (sizeModel.type === 'fixed-usdc') {
         collateralUSDC = sizeModel.value || 0;
       } else {
@@ -713,7 +713,7 @@ export class TradeExecutor {
           error: 'No profit receiver address found in deployment',
         };
       }
-      
+
       // Open GMX position (will enforce all security limits) with proof of agreement
       const result = await adapter.openGMXPosition({
         safeAddress: ctx.deployment.safe_wallet,
@@ -815,7 +815,7 @@ export class TradeExecutor {
     try {
       // Get user's agent address from user_agent_addresses
       const agentAddress = await this.getUserHyperliquidAddress(ctx.deployment.user_wallet);
-      
+
       if (!agentAddress) {
         return {
           success: false,
@@ -827,7 +827,7 @@ export class TradeExecutor {
       // Get agent private key from wallet pool
       const { getPrivateKeyForAddress } = await import('./wallet-pool');
       const agentPrivateKey = await getPrivateKeyForAddress(agentAddress);
-      
+
       if (!agentPrivateKey) {
         return {
           success: false,
@@ -839,14 +839,14 @@ export class TradeExecutor {
       // For Hyperliquid, safe_wallet actually stores the user's Hyperliquid wallet address
       const userHyperliquidWallet = ctx.deployment.safe_wallet;
       const adapter = createHyperliquidAdapter(ctx.safeWallet, agentPrivateKey, userHyperliquidWallet);
-      
+
       console.log('[TradeExecutor] Hyperliquid delegation setup:');
       console.log(`  User Wallet: ${userHyperliquidWallet}`);
       console.log(`  Agent will trade on behalf of user`);
-      
+
       // Strip _MANUAL_timestamp suffix if present
       const actualTokenSymbol = ctx.signal.token_symbol.split('_MANUAL_')[0];
-      
+
       // Get market info
       const marketInfo = await adapter.getMarketInfo(actualTokenSymbol);
       if (!marketInfo) {
@@ -859,13 +859,13 @@ export class TradeExecutor {
       // Calculate position size
       const sizeModel = ctx.signal.size_model as any;
       const leverage = sizeModel.leverage || 1;
-      
+
       // Get Hyperliquid balance (user's wallet balance, not agent's)
       const hlBalance = await adapter.getBalance(userHyperliquidWallet);
-      
+
       // Hyperliquid minimum order size is $10
       const HYPERLIQUID_MIN_ORDER = 10;
-      
+
       // Check if user has enough balance
       if (hlBalance.withdrawable < HYPERLIQUID_MIN_ORDER) {
         return {
@@ -874,9 +874,9 @@ export class TradeExecutor {
           reason: `Insufficient balance. Available: $${hlBalance.withdrawable.toFixed(2)}, Required: $${HYPERLIQUID_MIN_ORDER}`,
         };
       }
-      
+
       let collateralUSDC: number;
-      
+
       if (sizeModel.type === 'fixed-usdc') {
         collateralUSDC = sizeModel.value || 0;
       } else {
@@ -886,7 +886,7 @@ export class TradeExecutor {
 
       // Ensure collateral meets minimum requirement
       collateralUSDC = Math.max(collateralUSDC, HYPERLIQUID_MIN_ORDER);
-      
+
       // Final check: ensure user has enough balance for the calculated collateral
       if (collateralUSDC > hlBalance.withdrawable) {
         return {
@@ -966,7 +966,7 @@ export class TradeExecutor {
     try {
       // Get user's agent address from user_agent_addresses
       const agentAddress = await this.getUserOstiumAddress(ctx.deployment.user_wallet);
-      
+
       if (!agentAddress) {
         return {
           success: false,
@@ -978,7 +978,7 @@ export class TradeExecutor {
       // Get agent private key from wallet pool
       const { getPrivateKeyForAddress } = await import('./wallet-pool');
       const agentPrivateKey = await getPrivateKeyForAddress(agentAddress);
-      
+
       if (!agentPrivateKey) {
         return {
           success: false,
@@ -989,21 +989,21 @@ export class TradeExecutor {
 
       // safe_wallet stores the user's Arbitrum wallet address
       const userArbitrumWallet = ctx.deployment.safe_wallet;
-      
+
       console.log('[TradeExecutor] Ostium delegation setup:');
       console.log(`  User Wallet: ${userArbitrumWallet}`);
       console.log(`  Agent will trade on behalf of user via delegation`);
-      
+
       // Strip _MANUAL_timestamp suffix if present
       const actualTokenSymbol = ctx.signal.token_symbol.split('_MANUAL_')[0];
-      
+
       // Get balance
       const balance = await getOstiumBalance(userArbitrumWallet);
       const usdcBalance = parseFloat(balance.usdcBalance);
-      
+
       // Ostium minimum order size is $10 (similar to Hyperliquid)
       const OSTIUM_MIN_ORDER = 10;
-      
+
       if (usdcBalance < OSTIUM_MIN_ORDER) {
         return {
           success: false,
@@ -1011,13 +1011,13 @@ export class TradeExecutor {
           reason: `Insufficient balance. Available: $${usdcBalance.toFixed(2)}, Required: $${OSTIUM_MIN_ORDER}`,
         };
       }
-      
+
       // Calculate position size
       const sizeModel = ctx.signal.size_model as any;
       const leverage = sizeModel.leverage || 10;
-      
+
       let collateralUSDC: number;
-      
+
       if (sizeModel.type === 'fixed-usdc') {
         collateralUSDC = sizeModel.value || 0;
       } else {
@@ -1027,7 +1027,7 @@ export class TradeExecutor {
 
       // Ensure collateral meets minimum requirement
       collateralUSDC = Math.max(collateralUSDC, OSTIUM_MIN_ORDER);
-      
+
       // CRITICAL: Validate collateralUSDC is valid (not 0, NaN, or negative)
       if (!collateralUSDC || collateralUSDC <= 0 || isNaN(collateralUSDC)) {
         console.error('[TradeExecutor] ❌ Invalid collateralUSDC calculated:', {
@@ -1041,7 +1041,7 @@ export class TradeExecutor {
           error: `Invalid position size calculated: $${collateralUSDC}. Please check balance and percentage settings.`,
         };
       }
-      
+
       // Final check: ensure user has enough balance
       if (collateralUSDC > usdcBalance) {
         return {
@@ -1098,25 +1098,25 @@ export class TradeExecutor {
       console.log('[TradeExecutor]    Order ID:', result.orderId);
       console.log('[TradeExecutor]    Status:', result.status);
       console.log('[TradeExecutor]    Message:', result.message);
-      
+
       // Extract actual trade index (fixes SDK bug)
-      const actualTradeIndex = (result as any).actualTradeIndex ?? 
-                               (result as any).result?.actualTradeIndex ?? 
-                               null;
-      
+      const actualTradeIndex = (result as any).actualTradeIndex ??
+        (result as any).result?.actualTradeIndex ??
+        null;
+
       // Extract trade ID / order ID for precise matching
       const tradeId = result.orderId || result.tradeId || null;
-      
+
       if (actualTradeIndex !== null) {
         console.log('[TradeExecutor]    ✅ Actual trade index stored:', actualTradeIndex);
       } else {
         console.warn('[TradeExecutor]    ⚠️  No actual trade index returned (will use index=0 as fallback)');
       }
-      
+
       if (tradeId) {
         console.log('[TradeExecutor]    ✅ Trade ID stored:', tradeId);
       }
-      
+
       // Use the current price we already fetched for entry_price estimate
       const entryPrice = currentPrice || 0;
       if (entryPrice > 0) {
@@ -1150,6 +1150,8 @@ export class TradeExecutor {
             status: 'OPEN', // Explicitly set to OPEN (order is pending but position is open)
             ostium_trade_index: actualTradeIndex,
             ostium_trade_id: tradeId,
+            // For copy-trade positions, track the source trader trade for auto-close
+            source_trader_trade_id: sizeModel?.sourceTradeId || null,
             trailing_params: {
               enabled: true,
               trailingPercent: 1, // 1% trailing stop
@@ -1173,7 +1175,7 @@ export class TradeExecutor {
         // Handle race condition: position might already exist if another worker processed it
         if (createError.code === 'P2002' && createError.meta?.target?.includes('deployment_id_signal_id')) {
           console.log('[TradeExecutor]    ⚠️  Position already exists (race condition), fetching existing position...');
-          
+
           // Fetch existing position
           position = await prisma.positions.findUnique({
             where: {
@@ -1282,7 +1284,7 @@ export class TradeExecutor {
   ): Promise<ExecutionResult> {
     try {
       const adapter = createSpotAdapter(safeWallet, chainId);
-      
+
       // Get token address
       const chain = chainId === 42161 ? 'arbitrum' : 'base';
       const tokenRegistry = await prisma.token_registry.findUnique({
@@ -1319,20 +1321,20 @@ export class TradeExecutor {
         ['function balanceOf(address) view returns (uint256)'],
         provider
       );
-      
+
       const actualBalance = await tokenContract.balanceOf(position.agent_deployments.safe_wallet);
-      
+
       if (actualBalance.eq(0)) {
         return {
           success: false,
           error: `No ${position.token_symbol} balance in Safe to close`,
         };
       }
-      
+
       // Use actual balance instead of DB qty
       const tokenAmountWei = actualBalance;
       const actualQty = ethers.utils.formatUnits(actualBalance, tokenDecimals);
-      
+
       console.log('[TradeExecutor] Closing position:', {
         positionId: position.id,
         token: position.token_symbol,
@@ -1390,7 +1392,7 @@ export class TradeExecutor {
           tokenRegistry.token_address,
           routerAddress
         );
-        
+
         if (!isApproved) {
           return {
             success: false,
@@ -1414,7 +1416,7 @@ export class TradeExecutor {
       // Get current price for exit price recording
       const { getTokenPriceUSD } = await import('../lib/price-oracle');
       const exitPrice = await getTokenPriceUSD(position.token_symbol, chainId);
-      
+
       // Calculate PnL
       const entryPrice = parseFloat(position.entry_price.toString());
       let pnl: number;
@@ -1553,7 +1555,7 @@ export class TradeExecutor {
   }): Promise<void> {
     const HYPERLIQUID_SERVICE_URL = process.env.HYPERLIQUID_SERVICE_URL || 'http://localhost:5001';
     const platformWallet = process.env.HYPERLIQUID_PLATFORM_WALLET || process.env.PLATFORM_FEE_RECEIVER;
-    
+
     if (!platformWallet) {
       throw new Error('HYPERLIQUID_PLATFORM_WALLET not configured');
     }
@@ -1563,20 +1565,20 @@ export class TradeExecutor {
       where: { id: params.deploymentId },
       select: { user_wallet: true }
     });
-    
+
     if (!deployment) {
       throw new Error('Deployment not found');
     }
 
     const agentAddress = await this.getUserHyperliquidAddress(deployment.user_wallet);
-    
+
     if (!agentAddress) {
       throw new Error('Hyperliquid agent address not found for user');
     }
-    
+
     const { getPrivateKeyForAddress } = await import('./wallet-pool');
     const agentPrivateKey = await getPrivateKeyForAddress(agentAddress);
-    
+
     if (!agentPrivateKey) {
       throw new Error('Agent private key not found');
     }
@@ -1602,7 +1604,7 @@ export class TradeExecutor {
 
     const result = await response.json();
     console.log(`[ProfitShare] ✅ Collected $${params.amount.toFixed(2)} - TX: ${result.result?.status}`);
-    
+
     // Record the fee in database
     await prisma.billing_events.create({
       data: {
@@ -1637,7 +1639,7 @@ export class TradeExecutor {
 
       // Get user's wallet from deployment
       const userWallet = position.agent_deployments?.user_wallet;
-      
+
       if (!userWallet) {
         throw new Error('User wallet not found in deployment');
       }
@@ -1645,7 +1647,7 @@ export class TradeExecutor {
       // Get user's Hyperliquid address (their trading account, not agent address)
       // This is the address that holds the funds on Hyperliquid
       const userHyperliquidAddress = position.agent_deployments.safe_wallet || userWallet;
-      
+
       // Close position via Hyperliquid service
       const result = await closeHyperliquidPosition({
         deploymentId: position.deployment_id,
@@ -1657,19 +1659,19 @@ export class TradeExecutor {
       if (!result.success) {
         // Check if error is due to position already being closed on Hyperliquid
         const errorMsg = result.error || '';
-        const isAlreadyClosed = 
-          errorMsg.includes('No open position') || 
+        const isAlreadyClosed =
+          errorMsg.includes('No open position') ||
           errorMsg.includes('Position not found') ||
           errorMsg.includes('not found');
-        
+
         if (isAlreadyClosed) {
           console.log('[TradeExecutor] ⚠️  Position already closed on Hyperliquid, updating DB...');
-          
+
           // Get final position state from Hyperliquid to calculate accurate P&L
           const { getHyperliquidOpenPositions } = await import('./hyperliquid-utils');
           const hlPositions = await getHyperliquidOpenPositions(userHyperliquidAddress);
           const hlPosition = hlPositions.find(p => p.coin === position.token_symbol);
-          
+
           // If position not found, it was closed - mark it as closed in DB
           if (!hlPosition) {
             await prisma.positions.update({
@@ -1680,7 +1682,7 @@ export class TradeExecutor {
                 pnl: 0, // Unknown P&L
               },
             });
-            
+
             console.log('[TradeExecutor] ✅ DB record updated - position was already closed');
             return {
               success: true,
@@ -1688,7 +1690,7 @@ export class TradeExecutor {
             };
           }
         }
-        
+
         throw new Error(result.error || 'Failed to close position');
       }
 
@@ -1700,7 +1702,7 @@ export class TradeExecutor {
         const entryPrice = parseFloat(position.entry_price?.toString() || '0');
         const closePrice = parseFloat(result.result.closePx);
         const qty = parseFloat(position.qty?.toString() || '0');
-        
+
         if (position.side === 'LONG' || position.side === 'BUY') {
           pnl = (closePrice - entryPrice) * qty;
         } else {
@@ -1767,22 +1769,22 @@ export class TradeExecutor {
       // Get user's agent address from user_agent_addresses
       const userWallet = position.agent_deployments.user_wallet;
       const agentAddress = await this.getUserOstiumAddress(userWallet);
-      
+
       if (!agentAddress) {
         throw new Error('Ostium agent address not found for user');
       }
-      
+
       // Get agent private key
       const { getPrivateKeyForAddress } = await import('./wallet-pool');
       const agentPrivateKey = await getPrivateKeyForAddress(agentAddress);
-      
+
       if (!agentPrivateKey) {
         throw new Error('Ostium agent wallet not found');
       }
 
       // Get user's Arbitrum address from deployment
       const userArbitrumAddress = position.agent_deployments.safe_wallet;
-      
+
       if (!userArbitrumAddress) {
         throw new Error('User Arbitrum address not found in deployment');
       }
@@ -1792,17 +1794,17 @@ export class TradeExecutor {
       console.log('[TradeExecutor] 🔍 Pre-flight check: Verifying position exists on-chain...');
       const { getOstiumPositions } = await import('./adapters/ostium-adapter');
       const onChainPositions = await getOstiumPositions(userArbitrumAddress);
-      
+
       // Check if position exists on-chain (match by tradeId or market+side)
       const positionExistsOnChain = onChainPositions.some(
-        p => p.tradeId === position.ostium_trade_id || 
-             (p.market === position.token_symbol && p.side.toUpperCase() === position.side)
+        p => p.tradeId === position.ostium_trade_id ||
+          (p.market === position.token_symbol && p.side.toUpperCase() === position.side)
       );
 
       if (!positionExistsOnChain) {
         console.log('[TradeExecutor] ⚠️  Position not found on-chain - already closed externally');
         console.log('[TradeExecutor] 📝 Syncing DB status to CLOSED (idempotent)');
-        
+
         // Update DB to reflect reality
         await prisma.positions.update({
           where: { id: position.id },
@@ -1814,7 +1816,7 @@ export class TradeExecutor {
             pnl: 0, // Unknown PnL
           },
         });
-        
+
         console.log('[TradeExecutor] ✅ DB synced - position marked as closed');
         return {
           success: true,
@@ -1842,7 +1844,7 @@ export class TradeExecutor {
       } else {
         console.warn('[TradeExecutor] ⚠️  No stored trade index - will use index=0 (may close wrong position if multiple exist)');
       }
-      
+
       const result = await closeOstiumPosition({
         agentAddress: agentAddress, // Use agentAddress instead of privateKey (service will look up key)
         market: position.token_symbol,
@@ -1856,7 +1858,7 @@ export class TradeExecutor {
         // Check if already closed (idempotent) - backup check if pre-flight missed it
         if (result.message && (result.message.includes('No open position') || result.message.includes('already closed'))) {
           console.log('[TradeExecutor] ⚠️  Position already closed on Ostium, updating DB...');
-          
+
           await prisma.positions.update({
             where: { id: position.id },
             data: {
@@ -1867,14 +1869,14 @@ export class TradeExecutor {
               pnl: 0,
             },
           });
-          
+
           console.log('[TradeExecutor] ✅ DB record updated - position was already closed');
           return {
             success: true,
             positionId: position.id,
           };
         }
-        
+
         await prisma.positions.update({
           where: { id: position.id },
           data: {
@@ -1883,7 +1885,7 @@ export class TradeExecutor {
           },
         });
         console.log('[TradeExecutor] ⚠️  Close order failed, reverted position to OPEN');
-        
+
         throw new Error(result.error || 'Failed to close position');
       }
 
@@ -1891,18 +1893,18 @@ export class TradeExecutor {
       console.log('[TradeExecutor] ⏳ Close order submitted - waiting for keeper to fulfill...');
 
       await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
-      
+
       const verifyPositions = await getOstiumPositions(userArbitrumAddress);
       const stillExists = verifyPositions.some(
-        p => p.tradeId === position.ostium_trade_id || 
-             (p.market === position.token_symbol && p.side.toUpperCase() === position.side)
+        p => p.tradeId === position.ostium_trade_id ||
+          (p.market === position.token_symbol && p.side.toUpperCase() === position.side)
       );
 
       if (stillExists) {
         console.log('[TradeExecutor] ⚠️  IMPORTANT: Position still exists on-chain after close order!');
         console.log('[TradeExecutor] ⚠️  This means close order was submitted but not yet fulfilled by keeper');
         console.log('[TradeExecutor] ⚠️  Keeping status as CLOSING - position monitor will verify later');
-        
+
         await prisma.positions.update({
           where: { id: position.id },
           data: {
@@ -1910,7 +1912,7 @@ export class TradeExecutor {
             exit_reason: 'TRAILING_STOP',
           },
         });
-        
+
         return {
           success: true,
           positionId: position.id,
@@ -2003,7 +2005,7 @@ export class TradeExecutor {
     amount: number;
   }): Promise<void> {
     const platformWallet = process.env.OSTIUM_PLATFORM_WALLET || process.env.PLATFORM_FEE_RECEIVER;
-    
+
     if (!platformWallet) {
       throw new Error('OSTIUM_PLATFORM_WALLET not configured');
     }
@@ -2013,20 +2015,20 @@ export class TradeExecutor {
       where: { id: params.deploymentId },
       select: { user_wallet: true }
     });
-    
+
     if (!deployment) {
       throw new Error('Deployment not found');
     }
 
     const agentAddress = await this.getUserOstiumAddress(deployment.user_wallet);
-    
+
     if (!agentAddress) {
       throw new Error('Ostium agent address not found for user');
     }
-    
+
     const { getPrivateKeyForAddress } = await import('./wallet-pool');
     const agentPrivateKey = await getPrivateKeyForAddress(agentAddress);
-    
+
     if (!agentPrivateKey) {
       throw new Error('Agent private key not found');
     }
@@ -2042,7 +2044,7 @@ export class TradeExecutor {
     });
 
     console.log(`[ProfitShare] ✅ Collected $${params.amount.toFixed(2)} - TX: ${result.txHash}`);
-    
+
     // Record the fee in database
     await prisma.billing_events.create({
       data: {
@@ -2136,7 +2138,7 @@ export class TradeExecutor {
       const exitPrice = currentPrice;
       const entryPrice = parseFloat(position.entry_price.toString());
       const qty = parseFloat(position.qty.toString());
-      
+
       let pnl: number;
       if (position.side === 'LONG') {
         pnl = (exitPrice - entryPrice) * qty;

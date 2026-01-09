@@ -122,6 +122,18 @@ export default function EditAgent() {
   const handleSave = async () => {
     if (!id || typeof id !== 'string') return;
 
+    // Require at least one source from any category
+    const totalSourcesSelected =
+      selectedTopTraders.length +
+      selectedResearchInstitutes.length +
+      selectedCtAccounts.size +
+      selectedTelegramUsers.size;
+
+    if (totalSourcesSelected === 0) {
+      setError('Please select at least one source from Top Traders, Research Institutes, CT Accounts, or Telegram');
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -261,14 +273,6 @@ export default function EditAgent() {
   const nextStep = () => {
     if (step === 1 && !formData.name.trim()) {
       setError('Please enter an agent name');
-      return;
-    }
-    if (step === 2 && selectedResearchInstitutes.length === 0) {
-      setError('Please select at least one research institute');
-      return;
-    }
-    if (step === 3 && selectedCtAccounts.size === 0) {
-      setError('Please select at least one CT account');
       return;
     }
 
@@ -531,7 +535,7 @@ export default function EditAgent() {
               <p className="text-[var(--text-secondary)] text-sm mb-6">Choose which institutes your agent should follow for signals.</p>
               <ResearchInstituteSelector selectedIds={selectedResearchInstitutes} onChange={setSelectedResearchInstitutes} />
               {selectedResearchInstitutes.length === 0 && (
-                <p className="text-sm text-[var(--accent)]">⚠️ Select at least one institute</p>
+                <p className="text-sm text-[var(--text-muted)]">💡 Optional - You can skip if you have other sources selected</p>
               )}
               <div className="flex gap-4">
                 <button type="button" onClick={prevStep} className="flex-1 py-4 border border-[var(--border)] font-bold hover:border-[var(--text-primary)] transition-colors">BACK</button>
@@ -552,7 +556,7 @@ export default function EditAgent() {
                 onBack={prevStep}
               />
               {selectedCtAccounts.size === 0 && (
-                <p className="text-sm text-[var(--accent)]">⚠️ Select at least one CT account</p>
+                <p className="text-sm text-[var(--text-muted)]">💡 Optional - You can skip if you have other sources selected</p>
               )}
             </div>
           )}

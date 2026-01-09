@@ -120,6 +120,61 @@ export async function monitorOstiumPositions() {
     let totalPositionsMonitored = 0;
     let totalPositionsClosed = 0;
 
+    // ========================================================================
+    // Auto-close positions for closed trader trades (copy-trading)
+    // ========================================================================
+
+    try {
+      const closedTraderTradeIds = await prisma.trader_trades.findMany({
+        where: { is_open: false },
+        select: { source_trade_id: true },
+      });
+
+      if (closedTraderTradeIds.length > 0) {
+        const closedIds = closedTraderTradeIds.map(t => t.source_trade_id);
+
+        const positionsToClose = await prisma.positions.findMany({
+          where: {
+            source_trader_trade_id: { in: closedIds },
+            status: 'OPEN',
+            venue: 'OSTIUM',
+          },
+          include: {
+            agent_deployments: {
+              select: {
+                id: true,
+                safe_wallet: true,
+                user_wallet: true,
+              },
+            },
+          },
+        });
+
+        if (positionsToClose.length > 0) {
+          console.log(`\n🔄 Found ${positionsToClose.length} positions to auto-close (source trader closed)`);
+
+          for (const position of positionsToClose) {
+            try {
+              console.log(`   🔴 Auto-closing ${position.token_symbol} ${position.side} (source trader closed)`);
+
+              const closeResult = await executor.closePosition(position.id);
+
+              if (closeResult.success) {
+                console.log(`   ✅ Position close order submitted`);
+                totalPositionsClosed++;
+              } else {
+                console.error(`   ❌ Failed to close: ${closeResult.error}`);
+              }
+            } catch (closeError: any) {
+              console.error(`   ❌ Error closing position ${position.id}:`, closeError.message);
+            }
+          }
+        }
+      }
+    } catch (autoCloseError: any) {
+      console.error('⚠️  Error in auto-close logic:', autoCloseError.message);
+    }
+
     const getOstiumKey = (pos: any) => {
       if (pos.tradeId) return `tradeId:${pos.tradeId}`;
       if (pos.tradeIndex !== undefined) return `tradeIndex:${pos.tradeIndex}`;
