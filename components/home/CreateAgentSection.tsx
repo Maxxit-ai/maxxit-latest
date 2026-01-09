@@ -40,29 +40,29 @@ const CreateAgentSection = () => {
   const [hoveredSource, setHoveredSource] = useState<string | null>(null);
 
   return (
-    <section className="py-24 border-t border-[var(--border)] bg-[var(--bg-surface)]">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
+    <section className="py-12 sm:py-16 md:py-20 lg:py-24 border-t border-[var(--border)] bg-[var(--bg-surface)]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 lg:gap-20 items-start">
           {/* Left Column - Content */}
           <div className="lg:sticky lg:top-24">
-            <p className="data-label mb-4">CREATE YOUR ALPHA CLUB</p>
-            <h2 className="font-display text-4xl md:text-5xl mb-6 leading-tight">
+            <p className="data-label mb-3 sm:mb-4">CREATE YOUR ALPHA CLUB</p>
+            <h2 className="font-display text-2xl sm:text-3xl md:text-4xl lg:text-5xl mb-4 sm:mb-6 leading-tight">
               COPY TRADING,<br />
               <span className="text-accent">EVOLVED.</span>
             </h2>
-            <div className="space-y-4 mb-8">
-              <p className="text-[var(--text-secondary)] text-base md:text-lg leading-relaxed">
+            <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8">
+              <p className="text-[var(--text-secondary)] text-sm sm:text-base md:text-lg leading-relaxed">
                 Traditional copy trading copies exact trades. Maxxit copies signals and intelligence
                 from traders you trust — Vitalik, research institutes, or private Telegram channels.
               </p>
-              <p className="text-[var(--text-secondary)] text-base md:text-lg leading-relaxed">
+              <p className="text-[var(--text-secondary)] text-sm sm:text-base md:text-lg leading-relaxed">
                 Their tweets and posts become real-time signals. But you control execution: Agent HOW
                 sets position size and leverage based on your risk profile. Agent WHERE routes to the
                 optimal venue. You copy the intelligence, not the exact trade.
               </p>
             </div>
             <Link href="/create-agent">
-              <button className="group px-8 py-4 bg-accent text-[var(--bg-deep)] font-bold text-lg hover:bg-[var(--accent-dim)] transition-all hover:-translate-x-0.5 hover:-translate-y-0.5">
+              <button className="group px-4 sm:px-6 md:px-8 py-3 sm:py-4 bg-accent text-[var(--bg-deep)] font-bold text-sm sm:text-base md:text-lg hover:bg-[var(--accent-dim)] transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 w-full sm:w-auto">
                 CREATE YOUR CLUB
                 <ArrowRight className="inline-block ml-2 group-hover:translate-x-1 transition-transform" size={20} />
               </button>
@@ -70,39 +70,39 @@ const CreateAgentSection = () => {
           </div>
 
           {/* Right Column - Visual Example */}
-          <div className="border-2 border-[var(--border)] bg-[var(--bg-elevated)] p-6 md:p-8 shadow-[8px_8px_0px_0px_var(--border)]">
-            <div className="flex items-center gap-2 mb-6">
-              <Sparkles className="text-accent" size={18} />
+          <div className="border-2 border-[var(--border)] bg-[var(--bg-elevated)] p-4 sm:p-6 md:p-8 shadow-[4px_4px_0px_0px_var(--border)] sm:shadow-[8px_8px_0px_0px_var(--border)]">
+            <div className="flex items-center gap-2 mb-4 sm:mb-6">
+              <Sparkles className="text-accent w-4 h-4 sm:w-[18px] sm:h-[18px]" size={16} />
               <p className="data-label">SELECT YOUR ALPHA SOURCES</p>
             </div>
 
-            <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed">
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-4 sm:mb-6 leading-relaxed">
               Choose X accounts, Telegram channels, or research institutes whose signals you want to follow:
             </p>
 
-            <div className="space-y-3 mb-6">
+            <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
               {alphaSources.map((source) => (
                 <div
                   key={source.id}
                   onMouseEnter={() => setHoveredSource(source.id)}
                   onMouseLeave={() => setHoveredSource(null)}
-                  className={`group relative border-2 border-accent bg-[var(--bg-surface)] p-4 transition-all duration-300`}
+                  className={`group relative border-2 border-accent bg-[var(--bg-surface)] p-3 sm:p-4 transition-all duration-300`}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className={`relative flex-shrink-0 w-12 h-12 border-2 border-accent flex items-center justify-center font-bold text-accent transition-all duration-300'
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <div className={`relative flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 border-2 border-accent flex items-center justify-center font-bold text-accent transition-all duration-300'
                       }`}>
                       {source.type}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <p className="font-display text-base text-[var(--text-primary)] group-hover:text-accent transition-colors">
+                      <div className="flex items-start justify-between gap-2 mb-1 sm:mb-1.5">
+                        <p className="font-display text-sm sm:text-base text-[var(--text-primary)] group-hover:text-accent transition-colors">
                           {source.name}
                         </p>
                         <span className="flex-shrink-0 text-xs px-2 py-0.5 bg-accent/20 text-accent border border-accent/30 font-mono">
                           ACTIVE
                         </span>
                       </div>
-                      <p className="text-xs text-[var(--text-muted)] mb-2 leading-relaxed">
+                      <p className="text-xs text-[var(--text-muted)] mb-1 sm:mb-2 leading-relaxed">
                         {source.subtitle}
                       </p>
                       <p className="text-xs text-[var(--text-secondary)] italic leading-relaxed">
@@ -114,12 +114,12 @@ const CreateAgentSection = () => {
               ))}
 
               {/* Add More Button */}
-              <div className="border-2 border-[var(--border)] border-dashed bg-[var(--bg-surface)] p-4 opacity-60 hover:opacity-100 hover:border-accent transition-all group">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 border-2 border-[var(--border)] group-hover:border-accent flex items-center justify-center transition-colors">
-                    <span className="text-[var(--text-muted)] group-hover:text-accent text-xl font-bold transition-colors">+</span>
+              <div className="border-2 border-[var(--border)] border-dashed bg-[var(--bg-surface)] p-3 sm:p-4 opacity-60 hover:opacity-100 hover:border-accent transition-all group">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 border-2 border-[var(--border)] group-hover:border-accent flex items-center justify-center transition-colors">
+                    <span className="text-[var(--text-muted)] group-hover:text-accent text-lg sm:text-xl font-bold transition-colors">+</span>
                   </div>
-                  <p className="text-sm text-[var(--text-muted)] group-hover:text-accent font-medium transition-colors">
+                  <p className="text-xs sm:text-sm text-[var(--text-muted)] group-hover:text-accent font-medium transition-colors">
                     Add more sources...
                   </p>
                 </div>
@@ -127,26 +127,26 @@ const CreateAgentSection = () => {
             </div>
 
             {/* Flow Arrow */}
-            <div className="py-5 border-y-2 border-[var(--border)] my-6">
-              <div className="flex items-center justify-center gap-3">
-                <Zap className="text-accent" size={16} />
-                <span className="font-display text-sm text-accent font-bold">Their content becomes signals</span>
-                <Zap className="text-accent" size={16} />
+            <div className="py-4 sm:py-5 border-y-2 border-[var(--border)] my-4 sm:my-6">
+              <div className="flex items-center justify-center gap-2 sm:gap-3">
+                <Zap className="text-accent w-3.5 h-3.5 sm:w-4 sm:h-4" size={14} />
+                <span className="font-display text-xs sm:text-sm text-accent font-bold">Their content becomes signals</span>
+                <Zap className="text-accent w-3.5 h-3.5 sm:w-4 sm:h-4" size={14} />
               </div>
             </div>
 
             {/* Result Card */}
-            <div className="relative border-2 border-accent bg-accent/10 p-6 overflow-hidden group">
+            <div className="relative border-2 border-accent bg-accent/10 p-4 sm:p-6 overflow-hidden group">
               <div className="absolute top-0 left-0 w-full h-1 bg-accent/30 group-hover:bg-accent transition-colors" />
               <div className="relative">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+                <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-accent rounded-full animate-pulse" />
                   <p className="text-xs text-accent font-bold tracking-wider uppercase">YOUR PERSONALIZED COPY TRADING SYSTEM</p>
                 </div>
-                <p className="text-sm text-[var(--text-primary)] mb-4 font-medium leading-relaxed">
+                <p className="text-xs sm:text-sm text-[var(--text-primary)] mb-3 sm:mb-4 font-medium leading-relaxed">
                   Trades 24/7 based on signals from sources you selected
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-accent/20">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-accent/20">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-accent rounded-full" />
                     <span className="text-xs text-[var(--text-secondary)] font-medium">You control sizing</span>

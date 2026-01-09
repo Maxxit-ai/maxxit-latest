@@ -21,19 +21,19 @@ const FooterSection = () => {
 
   return (
     <footer className="border-t border-[var(--border)] bg-[var(--bg-surface)]">
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="flex items-center justify-between gap-8 mb-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 sm:gap-8 mb-6 sm:mb-8">
           {/* Brand Section */}
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             <Link href="/" className="flex items-center gap-2 group">
-              <Image src="/logo.png" alt="Maxxit" width={100} height={100} />
+              <Image src="/logo.png" alt="Maxxit" width={80} height={80} className="sm:w-[100px] sm:h-[100px]" />
             </Link>
             <p className="text-xs text-[var(--text-muted)] leading-relaxed max-w-sm">
               DeFi trading involves risk. Past performance ≠ future results. Non-custodial & gasless.
             </p>
           </div>
 
-          <p className="text-sm text-[var(--text-muted)]">
+          <p className="text-xs sm:text-sm text-[var(--text-muted)]">
             © {currentYear} MAXXIT. All rights reserved.
           </p>
         </div>

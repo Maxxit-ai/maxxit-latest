@@ -66,18 +66,18 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
   );
 
   return (
-    <section id="architecture" className="py-24 border-t border-[var(--border)]">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="mb-16">
-          <p className="data-label mb-4">ARCHITECTURE</p>
-          <h2 className="font-display text-4xl md:text-5xl mb-8">
+    <section id="architecture" className="py-12 sm:py-16 md:py-20 lg:py-24 border-t border-[var(--border)]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="mb-8 sm:mb-12 md:mb-16">
+          <p className="data-label mb-3 sm:mb-4">ARCHITECTURE</p>
+          <h2 className="font-display text-2xl sm:text-3xl md:text-4xl lg:text-5xl mb-6 sm:mb-8">
             THREE AGENTS.<br />
             <span className="text-accent">ONE SYSTEM.</span>
           </h2>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-12 mb-20">
-          <div className="space-y-6">
+        <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 md:gap-12 mb-12 sm:mb-16 md:mb-20">
+          <div className="space-y-4 sm:space-y-6">
             {agents.map((agent, index) => (
               <div
                 key={agent.id}
@@ -86,55 +86,55 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
                 onMouseLeave={() => onHover(null)}
               >
                 <div
-                  className={`border-2 border-[var(--border)] bg-[var(--bg-surface)] p-8 transition-all duration-300 ${activeAgent === agent.id
-                    ? 'translate-x-2 -translate-y-2 shadow-[8px_8px_0px_0px_var(--border)]'
-                    : 'shadow-[4px_4px_0px_0px_var(--border)]'
+                  className={`border-2 border-[var(--border)] bg-[var(--bg-surface)] p-4 sm:p-6 md:p-8 transition-all duration-300 ${activeAgent === agent.id
+                    ? 'translate-x-1 sm:translate-x-2 -translate-y-1 sm:-translate-y-2 shadow-[4px_4px_0px_0px_var(--border)] sm:shadow-[8px_8px_0px_0px_var(--border)]'
+                    : 'shadow-[2px_2px_0px_0px_var(--border)] sm:shadow-[4px_4px_0px_0px_var(--border)]'
                     }`}
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-2xl font-bold mb-1">{agent.name}</h3>
-                      <p className="text-sm opacity-60">{agent.subtitle}</p>
+                  <div className="flex items-start justify-between mb-3 sm:mb-4">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <h3 className="text-lg sm:text-xl md:text-2xl font-bold mb-1">{agent.name}</h3>
+                      <p className="text-xs sm:text-sm opacity-60">{agent.subtitle}</p>
                     </div>
-                    <span className="text-4xl font-bold opacity-30 text-[var(--text-muted)]">
+                    <span className="text-2xl sm:text-3xl md:text-4xl font-bold opacity-30 text-[var(--text-muted)] flex-shrink-0">
                       {String(index + 1).padStart(2, '0')}
                     </span>
                   </div>
                   <div
-                    className={`h-0.5 mb-4 transition-all duration-500 ${activeAgent === agent.id ? 'w-full bg-[var(--accent)]' : 'w-12 bg-[var(--border)]'
+                    className={`h-0.5 mb-3 sm:mb-4 transition-all duration-500 ${activeAgent === agent.id ? 'w-full bg-[var(--accent)]' : 'w-8 sm:w-12 bg-[var(--border)]'
                       }`}
                   ></div>
-                  <p className="text-sm leading-relaxed opacity-70">{agent.description}</p>
+                  <p className="text-xs sm:text-sm leading-relaxed opacity-70">{agent.description}</p>
                 </div>
               </div>
             ))}
           </div>
 
           <div className="flex items-center">
-            <div className="w-full border-2 border-[var(--border)] bg-[var(--bg-surface)] p-8 shadow-[8px_8px_0px_0px_var(--border)]">
-              <div className="flex items-center justify-between mb-8">
+            <div className="w-full border-2 border-[var(--border)] bg-[var(--bg-surface)] p-4 sm:p-6 md:p-8 shadow-[4px_4px_0px_0px_var(--border)] sm:shadow-[8px_8px_0px_0px_var(--border)]">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-6 sm:mb-8">
                 <p className="text-xs tracking-[0.2em] font-mono opacity-60">SIGNAL FLOW</p>
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-1 bg-[var(--bg-elevated)] border border-[var(--border)] overflow-hidden">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flex-1 sm:flex-none sm:w-24 h-1 bg-[var(--bg-elevated)] border border-[var(--border)] overflow-hidden">
                     <div
                       className="h-full bg-[var(--accent)] transition-all duration-100 ease-linear"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
-                  <span className="text-xs font-mono text-[var(--text-muted)]">
+                  <span className="text-xs font-mono text-[var(--text-muted)] flex-shrink-0">
                     {Math.round(progress)}%
                   </span>
                 </div>
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 {/* SOURCES */}
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
                   <div className="flex gap-2">
                     {['CT', 'TG', 'RI'].map((source, idx) => (
                       <div
                         key={source}
-                        className={`w-12 h-12 border-2 flex items-center justify-center text-xs font-bold transition-all duration-500 relative ${animationStep === 0
+                        className={`w-10 h-10 sm:w-12 sm:h-12 border-2 flex items-center justify-center text-xs font-bold transition-all duration-500 relative ${animationStep === 0
                           ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)] shadow-[0_0_20px_var(--accent-glow)]'
                           : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:bg-[var(--accent)] hover:text-[var(--bg-deep)]'
                           }`}
@@ -149,7 +149,7 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
                       </div>
                     ))}
                   </div>
-                  <div className="flex-1 relative h-0.5 bg-[var(--border)] opacity-40 overflow-hidden">
+                  <div className="flex-1 relative h-0.5 bg-[var(--border)] opacity-40 overflow-hidden w-full sm:w-auto">
                     <div
                       className={`absolute inset-0 h-full transition-all duration-500 ${animationStep >= 1 ? 'bg-[var(--accent)] opacity-100' : 'bg-[var(--border)] opacity-0'
                         }`}
@@ -158,39 +158,39 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
                       }}
                     />
                   </div>
-                  <span className="text-xs font-mono text-[var(--text-muted)]">SOURCES</span>
+                  <span className="text-xs font-mono text-[var(--text-muted)] flex-shrink-0">SOURCES</span>
                 </div>
 
                 <div className="flex justify-center">
                   <ArrowBigDown
-                    className={`transition-all duration-500 ${animationStep === 1 ? 'text-[var(--accent)] animate-bounce' : 'text-[var(--accent)] opacity-50'
+                    className={`transition-all duration-500 w-6 h-6 sm:w-8 sm:h-8 ${animationStep === 1 ? 'text-[var(--accent)] animate-bounce' : 'text-[var(--accent)] opacity-50'
                       }`}
-                    size={32}
+                    size={24}
                   />
                 </div>
 
                 {/* AGENT WHAT */}
-                <div className={`border-2 p-5 relative overflow-hidden transition-all duration-500 ${animationStep === 1
+                <div className={`border-2 p-3 sm:p-4 md:p-5 relative overflow-hidden transition-all duration-500 ${animationStep === 1
                   ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)] shadow-[0_0_30px_var(--accent-glow)] scale-[1.02]'
                   : 'border-[var(--border)] bg-[var(--bg-elevated)] group hover:bg-[var(--accent)] hover:text-[var(--bg-deep)]'
                   }`}>
                   {animationStep === 1 && (
                     <div className="absolute inset-0 bg-[var(--accent)] opacity-20 animate-pulse"></div>
                   )}
-                  <div className={`absolute top-0 right-0 w-16 h-16 border-l-2 border-b-2 transition-colors duration-500 ${animationStep === 1 ? 'border-[var(--bg-deep)]' : 'border-[var(--border)] group-hover:border-[var(--bg-deep)]'
+                  <div className={`absolute top-0 right-0 w-12 h-12 sm:w-16 sm:h-16 border-l-2 border-b-2 transition-colors duration-500 ${animationStep === 1 ? 'border-[var(--bg-deep)]' : 'border-[var(--border)] group-hover:border-[var(--bg-deep)]'
                     }`}></div>
                   <div className="relative">
                     <p className={`text-xs font-mono mb-2 transition-colors duration-500 ${animationStep === 1 ? 'text-[var(--bg-deep)] opacity-100' : 'text-[var(--text-muted)] group-hover:text-[var(--bg-deep)] group-hover:opacity-100'
                       }`}>
                       AGENT WHAT
                     </p>
-                    <p className="text-xl font-bold mb-2">SIGNAL: LONG BTC</p>
+                    <p className="text-base sm:text-lg md:text-xl font-bold mb-2">SIGNAL: LONG BTC</p>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-0.5">
                         {Array.from({ length: 10 }).map((_, i) => (
                           <div
                             key={i}
-                            className={`w-2 h-4 border transition-all duration-500 ${animationStep === 1
+                            className={`w-1.5 h-3 sm:w-2 sm:h-4 border transition-all duration-500 ${animationStep === 1
                               ? `border-[var(--bg-deep)] bg-[var(--bg-deep)] ${i < 9 ? 'animate-[fillBar_0.5s_ease-in_forwards]' : ''
                               }`
                               : `border-[var(--border)] ${i < 9 ? 'bg-[var(--accent-dim)] group-hover:bg-[var(--bg-deep)]' : 'bg-transparent'
@@ -210,14 +210,14 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
 
                 <div className="flex justify-center">
                   <ArrowBigDown
-                    className={`transition-all duration-500 ${animationStep === 2 ? 'text-[var(--accent)] animate-bounce' : 'text-[var(--accent)] opacity-50'
+                    className={`transition-all duration-500 w-6 h-6 sm:w-8 sm:h-8 ${animationStep === 2 ? 'text-[var(--accent)] animate-bounce' : 'text-[var(--accent)] opacity-50'
                       }`}
-                    size={32}
+                    size={24}
                   />
                 </div>
 
                 {/* AGENT HOW */}
-                <div className={`border-2 p-5 relative overflow-hidden transition-all duration-500 ${animationStep === 2
+                <div className={`border-2 p-3 sm:p-4 md:p-5 relative overflow-hidden transition-all duration-500 ${animationStep === 2
                   ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)] shadow-[0_0_30px_var(--accent-glow)] scale-[1.02]'
                   : 'border-[var(--border)] bg-[var(--bg-elevated)]'
                   }`}>
@@ -225,9 +225,9 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
                     <div className="absolute inset-0 bg-[var(--accent)] opacity-20 animate-pulse"></div>
                   )}
                   <div className="relative">
-                    <p className={`text-xs font-mono mb-4 text-center transition-colors duration-500 ${animationStep === 2 ? 'text-[var(--bg-deep)]' : 'text-[var(--text-muted)]'
+                    <p className={`text-xs font-mono mb-3 sm:mb-4 text-center transition-colors duration-500 ${animationStep === 2 ? 'text-[var(--bg-deep)]' : 'text-[var(--text-muted)]'
                       }`}>AGENT HOW</p>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4">
                       {[
                         { label: 'SIZE', value: '5%' },
                         { label: 'LEVERAGE', value: '3x' },
@@ -235,7 +235,7 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
                       ].map((param, idx) => (
                         <div
                           key={param.label}
-                          className={`text-center border-l-2 first:border-l-0 px-2 transition-all duration-500 ${animationStep === 2
+                          className={`text-center border-l-2 first:border-l-0 px-1 sm:px-2 transition-all duration-500 ${animationStep === 2
                             ? 'border-[var(--bg-deep)] animate-[slideIn_0.3s_ease-out_forwards]'
                             : 'border-[var(--border)]'
                             }`}
@@ -245,7 +245,7 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
                         >
                           <p className={`text-xs mb-1 transition-colors duration-500 ${animationStep === 2 ? 'text-[var(--bg-deep)]' : 'text-[var(--text-muted)]'
                             }`}>{param.label}</p>
-                          <p className="text-2xl font-bold">{param.value}</p>
+                          <p className="text-lg sm:text-xl md:text-2xl font-bold">{param.value}</p>
                         </div>
                       ))}
                     </div>
@@ -254,14 +254,14 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
 
                 <div className="flex justify-center">
                   <ArrowBigDown
-                    className={`transition-all duration-500 ${animationStep === 3 ? 'text-[var(--accent)] animate-bounce' : 'text-[var(--accent)] opacity-50'
+                    className={`transition-all duration-500 w-6 h-6 sm:w-8 sm:h-8 ${animationStep === 3 ? 'text-[var(--accent)] animate-bounce' : 'text-[var(--accent)] opacity-50'
                       }`}
-                    size={32}
+                    size={24}
                   />
                 </div>
 
                 {/* AGENT WHERE */}
-                <div className={`border-2 p-5 text-center relative overflow-hidden transition-all duration-500 ${animationStep === 3
+                <div className={`border-2 p-3 sm:p-4 md:p-5 text-center relative overflow-hidden transition-all duration-500 ${animationStep === 3
                   ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-deep)] shadow-[0_0_30px_var(--accent-glow)] scale-[1.02]'
                   : 'border-[var(--border)] bg-[var(--bg-elevated)]'
                   }`}>
@@ -275,7 +275,7 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
                   <div className="relative">
                     <p className={`text-xs font-mono mb-2 transition-colors duration-500 ${animationStep === 3 ? 'text-[var(--bg-deep)]' : 'text-[var(--text-muted)]'
                       }`}>AGENT WHERE</p>
-                    <p className={`text-2xl font-bold mb-1 transition-colors duration-500 ${animationStep === 3 ? 'text-[var(--bg-deep)]' : 'text-[var(--accent)]'
+                    <p className={`text-lg sm:text-xl md:text-2xl font-bold mb-1 transition-colors duration-500 ${animationStep === 3 ? 'text-[var(--bg-deep)]' : 'text-[var(--accent)]'
                       }`}>→ OSTIUM</p>
                     <p className={`text-xs transition-colors duration-500 ${animationStep === 3 ? 'text-[var(--bg-deep)]' : 'text-[var(--text-muted)]'
                       }`}>Best execution for BTC-PERP</p>
@@ -284,21 +284,21 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
 
                 <div className="flex justify-center">
                   <ArrowBigDown
-                    className={`transition-all duration-500 ${animationStep === 4 ? 'text-[var(--accent)] animate-bounce' : 'text-[var(--accent)] opacity-50'
+                    className={`transition-all duration-500 w-6 h-6 sm:w-8 sm:h-8 ${animationStep === 4 ? 'text-[var(--accent)] animate-bounce' : 'text-[var(--accent)] opacity-50'
                       }`}
-                    size={32}
+                    size={24}
                   />
                 </div>
 
                 {/* EXECUTED */}
-                <div className={`border-2 p-5 text-center relative overflow-hidden transition-all duration-500 ${animationStep === 4
+                <div className={`border-2 p-3 sm:p-4 md:p-5 text-center relative overflow-hidden transition-all duration-500 ${animationStep === 4
                   ? 'bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent-dim)] shadow-[0_0_40px_var(--accent-glow)]'
                   : 'bg-[var(--accent)] text-[var(--bg-deep)] border-[var(--accent-dim)]'
                   }`}>
                   <div className={`absolute top-0 left-0 w-full h-1 bg-[var(--bg-deep)] transition-opacity duration-500 ${animationStep === 4 ? 'animate-[slideRight_2s_ease-in-out_infinite]' : 'opacity-50'
                     }`}></div>
                   <p className="text-xs font-mono mb-2">EXECUTED</p>
-                  <p className="text-2xl font-bold mb-1">POSITION OPEN</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold mb-1">POSITION OPEN</p>
                   <p className="text-xs">Non-custodial execution</p>
                 </div>
               </div>

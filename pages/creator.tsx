@@ -373,25 +373,25 @@ export default function Creator() {
   return (
     <div className="min-h-screen bg-background border border-[var(--border)]">
       <Header />
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-12">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
           <div>
             <h1
-              className="text-4xl md:text-5xl font-display font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent mb-2"
+              className="text-2xl sm:text-4xl md:text-5xl font-display font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent mb-2"
               data-testid="text-title"
             >
               CREATOR DASHBOARD
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-sm sm:text-base">
               Monitor your agents' performance and earnings
             </p>
           </div>
           <Link
             href="/create-agent"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-md font-semibold hover:bg-primary/90 transition-colors"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-primary text-primary-foreground rounded-md font-semibold hover:bg-primary/90 transition-colors text-sm"
             data-testid="link-create-agent"
           >
-            <Plus className="h-5 w-5" />
+            <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
             Create Agent
           </Link>
         </div>
@@ -406,64 +406,64 @@ export default function Creator() {
         )}
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 hover:border-primary/50 transition-colors">
             <div className="flex items-start justify-between mb-3">
               <div className="p-2 bg-primary/10 rounded-lg">
-                <Bot className="h-5 w-5 text-primary" />
+                <Bot className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
               </div>
             </div>
-            <h3 className="text-sm text-muted-foreground mb-1">Total Agents</h3>
+            <h3 className="text-xs sm:text-sm text-muted-foreground mb-1">Total Agents</h3>
             <p
-              className="text-3xl font-bold text-foreground"
+              className="text-2xl sm:text-3xl font-bold text-foreground"
               data-testid="text-total-agents"
             >
               {agents.length}
             </p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors">
+          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 hover:border-primary/50 transition-colors">
             <div className="flex items-start justify-between mb-3">
               <div className="p-2 bg-primary/10 rounded-lg">
-                <Rocket className="h-5 w-5 text-primary" />
+                <Rocket className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
               </div>
             </div>
-            <h3 className="text-sm text-muted-foreground mb-1">
+            <h3 className="text-xs sm:text-sm text-muted-foreground mb-1">
               Active Deployments
             </h3>
             <p
-              className="text-3xl font-bold text-foreground"
+              className="text-2xl sm:text-3xl font-bold text-foreground"
               data-testid="text-active-deployments"
             >
               {activeDeploymentCount}
             </p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors">
+          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 hover:border-primary/50 transition-colors">
             <div className="flex items-start justify-between mb-3">
               <div className="p-2 bg-primary/10 rounded-lg">
-                <Activity className="h-5 w-5 text-primary" />
+                <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
               </div>
             </div>
-            <h3 className="text-sm text-muted-foreground mb-1">
+            <h3 className="text-xs sm:text-sm text-muted-foreground mb-1">
               Open Positions
             </h3>
             <p
-              className="text-3xl font-bold text-foreground"
+              className="text-2xl sm:text-3xl font-bold text-foreground"
               data-testid="text-open-positions"
             >
               {openPositionsCount}
             </p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors">
+          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 hover:border-primary/50 transition-colors">
             <div className="flex items-start justify-between mb-3">
               <div className="p-2 bg-primary/10 rounded-lg">
-                <DollarSign className="h-5 w-5 text-primary" />
+                <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
               </div>
             </div>
-            <h3 className="text-sm text-muted-foreground mb-1">
+            <h3 className="text-xs sm:text-sm text-muted-foreground mb-1">
               Profit Share Earned
             </h3>
             <p
-              className="text-3xl font-bold text-primary"
+              className="text-2xl sm:text-3xl font-bold text-primary"
               data-testid="text-profit-share"
             >
               ${totalRevenue.toFixed(2)}
@@ -492,34 +492,34 @@ export default function Creator() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
             {/* Widget 1: My Agents */}
-            <div className="bg-card border border-border rounded-lg p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Bot className="h-6 w-6 text-primary" />
-                <h2 className="text-2xl font-semibold text-foreground">
+            <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
+              <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+                <h2 className="text-xl sm:text-2xl font-semibold text-foreground">
                   My Agents
                 </h2>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {agents.map((agent) => (
                   <div
                     key={agent.id}
-                    className="p-4 bg-background border border-border rounded-md hover:border-primary transition-colors"
+                    className="p-3 sm:p-4 bg-background border border-border rounded-md hover:border-primary transition-colors"
                     data-testid={`card-agent-${agent.id}`}
                   >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-foreground">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-start mb-2 gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-foreground text-sm sm:text-base break-words">
                           {agent.name}
                         </h3>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs sm:text-sm text-muted-foreground">
                           {agent.venue}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
                         <span
-                          className={`px-2 py-1 text-xs rounded-md ${agent.status === "PUBLIC"
+                          className={`px-2 py-1 text-xs rounded-md whitespace-nowrap ${agent.status === "PUBLIC"
                             ? "bg-primary/20 text-primary"
                             : agent.status === "PRIVATE"
                               ? "bg-yellow-500/20 text-yellow-500"
@@ -532,21 +532,21 @@ export default function Creator() {
                         {/* Edit button */}
                         <button
                           onClick={() => handleEditAgent(agent.id)}
-                          className="flex items-center gap-1 px-3 py-1 border border-border text-xs rounded-md hover:border-primary transition-all"
+                          className="flex items-center gap-1 px-2 sm:px-3 py-1 border border-border text-xs rounded-md hover:border-primary transition-all"
                           data-testid={`button-edit-${agent.id}`}
                         >
                           <Settings className="h-3 w-3" />
-                          Edit
+                          <span className="hidden sm:inline">Edit</span>
                         </button>
 
                         {/* Deploy button - available for all agent statuses */}
                         <button
                           onClick={() => handleDeployAgent(agent)}
-                          className="flex items-center gap-1 px-3 py-1 bg-[var(--accent)] text-[var(--bg-deep)] text-xs rounded-md hover:bg-[var(--accent-dim)] transition-all font-bold"
+                          className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-[var(--accent)] text-[var(--bg-deep)] text-xs rounded-md hover:bg-[var(--accent-dim)] transition-all font-bold"
                           data-testid={`button-deploy-${agent.id}`}
                         >
                           <Zap className="h-3 w-3" />
-                          Deploy
+                          <span className="hidden sm:inline">Deploy</span>
                         </button>
 
                         {/* Status toggle buttons */}
@@ -554,29 +554,31 @@ export default function Creator() {
                           <button
                             onClick={() => deactivateAgent(agent.id)}
                             disabled={deactivatingAgentId === agent.id}
-                            className="flex items-center gap-1 px-3 py-1 bg-yellow-500 text-white text-xs rounded-md hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-yellow-500 text-white text-xs rounded-md hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             <Pause className="h-3 w-3" />
-                            {deactivatingAgentId === agent.id
+                            <span className="hidden sm:inline">{deactivatingAgentId === agent.id
                               ? "Switching..."
-                              : "Private"}
+                              : "Private"}</span>
+                            <span className="sm:hidden">{deactivatingAgentId === agent.id ? "..." : "P"}</span>
                           </button>
                         ) : (
                           <button
                             onClick={() => activateAgent(agent.id)}
                             disabled={activatingAgentId === agent.id}
-                            className="flex items-center gap-1 px-3 py-1 bg-primary text-primary-foreground text-xs rounded-md hover-elevate disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-primary text-primary-foreground text-xs rounded-md hover-elevate disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             <CheckCircle className="h-3 w-3" />
-                            {activatingAgentId === agent.id
+                            <span className="hidden sm:inline">{activatingAgentId === agent.id
                               ? "Switching..."
-                              : "Public"}
+                              : "Public"}</span>
+                            <span className="sm:hidden">{activatingAgentId === agent.id ? "..." : "P"}</span>
                           </button>
                         )}
                       </div>
                     </div>
                     {agent.apr30d !== null && (
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-xs sm:text-sm mt-2">
                         <span className="text-muted-foreground">
                           APR (30d):
                         </span>
@@ -591,19 +593,19 @@ export default function Creator() {
             </div>
 
             {/* Widget 2: Active Deployments */}
-            <div className="bg-card border border-border rounded-lg p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Rocket className="h-6 w-6 text-primary" />
-                <h2 className="text-2xl font-semibold text-foreground">
+            <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
+              <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                <Rocket className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+                <h2 className="text-xl sm:text-2xl font-semibold text-foreground">
                   Active Deployments
                 </h2>
               </div>
               {deployments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   No deployments yet
                 </p>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {deployments.slice(0, 5).map((deployment) => {
                     const agent = agents.find(
                       (a) => a.id === deployment.agentId
@@ -611,20 +613,20 @@ export default function Creator() {
                     return (
                       <div
                         key={deployment.id}
-                        className="p-4 bg-background border border-border rounded-md"
+                        className="p-3 sm:p-4 bg-background border border-border rounded-md"
                         data-testid={`card-deployment-${deployment.id}`}
                       >
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h3 className="font-semibold text-foreground">
+                        <div className="flex justify-between items-start mb-2 gap-2">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold text-foreground text-sm sm:text-base break-words">
                               {agent?.name || "Unknown Agent"}
                             </h3>
-                            <p className="text-xs text-muted-foreground font-mono">
+                            <p className="text-xs text-muted-foreground font-mono truncate">
                               {deployment.safeWallet.slice(0, 10)}...
                             </p>
                           </div>
                           <span
-                            className={`px-2 py-1 text-xs rounded-md ${deployment.status === "ACTIVE"
+                            className={`px-2 py-1 text-xs rounded-md whitespace-nowrap flex-shrink-0 ${deployment.status === "ACTIVE"
                               ? "bg-primary/20 text-primary"
                               : "bg-muted text-muted-foreground"
                               }`}
