@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { stripe } from '@lib/stripe';
 import { CreditService } from '@lib/credit-service';
+import { TradeQuotaService } from '@lib/trade-quota-service';
 
 // Disable Next.js body parser to handle raw body for Stripe signature verification
 export const config = {
@@ -47,6 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const userWallet = session.metadata?.userWallet;
         const credits = session.metadata?.credits;
+        const trades = session.metadata?.trades;
         const tierName = session.metadata?.tierName;
 
         if (!userWallet || !credits) {
@@ -55,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         try {
-            console.log(`Processing Stripe Credit for ${userWallet}: ${credits} credits`);
+            console.log(`Processing Stripe Credit for ${userWallet}: ${credits} credits, ${trades} trades`);
 
             await CreditService.mintCredits(
                 userWallet,
@@ -69,7 +71,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
             );
 
-            console.log(`✅ Successfully credited ${credits} credits to ${userWallet}`);
+            // Mint trade quota alongside credits
+            if (trades && parseInt(trades) > 0) {
+                await TradeQuotaService.mintTradeQuota(
+                    userWallet,
+                    parseInt(trades),
+                    `stripe-trades-${session.id}`
+                );
+            }
+
+            console.log(`✅ Successfully credited ${credits} credits and ${trades} trades to ${userWallet}`);
         } catch (error: any) {
             console.error('❌ Error minting credits from Stripe webhook:', error);
             // We return 500 so Stripe retries the webhook

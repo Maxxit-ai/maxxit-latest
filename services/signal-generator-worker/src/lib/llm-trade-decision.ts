@@ -26,6 +26,11 @@ interface TradeDecisionInput {
   currentPositions?: OpenPosition[];
   isLazyTraderAgent?: boolean; // True for Lazy Trader agents (don't prioritize confidence score as much)
   influencerImpactFactor?: number; // Impact factor of the signal sender (0-100, 50=neutral)
+  copyTradeClubContext?: {
+    clubName: string;
+    clubDescription: string | null;
+    tokenFilters: string[];
+  };
 }
 
 interface OpenPosition {
@@ -142,12 +147,12 @@ export class LLMTradeDecisionMaker {
     }
 
     // Determine confidence instruction based on whether this is a Lazy Trader agent
-  const confidenceInstruction = input.isLazyTraderAgent
-    ? `CONFIDENCE SCORE: ${input.confidenceScore}
+    const confidenceInstruction = input.isLazyTraderAgent
+      ? `CONFIDENCE SCORE: ${input.confidenceScore}
 This is a Lazy Trader agent - do NOT heavily weigh the confidence score. 
 Even if confidence is lower, you can proceed with the trade if analytics and market conditions are favorable.
 Focus primarily on market analytics, momentum, sentiment, and risk/reward rather than the confidence score.`
-    : `CONFIDENCE SCORE: ${input.confidenceScore}
+      : `CONFIDENCE SCORE: ${input.confidenceScore}
 CRITICAL: Confidence score is a KEY factor in your decision. This represents the signal quality/strength.
 • High confidence (>0.7): Strong signal - can take larger positions if analytics support it
 • Medium confidence (0.4-0.7): Moderate signal - use conservative sizing, require supportive analytics
@@ -183,7 +188,7 @@ For position changes:
 Your decision must include:
 1) shouldOpenNewPosition: boolean
 2) closeExistingPositionIds: string[] (array of tradeIds to close if flipping - can be multiple)
-3) fundAllocation: percentage of balance to use
+3) fundAllocation: percentage of balance to use (0-100, e.g., 18 means 18%)
 4) leverage: multiplier
 5) reason: detailed explanation of your decision
 6) netPositionChange: "OPEN" | "CLOSE" | "FLIP" | "NONE"
@@ -209,7 +214,33 @@ This represents the historical performance of the signal sender (0=worst, 50=neu
 • Low (20-40): More skeptical, require stronger signal evidence for high confidence
 • Very Poor (<20): Highly skeptical, require extremely strong signal evidence for any confidence
 
-USER STYLE INPUTS (use internally; don't echo numeric values):
+${input.copyTradeClubContext ? `
+COPY-TRADE CLUB CONTEXT:
+⚠️ CRITICAL: This signal is for a SPECIALIZED copy-trading club with strict token restrictions.
+
+Club Name: ${input.copyTradeClubContext.clubName}
+Club Description: ${input.copyTradeClubContext.clubDescription || "No description provided"}
+Allowed Trading Pairs: [${input.copyTradeClubContext.tokenFilters.join(", ") || "ALL PAIRS"}]
+
+TOKEN MATCHING REQUIREMENT:
+The signal token "${input.token}" must be the BASE asset of one of the allowed pairs above.
+${input.copyTradeClubContext.tokenFilters.length > 0 ? `
+Examples:
+• Signal "BTC" matches "BTC/USD" ✓
+• Signal "ETH" matches "ETH/USD" ✓
+• Signal "XAU" matches "XAU/USD" ✓
+• Signal "BTC" does NOT match "ETH/USD" ✗
+
+Check: Does "${input.token}" appear as the base (left side) of any pair in [${input.copyTradeClubContext.tokenFilters.join(", ")}]?
+
+• If YES → Proceed with normal analysis
+• If NO → You MUST set:
+  - shouldOpenNewPosition: false
+  - fundAllocation: 0
+  - reason: "Signal rejected: ${input.token} is not within the ${input.copyTradeClubContext.clubName} allowed pairs. This club only trades [${input.copyTradeClubContext.tokenFilters.join(", ")}]."
+  - netPositionChange: "NONE"
+` : "• No token restrictions - all tokens are allowed for this club."}
+` : ""}USER STYLE INPUTS (use internally; don't echo numeric values):
 ${JSON.stringify(input.userTradingPreferences || "Not available", null, 2)}
 
 BALANCE: $${input.userBalance.toFixed(2)} USDC
@@ -247,7 +278,7 @@ Return only this JSON object:
 {
 "shouldOpenNewPosition": boolean,
 "closeExistingPositionIds": string[],
-"fundAllocation": number,
+"fundAllocation": number (0-100 whole number, e.g., 18 for 18%),
 "leverage": number,
 "marketEvidence": {
 "price": number | null,
@@ -360,19 +391,30 @@ RESPOND ONLY WITH THE JSON OBJECT.`;
       const parsed = JSON.parse(jsonMatch[0]);
 
       // Validate and sanitize the response
+      // Handle LLM returning decimal fractions (0.18) instead of percentages (18)
+      let fundAllocation = Number(parsed.fundAllocation) || 0;
+      if (fundAllocation > 0 && fundAllocation < 1) {
+        fundAllocation = fundAllocation * 100;
+      }
+      fundAllocation = Math.max(0, Math.min(100, fundAllocation));
+
       return {
         shouldOpenNewPosition: Boolean(parsed.shouldOpenNewPosition),
         closeExistingPositionIds: Array.isArray(parsed.closeExistingPositionIds)
           ? parsed.closeExistingPositionIds
           : (parsed.closeExistingPositionId ? [parsed.closeExistingPositionId] : []),
-        fundAllocation: Math.max(0, Math.min(100, Number(parsed.fundAllocation) || 0)),
+        fundAllocation,
         leverage: Math.max(1, Math.min(50, Number(parsed.leverage) || 1)),
         reason: parsed.reason || "No reason provided",
         netPositionChange: parsed.netPositionChange || "NONE",
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error("[LLM Trade Decision] Failed to parse LLM response:", error);
       console.error("[LLM Trade Decision] Response was:", response);
+
+      // Include error details and truncated response for debugging
+      const truncatedResponse = response?.substring(0, 200) || "empty response";
+      const errorMessage = error?.message || "Unknown parse error";
 
       // Return a conservative decision as fallback
       return {
@@ -380,7 +422,7 @@ RESPOND ONLY WITH THE JSON OBJECT.`;
         closeExistingPositionIds: [],
         fundAllocation: 0,
         leverage: 1,
-        reason: "Failed to parse LLM response",
+        reason: `Failed to parse LLM response: ${errorMessage}. Raw response (truncated): ${truncatedResponse}`,
         netPositionChange: "NONE",
       };
     }

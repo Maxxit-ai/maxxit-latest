@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen, ChevronDown, Activity, Coins } from 'lucide-react';
-import { Bot, BarChart3, FileText, Copy, Check, LogOut, X, AlertCircle, Sparkles } from 'lucide-react';
+import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen, ChevronDown, Activity, Coins, Trophy } from 'lucide-react';
+import { Bot, BarChart3, FileText, Copy, Check, LogOut, X, AlertCircle, Sparkles, BookMarked } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import Image from 'next/image';
 import { ethers } from 'ethers';
@@ -186,7 +186,9 @@ export function Header() {
     }
   }, [authenticated, user?.wallet?.address]);
 
-  const navLinks = [{ href: '/', label: 'Home', icon: Home, testId: 'nav-home' }];
+  const navLinks = [
+    { href: '/', label: 'Home', icon: Home, testId: 'nav-home' },
+  ];
 
   const portfolioItems = [
     { href: '/dashboard', label: 'Dashboard', icon: Activity, testId: 'nav-dashboard' },
@@ -197,17 +199,19 @@ export function Header() {
   const tradingItems = [
     { href: '/lazy-trading', label: 'Lazy Trading', icon: Bot, testId: 'nav-lazy-trading' },
     { href: '/creator', label: 'Create Club', icon: User, testId: 'nav-my-agents' },
+    { href: '/top-traders', label: 'Top Traders', icon: Trophy, testId: 'nav-top-traders' }
   ];
 
   const resourcesItems = [
     { href: '/blog', label: 'Blog', icon: BookOpen, testId: 'nav-blog' },
     { href: '/docs', label: 'Docs', icon: FileText, testId: 'nav-docs' },
+    { href: '/user-manual', label: 'User Manual', icon: BookMarked, testId: 'nav-user-manual' },
     { href: '/pricing', label: 'Pricing', icon: Sparkles, testId: 'nav-pricing' },
   ];
 
   const isPortfolioActive = router.pathname === '/dashboard' || router.pathname === '/my-deployments' || router.pathname === '/my-trades';
   const isTradingActive = router.pathname === '/lazy-trading' || router.pathname === '/creator';
-  const isResourcesActive = router.pathname === '/blog' || router.pathname === '/docs' || router.pathname === '/pricing';
+  const isResourcesActive = router.pathname === '/blog' || router.pathname === '/docs' || router.pathname === '/user-manual' || router.pathname === '/pricing';
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -319,6 +323,31 @@ export function Header() {
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, [isMobileMenuOpen]);
+
+  // Prevent background scrolling when mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      // Save current scroll position
+      const scrollY = window.scrollY;
+      // Disable scrolling on body
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+
+      return () => {
+        // Re-enable scrolling when menu closes
+        const scrollY = document.body.style.top;
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.body.style.overflow = '';
+        if (scrollY) {
+          window.scrollTo(0, parseInt(scrollY || '0') * -1);
+        }
+      };
+    }
   }, [isMobileMenuOpen]);
 
 
@@ -441,7 +470,7 @@ export function Header() {
 
   return (
     <header className="sticky py-4 top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-lg">
-      <div className="max-w-7xl mx-auto px-6">
+      <div className="px-6">
         <div className="flex h-14 items-center justify-between">
           {/* Logo/Brand */}
           <Link href="/" className="flex items-center gap-2">
@@ -724,7 +753,18 @@ export function Header() {
         {isMobileMenuOpen && (
           <div
             ref={mobileMenuRef}
-            className="md:hidden mt-3 border border-[var(--border)] bg-[var(--bg-surface)] shadow-lg"
+            onWheel={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const target = e.currentTarget;
+              const isScrollable = target.scrollHeight > target.clientHeight;
+              const isAtTop = target.scrollTop === 0;
+              const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
+              if (isScrollable && ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0))) {
+                e.stopPropagation();
+              }
+            }}
+            className="lg:hidden mt-3 border border-[var(--border)] bg-[var(--bg-surface)] shadow-lg max-h-[calc(100vh-120px)] overflow-y-auto"
           >
             <div className="flex flex-col divide-y divide-[var(--border)]">
               <div className="flex flex-col p-2">

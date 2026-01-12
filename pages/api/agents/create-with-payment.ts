@@ -105,7 +105,7 @@ export default async function handler(
             );
 
             return { agent, paymentResult };
-        }, { timeout: 30000 });
+        }, { timeout: 60000 });
 
         // 3. Return response
         const camelCaseAgent = convertKeysToCamelCase(result.agent);

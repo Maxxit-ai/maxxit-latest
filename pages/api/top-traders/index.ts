@@ -23,20 +23,39 @@ export default async function handler(
       },
     });
 
-    // Get agent counts using raw query (works before Prisma client regeneration)
+    // Get agent counts - try to fetch, but handle gracefully if table doesn't exist
     const traderIds = topTraders.map((t) => t.id);
-    const countResults = await prisma.$queryRaw<
-      Array<{ top_trader_id: string; count: bigint }>
-    >`
-      SELECT top_trader_id, COUNT(*)::bigint as count
-      FROM agent_top_traders
-      WHERE top_trader_id = ANY(${traderIds}::uuid[])
-      GROUP BY top_trader_id
-    `;
+    const countMap = new Map<string, number>();
 
-    const countMap = new Map(
-      countResults.map((r) => [r.top_trader_id, Number(r.count)])
-    );
+    // Try to get agent counts, but don't fail if table doesn't exist
+    if (traderIds.length > 0) {
+      try {
+        // Try using Prisma client first (if table exists and client is generated)
+        const agentTopTraders = await (
+          prisma as any
+        ).agent_top_traders.findMany({
+          where: {
+            top_trader_id: {
+              in: traderIds,
+            },
+          },
+          select: {
+            top_trader_id: true,
+          },
+        });
+
+        // Count occurrences of each trader_id
+        agentTopTraders.forEach((record: { top_trader_id: string }) => {
+          const currentCount = countMap.get(record.top_trader_id) || 0;
+          countMap.set(record.top_trader_id, currentCount + 1);
+        });
+      } catch (error: any) {
+        console.warn(
+          "[API] Could not fetch agent counts (table may not exist):",
+          error.message
+        );
+      }
+    }
 
     // Convert to camelCase for frontend
     const formatted = topTraders.map((trader: any) => ({

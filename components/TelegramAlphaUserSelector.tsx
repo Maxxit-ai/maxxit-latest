@@ -95,7 +95,6 @@ export function TelegramAlphaUserSelector({
     <div className="space-y-3">
       <div className="text-sm text-[var(--text-secondary)] mb-3 flex justify-between items-center">
         <span>
-          Select Telegram users whose alpha signals your agent should follow.
           Selected: {selectedIds.size}
         </span>
         {selectedIds.size > 0 && (

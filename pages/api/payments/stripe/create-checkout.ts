@@ -1,10 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { stripe } from '@lib/stripe';
 
-const pricingTiers: Record<string, { price: number; credits: number }> = {
-    "STARTER": { price: 19, credits: 1000 },
-    "PRO": { price: 49, credits: 5000 },
-    "WHALE": { price: 99, credits: 15000 }
+const pricingTiers: Record<string, { price: number; credits: number; trades: number }> = {
+    "STARTER": { price: 19, credits: 1000, trades: 100 },
+    "PRO": { price: 49, credits: 5000, trades: 200 },
+    "WHALE": { price: 99, credits: 15000, trades: 400 }
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -49,6 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 userWallet,
                 tierName,
                 credits: tier.credits.toString(),
+                trades: tier.trades.toString(),
             },
         });
 

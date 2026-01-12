@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "install:all": "npm install",
-    "build:packages": "npm run build --workspace=@maxxit/database && npm run build --workspace=@maxxit/common",
+    "build:packages": "npm run build --workspace=@maxxit/database && npm run build --workspace=@maxxit/common && npm run build --workspace=@maxxit/queue",
     "build:services": "npm run build --workspaces --if-present",
     "prisma:generate": "cd packages/database && npx prisma generate",
     "dev": "tsx server/index.ts",

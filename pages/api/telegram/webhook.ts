@@ -6,6 +6,7 @@ import {
 } from "../../../lib/telegram-bot";
 import { createCommandParser } from "../../../lib/telegram-command-parser";
 import { TradeExecutor } from "../../../lib/trade-executor";
+import { addJob, QueueName } from "../../../packages/queue/src";
 const bot = createTelegramBot();
 const parser = createCommandParser();
 
@@ -314,7 +315,7 @@ async function handleAlphaMessage(
     // This ensures consistent classification logic in one place
     const messageKey = `alpha_${telegramUserId}_${message.message_id}`;
 
-    await prisma.telegram_posts.create({
+    const createdPost = await prisma.telegram_posts.create({
       data: {
         alpha_user_id: alphaUser.id,
         source_id: null, // Not from a channel, from individual user
@@ -332,6 +333,26 @@ async function handleAlphaMessage(
         impact_factor: 0,
       },
     });
+
+    // Add job to queue for immediate parallel processing
+    try {
+      await addJob(
+        QueueName.TELEGRAM_ALPHA_CLASSIFICATION,
+        "classify-message",
+        {
+          type: "CLASSIFY_MESSAGE" as const,
+          messageId: createdPost.id,
+          timestamp: Date.now(),
+        },
+        {
+          jobId: `classify-${createdPost.id}`,
+        }
+      );
+      console.log("[Alpha] Queued message for classification:", createdPost.id.substring(0, 8));
+    } catch (queueError: any) {
+      // Queue failure is non-fatal - fallback trigger will pick it up
+      console.warn("[Alpha] Queue unavailable, fallback trigger will process:", queueError.message);
+    }
 
     console.log("[Alpha] Stored message (awaiting classification by worker)");
 
