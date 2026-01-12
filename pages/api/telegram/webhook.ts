@@ -6,7 +6,7 @@ import {
 } from "../../../lib/telegram-bot";
 import { createCommandParser } from "../../../lib/telegram-command-parser";
 import { TradeExecutor } from "../../../lib/trade-executor";
-import { addJob, QueueName } from "@maxxit/queue";
+import { addJob, QueueName } from "../../../packages/queue/src";
 const bot = createTelegramBot();
 const parser = createCommandParser();
 

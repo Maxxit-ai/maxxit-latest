@@ -22,7 +22,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid venue' });
     }
 
-    // Fetch markets from database
+    if (venueUpper === 'OSTIUM') {
+      const ostiumPairs = await prisma.ostium_available_pairs.findMany({
+        orderBy: {
+          id: 'asc',
+        },
+      });
+
+      const formattedMarkets: Record<string, any> = {};
+      for (const pair of ostiumPairs) {
+        formattedMarkets[pair.symbol] = {
+          index: pair.id,
+          name: pair.symbol,
+          available: true,
+          minPosition: null,
+          maxLeverage: pair.max_leverage,
+          makerMaxLeverage: pair.maker_max_leverage,
+          group: pair.group,
+          currentPrice: pair.price ? parseFloat(pair.price.toString()) : null,
+        };
+      }
+
+      return res.status(200).json({
+        success: true,
+        venue: venueUpper,
+        count: ostiumPairs.length,
+        markets: formattedMarkets,
+        lastSynced: ostiumPairs.length > 0 ? ostiumPairs[0].updated_at : null,
+      });
+    }
+
     const markets = await prisma.venue_markets.findMany({
       where: {
         venue: venueUpper as any,

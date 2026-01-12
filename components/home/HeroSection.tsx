@@ -121,7 +121,7 @@ const HeroSection = memo(
     );
 
     return (
-      <section className="py-16 relative flex-1 flex items-center overflow-hidden bg-black">
+      <section className="py-8 sm:py-12 md:py-16 relative flex-1 flex items-center overflow-hidden bg-black">
         <div className="absolute inset-0 w-full flex-1">
           <LightPillar
             topColor="#016b38"
@@ -138,16 +138,16 @@ const HeroSection = memo(
           />
         </div>
 
-        <div className="max-w-5xl mx-auto px-6 text-center relative z-10">
-          <p className="text-sm text-accent mb-6 tracking-widest font-mono">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative z-10">
+          <p className="text-xs sm:text-sm text-accent mb-4 sm:mb-6 tracking-widest font-mono">
             THE DECENTRALIZED TRADING ECONOMY
           </p>
 
-          <h1 className="text-5xl md:text-6xl lg:text-8xl ">
+          <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-8xl mb-6 sm:mb-8">
             <SplitText
               text="TRADE LIKE AN"
               tag="span"
-              className="font-display text-5xl md:text-7xl lg:text-8xl block"
+              className="font-display text-3xl sm:text-4xl md:text-6xl lg:text-8xl block"
               delay={50}
               duration={0.8}
               ease="power3.out"
@@ -161,7 +161,7 @@ const HeroSection = memo(
             <SplitText
               text="INSTITUTION"
               tag="span"
-              className="font-display text-5xl md:text-7xl lg:text-8xl text-accent block"
+              className="font-display text-3xl sm:text-4xl md:text-6xl lg:text-8xl text-accent block"
               delay={50}
               duration={0.8}
               ease="power3.out"
@@ -178,10 +178,10 @@ const HeroSection = memo(
             Join an Alpha Club to automate your trading. Three AI agents work together to find signals, execute with your risk style, and route to the best venue — all while your funds stay in your wallet.
           </p> */}
 
-          <div className="flex flex-wrap justify-center gap-4 mb-16">
+          <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4 mb-8 sm:mb-12 md:mb-16">
             <button
               onClick={handleDeployClick}
-              className="group px-8 py-4 bg-accent text-[var(--bg-deep)] font-bold text-lg hover:bg-[var(--accent-dim)] transition-all"
+              className="group px-4 sm:px-6 md:px-8 py-3 sm:py-4 bg-accent text-[var(--bg-deep)] font-bold text-sm sm:text-base md:text-lg hover:bg-[var(--accent-dim)] transition-all w-full sm:w-auto"
             >
               JOIN ALPHA CLUB
               <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">
@@ -189,8 +189,7 @@ const HeroSection = memo(
               </span>
             </button>
             <Link href="/lazy-trading"
-              target="_blank"
-              className="group px-8 py-4 border-2 border-accent text-accent font-bold text-lg hover:bg-accent hover:text-[var(--bg-deep)] transition-all"
+              className="group px-4 sm:px-6 md:px-8 py-3 sm:py-4 border-2 border-accent text-accent font-bold text-sm sm:text-base md:text-lg hover:bg-accent hover:text-[var(--bg-deep)] transition-all w-full sm:w-auto text-center"
             >
               LAZY TRADING
               <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">
@@ -199,25 +198,25 @@ const HeroSection = memo(
             </Link>
             <button
               onClick={handleLearnMoreClick}
-              className="px-8 py-4 border border-[var(--border)] font-bold text-lg hover:border-accent hover:text-accent transition-all"
+              className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 border border-[var(--border)] font-bold text-sm sm:text-base md:text-lg hover:border-accent hover:text-accent transition-all w-full sm:w-auto"
             >
               LEARN MORE
             </button>
           </div>
 
           {/* Powered by Eigen AI */}
-          <div className="relative inline-block mx-auto mb-12 px-6 py-3 transition-all duration-300 group">
+          <div className="relative inline-block mx-auto mb-6 sm:mb-8 md:mb-12 px-4 sm:px-6 py-2 sm:py-3 transition-all duration-300 group">
             {/* Corner decorations */}
-            <div className="absolute -top-1 -left-1 w-4 h-4 border-t-8 border-l-8 border-[var(--accent)] opacity-60 group-hover:opacity-100 transition-opacity duration-300"></div>
-            <div className="absolute -top-1 -right-1 w-4 h-4 border-t-8 border-r-8 border-[var(--accent)] opacity-60 group-hover:opacity-100 transition-opacity duration-300"></div>
-            <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-8 border-l-8 border-[var(--accent)] opacity-60 group-hover:opacity-100 transition-opacity duration-300"></div>
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-8 border-r-8 border-[var(--accent)] opacity-60 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute -top-1 -left-1 w-3 h-3 sm:w-4 sm:h-4 border-t-4 sm:border-t-8 border-l-4 sm:border-l-8 border-[var(--accent)] opacity-60 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute -top-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 border-t-4 sm:border-t-8 border-r-4 sm:border-r-8 border-[var(--accent)] opacity-60 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute -bottom-1 -left-1 w-3 h-3 sm:w-4 sm:h-4 border-b-4 sm:border-b-8 border-l-4 sm:border-l-8 border-[var(--accent)] opacity-60 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 border-b-4 sm:border-b-8 border-r-4 sm:border-r-8 border-[var(--accent)] opacity-60 group-hover:opacity-100 transition-opacity duration-300"></div>
 
             {/* Glow effect on hover */}
             <div className="absolute inset-0 opacity-0 transition-opacity duration-300"></div>
 
-            <div className="flex items-center gap-2 relative z-10">
-              <span className="text-lg font-mono text-[var(--text-elevated)] tracking-wider transition-colors duration-300">
+            <div className="flex flex-col sm:flex-row items-center gap-2 relative z-10">
+              <span className="text-sm sm:text-base md:text-lg font-mono text-[var(--text-elevated)] tracking-wider transition-colors duration-300">
                 POWERED BY
               </span>
               <BrushstrokeBackground className="p-2">
@@ -236,9 +235,9 @@ const HeroSection = memo(
             </div>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-8 md:gap-16">
+          <div className="flex flex-wrap justify-center gap-4 sm:gap-6 md:gap-8 lg:gap-16">
             <div className="text-center">
-              <p className="font-display text-5xl text-accent">
+              <p className="font-display text-3xl sm:text-4xl md:text-5xl text-accent">
                 <AnimatedNumber value={261} duration={2000} />
               </p>
               <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -246,13 +245,13 @@ const HeroSection = memo(
               </p>
             </div>
             <div className="text-center">
-              <p className="font-display text-5xl text-accent">
+              <p className="font-display text-3xl sm:text-4xl md:text-5xl text-accent">
                 <AnimatedNumber value="24/7" duration={1500} />
               </p>
               <p className="text-xs text-[var(--text-muted)] mt-1">AUTOMATED</p>
             </div>
             <div className="text-center">
-              <p className="font-display text-5xl text-accent">
+              <p className="font-display text-3xl sm:text-4xl md:text-5xl text-accent">
                 <AnimatedNumber value={100} duration={2000} suffix="%" />
               </p>
               <p className="text-xs text-[var(--text-muted)] mt-1">

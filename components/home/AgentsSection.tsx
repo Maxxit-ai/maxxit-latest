@@ -26,9 +26,11 @@ interface AgentsSectionProps {
     hasApproval: boolean;
   } | null;
   fromHome?: boolean;
+  creditBalance?: number; // User's current credit balance
+  userWallet?: string; // User's wallet address for creator check
 }
 
-const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {}, ostiumDelegationStatus, ostiumUsdcAllowance, fromHome = true }: AgentsSectionProps) => {
+const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {}, ostiumDelegationStatus, ostiumUsdcAllowance, fromHome = true, creditBalance = 0, userWallet = '' }: AgentsSectionProps) => {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
@@ -60,7 +62,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
   return (
     <>
-      <section id="agents" className={`border-[var(--border)] bg-[var(--bg-deep)] ${fromHome ? 'border-t-2 py-24' : 'border-t-0 py-8'}`}>
+      <section id="agents" className={`border-[var(--border)] bg-[var(--bg-deep)] ${fromHome ? 'border-t-2 py-12 sm:py-16 md:py-20 lg:py-24' : 'border-t-0 py-8'}`}>
         <style jsx>{`
         @keyframes borderScan {
           0% {
@@ -233,27 +235,27 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
         }
       `}</style>
 
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           {fromHome && (
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 pb-8 border-b-2 border-[var(--border)]">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 mb-6 sm:mb-8 pb-6 sm:pb-8 border-b-2 border-[var(--border)]">
               <div>
-                <p className="data-label mb-4">JOIN NOW</p>
-                <h2 className="font-display text-4xl md:text-5xl">
+                <p className="data-label mb-3 sm:mb-4">JOIN NOW</p>
+                <h2 className="font-display text-2xl sm:text-3xl md:text-4xl lg:text-5xl">
                   <span className="text-accent">ALPHA</span> CLUBS
                 </h2>
-                <p className="text-[var(--text-secondary)] mt-2">
+                <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 sm:mt-2">
                   Each club has unique alpha sources and trading strategies
                 </p>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="border-2 border-[var(--border)] px-4 py-2 bg-[var(--bg-surface)]">
-                  <span className="text-sm text-[var(--text-muted)] font-mono">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="border-2 border-[var(--border)] px-3 sm:px-4 py-1.5 sm:py-2 bg-[var(--bg-surface)]">
+                  <span className="text-xs sm:text-sm text-[var(--text-muted)] font-mono">
                     {!loading && `${agents.length} AVAILABLE`}
                   </span>
                 </div>
                 <Link href="/create-agent">
-                  <button className="group px-4 py-2 border-2 border-[var(--border)] bg-[var(--bg-surface)] text-sm font-bold hover:border-accent hover:text-accent hover:bg-accent/5 transition-all flex items-center gap-2">
-                    <Plus className="group-hover:rotate-12 transition-transform" size={14} />
+                  <button className="group px-3 sm:px-4 py-1.5 sm:py-2 border-2 border-[var(--border)] bg-[var(--bg-surface)] text-xs sm:text-sm font-bold hover:border-accent hover:text-accent hover:bg-accent/5 transition-all flex items-center gap-2">
+                    <Plus className="group-hover:rotate-12 transition-transform w-3 h-3 sm:w-3.5 sm:h-3.5" size={14} />
                     CREATE CLUB
                   </button>
                 </Link>
@@ -265,9 +267,9 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
           {/* Trading Wallets Display - Single Location */}
           {userAgentAddresses && (userAgentAddresses.hyperliquid || userAgentAddresses.ostium) && (
-            <div className="mb-8 p-4 border border-[var(--accent)]/40 bg-[var(--accent)]/5">
-              <p className="data-label mb-3">YOUR TRADING WALLETS</p>
-              <div className="grid md:grid-cols-2 gap-3">
+            <div className="mb-6 sm:mb-8 p-3 sm:p-4 border border-[var(--accent)]/40 bg-[var(--accent)]/5">
+              <p className="data-label mb-2 sm:mb-3">YOUR TRADING WALLETS</p>
+              <div className="grid md:grid-cols-2 gap-2 sm:gap-3">
                 {/* {userAgentAddresses.hyperliquid && (
                   <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -327,9 +329,9 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
           {/* Ostium Delegation Status Card */}
           {userAgentAddresses?.ostium && (
-            <div className="mb-8 p-4 border border-[var(--border)] bg-[var(--bg-surface)]">
-              <p className="data-label mb-3">OSTIUM STATUS</p>
-              <div className="grid md:grid-cols-2 gap-4">
+            <div className="mb-6 sm:mb-8 p-3 sm:p-4 border border-[var(--border)] bg-[var(--bg-surface)]">
+              <p className="data-label mb-2 sm:mb-3">OSTIUM STATUS</p>
+              <div className="grid md:grid-cols-2 gap-3 sm:gap-4">
                 {/* Delegation Status */}
                 <div className="p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
                   <div className="flex items-center justify-between mb-2">
@@ -430,14 +432,14 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
               </Link>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
               {agents.map((agent, i) => (
                 <div
                   key={agent.id}
                   onClick={() => onCardClick(agent)}
                   onMouseEnter={() => setHoveredCard(agent.id)}
                   onMouseLeave={() => setHoveredCard(null)}
-                  className="border-scan flex h-full flex-col justify-between border-2 border-[var(--border)] p-6 cursor-pointer bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-all group card-enter relative overflow-hidden"
+                  className="border-scan flex h-full flex-col justify-between border-2 border-[var(--border)] p-4 sm:p-5 md:p-6 cursor-pointer bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-all group card-enter relative overflow-hidden"
                   style={{ animationDelay: `${i * 0.1}s` }}
                 >
                   {/* Decorative gradient overlay on hover */}
@@ -450,9 +452,9 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                   }} />
 
                   <div className="relative z-10">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-display text-xl group-hover:text-accent transition-colors mb-2 truncate">
+                    <div className="flex items-start justify-between mb-3 sm:mb-4">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <h3 className="font-display text-lg sm:text-xl group-hover:text-accent transition-colors mb-1 sm:mb-2 truncate">
                           {agent.name}
                         </h3>
                         {/* <div className="flex items-center gap-2 flex-wrap">
@@ -467,7 +469,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                           )}
                         </div> */}
                       </div>
-                      <div className="border-2 border-[var(--border)] px-2 py-1 bg-[var(--bg-elevated)] flex-shrink-0 ml-2">
+                      <div className="border-2 border-[var(--border)] px-1.5 sm:px-2 py-0.5 sm:py-1 bg-[var(--bg-elevated)] flex-shrink-0 ml-2">
                         <span className="text-[var(--text-muted)] text-xs font-mono font-bold">
                           #{String(i + 1).padStart(2, '0')}
                         </span>
@@ -476,36 +478,36 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
                     {/* Description Section */}
                     {agent.description && (
-                      <div className="mb-4">
+                      <div className="mb-3 sm:mb-4">
                         <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed opacity-80">
                           {agent.description}
                         </p>
                       </div>
                     )}
 
+
+                    {/* Metrics Section - Unified Design */}
+                    <div className="flex-1 flex flex-col justify-center">
                     {/* Price Section */}
-                    <div className="mb-5 pb-4 border-b border-[#ededed]/20">
+                    <div className="mb-4 sm:mb-5 pb-3 sm:pb-4 border-b border-[#ededed]/20">
                       <div className="flex items-center justify-between">
                         <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] opacity-70">
                           COUNCIL PRICE
                         </p>
-                        <p className={`text-sm font-mono font-bold ${agent.totalCost && agent.totalCost > 0 ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+                        <p className={`text-xs sm:text-sm font-mono font-bold ${agent.totalCost && agent.totalCost > 0 ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
                           {agent.totalCost && agent.totalCost > 0
                             ? `${agent.totalCost.toFixed(0)} CREDS`
                             : 'FREE'}
                         </p>
                       </div>
                     </div>
-
-                    {/* Metrics Section - Unified Design */}
-                    <div className="flex-1 flex flex-col justify-center">
                       {/* Primary Metric - 30D Return */}
-                      <div className="mb-4">
-                        <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1.5 opacity-70">
+                      <div className="mb-3 sm:mb-4">
+                        <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 sm:mb-1.5 opacity-70">
                           30D RETURN
                         </p>
                         <p
-                          className={`text-3xl font-display leading-none font-bold ${agent.apr30d && agent.apr30d > 0
+                          className={`text-2xl sm:text-3xl font-display leading-none font-bold ${agent.apr30d && agent.apr30d > 0
                             ? 'text-accent'
                             : agent.apr30d && agent.apr30d < 0
                               ? 'text-[var(--danger)]'
@@ -519,23 +521,23 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                       </div>
 
                       {/* Secondary Metrics */}
-                      <div className="flex gap-3">
+                      <div className="flex gap-2 sm:gap-3">
                         {agent.sharpe30d != null && (
-                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-3 py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-2 sm:px-3 py-2 sm:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
                             <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 opacity-70">
                               SHARPE
                             </p>
-                            <p className="font-mono font-bold text-accent text-base leading-none">
+                            <p className="font-mono font-bold text-accent text-sm sm:text-base leading-none">
                               {agent.sharpe30d.toFixed(2)}
                             </p>
                           </div>
                         )}
                         {agent.apr90d != null && (
-                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-3 py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-2 sm:px-3 py-2 sm:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
                             <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 opacity-70">
                               90D
                             </p>
-                            <p className={`font-mono font-bold text-base leading-none ${agent.apr90d > 0 ? 'text-accent' : agent.apr90d < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
+                            <p className={`font-mono font-bold text-sm sm:text-base leading-none ${agent.apr90d > 0 ? 'text-accent' : agent.apr90d < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
                               {agent.apr90d > 0 ? '+' : ''}{agent.apr90d.toFixed(1)}%
                             </p>
                           </div>
@@ -544,22 +546,60 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                     </div>
 
                     {/* Button Section */}
-                    <div className="pt-6">
-                      <button
-                        onMouseEnter={() => setHoveredButton(agent.id)}
-                        onMouseLeave={() => setHoveredButton(null)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeployClick(agent);
-                        }}
-                        className="button-animated w-full py-3 border-2 border-[var(--border)] text-sm font-bold bg-[var(--bg-elevated)] flex items-center justify-center gap-2 group/btn relative"
-                      >
-                        <span className="relative z-10 font-bold">JOIN CLUB</span>
-                        <ArrowRight
-                          className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
-                          size={16}
-                        />
-                      </button>
+                    <div className="pt-4 sm:pt-6">
+                      {(() => {
+                        const agentCost = agent.totalCost || 0;
+                        const isCreator = userWallet && agent.creatorWallet &&
+                          userWallet.toLowerCase() === agent.creatorWallet.toLowerCase();
+                        const alreadyDeployed = agentDeployments[agent.id]?.length > 0;
+                        const hasInsufficientCredits = !isCreator && !alreadyDeployed && agentCost > 0 && creditBalance < agentCost;
+
+                        return (
+                          <button
+                            onMouseEnter={() => setHoveredButton(agent.id)}
+                            onMouseLeave={() => setHoveredButton(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!hasInsufficientCredits) {
+                                onDeployClick(agent);
+                              }
+                            }}
+                            disabled={hasInsufficientCredits}
+                            className={`w-full py-2.5 sm:py-3 border-2 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 relative transition-all ${hasInsufficientCredits
+                              ? 'border-red-500/50 bg-red-500/5 text-red-500 cursor-not-allowed opacity-70'
+                              : 'button-animated border-[var(--border)] bg-[var(--bg-elevated)] group/btn'
+                              }`}
+                          >
+                            {alreadyDeployed ? (
+                              <>
+                                <CheckCircle className="relative z-10" size={16} />
+                                <span className="relative z-10 font-bold">JOINED</span>
+                              </>
+                            ) : hasInsufficientCredits ? (
+                              <>
+                                <AlertCircle className="relative z-10" size={16} />
+                                <span className="relative z-10 font-bold">INSUFFICIENT CREDITS</span>
+                              </>
+                            ) : isCreator ? (
+                              <>
+                                <span className="relative z-10 font-bold">JOIN CLUB (FREE)</span>
+                                <ArrowRight
+                                  className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
+                                  size={16}
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <span className="relative z-10 font-bold">JOIN CLUB</span>
+                                <ArrowRight
+                                  className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
+                                  size={16}
+                                />
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

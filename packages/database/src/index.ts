@@ -5,6 +5,7 @@
  * Provides singleton PrismaClient and database utilities.
  */
 
+
 import { PrismaClient } from '@prisma/client';
 
 // Global is used here to maintain a singleton instance across hot reloads in development

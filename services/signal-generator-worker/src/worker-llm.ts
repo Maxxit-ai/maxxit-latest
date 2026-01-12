@@ -27,8 +27,11 @@ const INTERVAL = parseInt(process.env.WORKER_INTERVAL || "30000"); // 30 seconds
 // Duplicate signal check configuration
 // Set DUPLICATE_SIGNAL_CHECK_ENABLED=false to disable the check entirely
 // Set DUPLICATE_SIGNAL_CHECK_HOURS to change the time window (default: 6 hours)
-const DUPLICATE_CHECK_ENABLED = process.env.DUPLICATE_SIGNAL_CHECK_ENABLED !== "false"; // Default: true
-const DUPLICATE_CHECK_HOURS = parseInt(process.env.DUPLICATE_SIGNAL_CHECK_HOURS || "6"); // Default: 6 hours
+const DUPLICATE_CHECK_ENABLED =
+  process.env.DUPLICATE_SIGNAL_CHECK_ENABLED !== "false"; // Default: true
+const DUPLICATE_CHECK_HOURS = parseInt(
+  process.env.DUPLICATE_SIGNAL_CHECK_HOURS || "6"
+); // Default: 6 hours
 
 let workerInterval: NodeJS.Timeout | null = null;
 let isCycleRunning = false;
@@ -112,7 +115,6 @@ async function generateAllSignals() {
           let agents: any[] = [];
           let influencerImpactFactor = 50; // Default to 50 (neutral) - will be updated if alpha_user_id exists
 
-
           if (post.alpha_user_id) {
             // For Telegram Alpha Users: find agents linked via agent_telegram_users
             // This is the proper way - only agents explicitly subscribed to this alpha user
@@ -121,7 +123,9 @@ async function generateAllSignals() {
             });
 
             if (!alphaUser) {
-              console.log(`[SignalGenerator] ⚠️  Alpha user not found for post`);
+              console.log(
+                `[SignalGenerator] ⚠️  Alpha user not found for post`
+              );
               continue;
             }
 
@@ -131,10 +135,13 @@ async function generateAllSignals() {
 
             // Get the influencer's impact factor (historical performance)
             influencerImpactFactor = (alphaUser as any)?.impact_factor ?? 50; // Default to 50 (neutral) if not set
-            console.log(`[SignalGenerator]    Impact Factor of source: ${influencerImpactFactor}/100`);
+            console.log(
+              `[SignalGenerator]    Impact Factor of source: ${influencerImpactFactor}/100`
+            );
 
             console.log(
-              `[SignalGenerator]    Source: @${alphaUser.telegram_username || alphaUser.first_name
+              `[SignalGenerator]    Source: @${
+                alphaUser.telegram_username || alphaUser.first_name
               }`
             );
             console.log(
@@ -294,7 +301,10 @@ async function generateAllSignals() {
               agent.name.toLowerCase().includes("lazy") &&
               agent.name.toLowerCase().includes("trader");
 
-            console.log("checking lazy trader agent",agent.status + " " + agent.name + " " + isLazyTraderAgent)
+            console.log(
+              "checking lazy trader agent",
+              agent.status + " " + agent.name + " " + isLazyTraderAgent
+            );
 
             console.log(
               `[SignalGenerator]    🔍 Checking Lazy Trader agent: ${agent.name}, isLazyTraderAgent: ${isLazyTraderAgent}`
@@ -306,61 +316,60 @@ async function generateAllSignals() {
               );
             }
 
-          for (const deployment of agent.agent_deployments) {
-            // Check trade quota before generating signal
-            try {
-              const hasQuota = await TradeQuotaService.hasAvailableTrades(deployment.user_wallet);
-              if (!hasQuota) {
-                console.log(
-                  `[SignalGenerator]    ⏭️  User ${deployment.user_wallet.substring(0, 10)}... has no trade quota - skipping deployment`
-                );
-                continue;
-              }
-            } catch (quotaCheckError: any) {
-              console.log(
-                `[SignalGenerator]    ⚠️  Failed to check trade quota: ${quotaCheckError.message} - proceeding anyway`
-              );
-            }
-
-            for (const token of extractedTokens) {
+            for (const deployment of agent.agent_deployments) {
+              // Check trade quota before generating signal
               try {
-                const success = await generateSignalForAgentAndToken(
-                  post,
-                  agent,
-                  deployment,
-                  token,
-                  isLazyTraderAgent,
-                  influencerImpactFactor
+                const hasQuota = await TradeQuotaService.hasAvailableTrades(
+                  deployment.user_wallet
                 );
-
-                if (success) {
+                if (!hasQuota) {
                   console.log(
-                    `[SignalGenerator] ✅ Signal created for ${agent.name
-                    } (deployment ${deployment.id.substring(0, 8)}): ${token}`
+                    `[SignalGenerator]    ⏭️  User ${deployment.user_wallet.substring(
+                      0,
+                      10
+                    )}... has no trade quota - skipping deployment`
+                  );
+                  continue;
+                }
+              } catch (quotaCheckError: any) {
+                console.log(
+                  `[SignalGenerator]    ⚠️  Failed to check trade quota: ${quotaCheckError.message} - proceeding anyway`
+                );
+              }
+
+              for (const token of extractedTokens) {
+                try {
+                  const success = await generateSignalForAgentAndToken(
+                    post,
+                    agent,
+                    deployment,
+                    token,
+                    isLazyTraderAgent,
+                    influencerImpactFactor
                   );
 
-                  // Deduct trade quota after successful signal creation
-                  try {
-                    await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+                  if (success) {
                     console.log(
-                      `[SignalGenerator]    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+                      `[SignalGenerator] ✅ Signal created for ${
+                        agent.name
+                      } (deployment ${deployment.id.substring(0, 8)}): ${token}`
                     );
-                  } catch (quotaDeductError: any) {
-                    console.error(
-                      `[SignalGenerator]    ⚠️  Failed to deduct trade quota: ${quotaDeductError.message}`
-                    );
+                    // Note: Trade quota is now deducted inside generateSignalForAgentAndToken
+                    // to ensure it's always deducted when a signal is created, even if an error occurs later
                   }
+                } catch (error: any) {
+                  console.error(
+                    `[SignalGenerator] ❌ Failed to generate signal for ${
+                      agent.name
+                    } (deployment ${deployment.id.substring(
+                      0,
+                      8
+                    )}): ${token}: ${error.message}`
+                  );
                 }
-              } catch (error: any) {
-                console.error(
-                  `[SignalGenerator] ❌ Failed to generate signal for ${agent.name
-                  } (deployment ${deployment.id.substring(0, 8)}): ${token}: ${error.message
-                  }`
-                );
               }
             }
           }
-        }
 
           // Mark post as processed after attempting to generate signals for all deployments
           await prisma.telegram_posts.update({
@@ -388,7 +397,7 @@ async function generateAllSignals() {
       },
       orderBy: {
         trade_timestamp: "desc",
-      }
+      },
     });
 
     console.log(
@@ -398,13 +407,19 @@ async function generateAllSignals() {
     for (const traderTrade of pendingTraderTrades) {
       try {
         console.log(
-          `[SignalGenerator] 🔄 Processing trader trade ${traderTrade.id.substring(0, 8)}...`
+          `[SignalGenerator] 🔄 Processing trader trade ${traderTrade.id.substring(
+            0,
+            8
+          )}...`
         );
         console.log(
           `[SignalGenerator]    Token: ${traderTrade.token_symbol} | Side: ${traderTrade.side}`
         );
         console.log(
-          `[SignalGenerator]    Trader: ${traderTrade.trader_wallet.substring(0, 10)}...`
+          `[SignalGenerator]    Trader: ${traderTrade.trader_wallet.substring(
+            0,
+            10
+          )}...`
         );
 
         // Get the agent and its deployments
@@ -426,7 +441,9 @@ async function generateAllSignals() {
         });
 
         if (!agent) {
-          console.log(`[SignalGenerator] ⚠️  Agent not found, marking as processed`);
+          console.log(
+            `[SignalGenerator] ⚠️  Agent not found, marking as processed`
+          );
           await prisma.trader_trades.update({
             where: { id: traderTrade.id },
             data: { processed_for_signals: true },
@@ -445,7 +462,9 @@ async function generateAllSignals() {
 
         const deployments = agent.agent_deployments;
         if (deployments.length === 0) {
-          console.log(`[SignalGenerator] ⚠️  No active deployments (club members)`);
+          console.log(
+            `[SignalGenerator] ⚠️  No active deployments (club members)`
+          );
           await prisma.trader_trades.update({
             where: { id: traderTrade.id },
             data: { processed_for_signals: true },
@@ -464,36 +483,54 @@ async function generateAllSignals() {
         });
         const traderImpactFactor = topTrader?.impact_factor ?? 50;
         console.log(
-          `[SignalGenerator]    Trader Impact Factor: ${traderImpactFactor.toFixed(2)}/100`
+          `[SignalGenerator]    Trader Impact Factor: ${traderImpactFactor.toFixed(
+            2
+          )}/100`
         );
 
         const entryPrice = Number(traderTrade.entry_price.toString());
-        const takeProfitPrice = traderTrade.take_profit_price ? Number(traderTrade.take_profit_price.toString()) : null;
-        const stopLossPrice = traderTrade.stop_loss_price ? Number(traderTrade.stop_loss_price.toString()) : null;
+        const takeProfitPrice = traderTrade.take_profit_price
+          ? Number(traderTrade.take_profit_price.toString())
+          : null;
+        const stopLossPrice = traderTrade.stop_loss_price
+          ? Number(traderTrade.stop_loss_price.toString())
+          : null;
 
-        let takeProfitPercent = 0.10;
+        let takeProfitPercent = 0.1;
         let stopLossPercent = 0.05;
 
         if (entryPrice > 0) {
           if (takeProfitPrice && takeProfitPrice > 0) {
             if (traderTrade.side === "LONG") {
-              takeProfitPercent = Math.abs((takeProfitPrice - entryPrice) / entryPrice);
+              takeProfitPercent = Math.abs(
+                (takeProfitPrice - entryPrice) / entryPrice
+              );
             } else {
-              takeProfitPercent = Math.abs((entryPrice - takeProfitPrice) / entryPrice);
+              takeProfitPercent = Math.abs(
+                (entryPrice - takeProfitPrice) / entryPrice
+              );
             }
           }
 
           if (stopLossPrice && stopLossPrice > 0) {
             if (traderTrade.side === "LONG") {
-              stopLossPercent = Math.abs((entryPrice - stopLossPrice) / entryPrice);
+              stopLossPercent = Math.abs(
+                (entryPrice - stopLossPrice) / entryPrice
+              );
             } else {
-              stopLossPercent = Math.abs((stopLossPrice - entryPrice) / entryPrice);
+              stopLossPercent = Math.abs(
+                (stopLossPrice - entryPrice) / entryPrice
+              );
             }
           }
         }
 
         console.log(
-          `[SignalGenerator]    TP: ${(takeProfitPercent * 100).toFixed(2)}% (${takeProfitPrice ? 'from trader' : 'default'}) | SL: ${(stopLossPercent * 100).toFixed(2)}% (${stopLossPrice ? 'from trader' : 'default'})`
+          `[SignalGenerator]    TP: ${(takeProfitPercent * 100).toFixed(2)}% (${
+            takeProfitPrice ? "from trader" : "default"
+          }) | SL: ${(stopLossPercent * 100).toFixed(2)}% (${
+            stopLossPrice ? "from trader" : "default"
+          })`
         );
 
         const normalizedTraderTrade = {
@@ -511,6 +548,7 @@ async function generateAllSignals() {
           take_profit_price: takeProfitPrice,
           stop_loss_price: stopLossPrice,
           timeline_window: null,
+          sourceTradeId: traderTrade.source_trade_id,
         };
 
         // Generate signals for each deployment
@@ -527,12 +565,20 @@ async function generateAllSignals() {
 
             if (success) {
               console.log(
-                `[SignalGenerator] ✅ Signal created for ${agent.name} (deployment ${deployment.id.substring(0, 8)}): ${traderTrade.token_symbol}`
+                `[SignalGenerator] ✅ Signal created for ${
+                  agent.name
+                } (deployment ${deployment.id.substring(0, 8)}): ${
+                  traderTrade.token_symbol
+                }`
               );
             }
           } catch (error: any) {
             console.error(
-              `[SignalGenerator] ❌ Failed to generate signal for ${agent.name} (deployment ${deployment.id.substring(0, 8)}): ${traderTrade.token_symbol}: ${error.message}`
+              `[SignalGenerator] ❌ Failed to generate signal for ${
+                agent.name
+              } (deployment ${deployment.id.substring(0, 8)}): ${
+                traderTrade.token_symbol
+              }: ${error.message}`
             );
           }
         }
@@ -676,7 +722,10 @@ async function generateSignalForAgentAndToken(
           try {
             await TradeQuotaService.useTradeQuota(deployment.user_wallet);
             console.log(
-              `    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+              `    💳 Trade quota deducted for ${deployment.user_wallet.substring(
+                0,
+                10
+              )}...`
             );
           } catch (quotaError: any) {
             console.error(
@@ -752,7 +801,10 @@ async function generateSignalForAgentAndToken(
           try {
             await TradeQuotaService.useTradeQuota(deployment.user_wallet);
             console.log(
-              `    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+              `    💳 Trade quota deducted for ${deployment.user_wallet.substring(
+                0,
+                10
+              )}...`
             );
           } catch (quotaError: any) {
             console.error(
@@ -817,7 +869,9 @@ async function generateSignalForAgentAndToken(
             : 0;
 
           const positionFailed =
-            existingPosition.status === "CLOSED" && entryPrice === 0 && qty === 0;
+            existingPosition.status === "CLOSED" &&
+            entryPrice === 0 &&
+            qty === 0;
 
           if (positionFailed) {
             console.log(
@@ -845,7 +899,9 @@ async function generateSignalForAgentAndToken(
         }
       }
     } else {
-      console.log(`    ℹ️  Duplicate signal check DISABLED - proceeding without check`);
+      console.log(
+        `    ℹ️  Duplicate signal check DISABLED - proceeding without check`
+      );
     }
 
     // Get trading preferences from the specific agent deployment (preferences are per deployment)
@@ -873,8 +929,9 @@ async function generateSignalForAgentAndToken(
       if (userAddress?.hyperliquid_agent_address) {
         try {
           const balanceResponse = await fetch(
-            `${process.env.HYPERLIQUID_SERVICE_URL ||
-            "https://hyperliquid-service.onrender.com"
+            `${
+              process.env.HYPERLIQUID_SERVICE_URL ||
+              "https://hyperliquid-service.onrender.com"
             }/balance`,
             {
               method: "POST",
@@ -905,7 +962,8 @@ async function generateSignalForAgentAndToken(
       if (userAddress?.ostium_agent_address) {
         try {
           const balanceResponse = await fetch(
-            `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
+            `${
+              process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
             }/balance`,
             {
               method: "POST",
@@ -1028,7 +1086,9 @@ async function generateSignalForAgentAndToken(
       if (userAddress?.ostium_agent_address) {
         try {
           const positionsResponse = await fetch(
-            `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"}/positions`,
+            `${
+              process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
+            }/positions`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -1040,7 +1100,10 @@ async function generateSignalForAgentAndToken(
 
           if (positionsResponse.ok) {
             const positionsData = (await positionsResponse.json()) as any;
-            if (positionsData.success && Array.isArray(positionsData.positions)) {
+            if (
+              positionsData.success &&
+              Array.isArray(positionsData.positions)
+            ) {
               currentPositions = positionsData.positions.map((pos: any) => ({
                 token: pos.market,
                 side: pos.side?.toUpperCase() || "",
@@ -1089,7 +1152,9 @@ async function generateSignalForAgentAndToken(
       }));
     }
 
-    console.log(`    📈 Current open positions from ${signalVenue}: ${currentPositions.length}`);
+    console.log(
+      `    📈 Current open positions from ${signalVenue}: ${currentPositions.length}`
+    );
 
     // Make LLM decision
     console.log(`    🤖 Making LLM trade decision for ${token}...`);
@@ -1110,10 +1175,16 @@ async function generateSignalForAgentAndToken(
     });
 
     console.log(
-      `    📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN NEW" : "SKIP"} | Net Position Change: ${tradeDecision.netPositionChange || "NONE"}`
+      `    📊 LLM Decision: ${
+        tradeDecision.shouldOpenNewPosition ? "OPEN NEW" : "SKIP"
+      } | Net Position Change: ${tradeDecision.netPositionChange || "NONE"}`
     );
     if (tradeDecision.closeExistingPositionIds.length > 0) {
-      console.log(`    🔄 Close Positions: ${tradeDecision.closeExistingPositionIds.join(', ')}`);
+      console.log(
+        `    🔄 Close Positions: ${tradeDecision.closeExistingPositionIds.join(
+          ", "
+        )}`
+      );
     }
     console.log(
       `    💰 Fund Allocation: ${tradeDecision.fundAllocation.toFixed(2)}%`
@@ -1125,7 +1196,11 @@ async function generateSignalForAgentAndToken(
 
     // If LLM decides not to open a new position, create a skipped signal record
     if (!tradeDecision.shouldOpenNewPosition) {
-      console.log(`    ⏭️  Creating skipped signal based on LLM decision (net: ${tradeDecision.netPositionChange || "NONE"})`);
+      console.log(
+        `    ⏭️  Creating skipped signal based on LLM decision (net: ${
+          tradeDecision.netPositionChange || "NONE"
+        })`
+      );
 
       try {
         await prisma.signals.create({
@@ -1139,6 +1214,7 @@ async function generateSignalForAgentAndToken(
               type: "balance-percentage",
               value: tradeDecision.fundAllocation,
               impactFactor: 0,
+              sourceTradeId: post.sourceTradeId || null,
             },
             risk_model: {
               stopLoss: post.stop_loss || 0.05,
@@ -1151,9 +1227,10 @@ async function generateSignalForAgentAndToken(
             llm_should_trade: tradeDecision.shouldOpenNewPosition,
             llm_fund_allocation: tradeDecision.fundAllocation,
             llm_leverage: tradeDecision.leverage,
-            llm_close_trade_id: tradeDecision.closeExistingPositionIds.length > 0
-              ? JSON.stringify(tradeDecision.closeExistingPositionIds)
-              : null,
+            llm_close_trade_id:
+              tradeDecision.closeExistingPositionIds.length > 0
+                ? JSON.stringify(tradeDecision.closeExistingPositionIds)
+                : null,
             llm_net_position_change: tradeDecision.netPositionChange || "NONE",
             trade_executed: null,
           },
@@ -1171,7 +1248,10 @@ async function generateSignalForAgentAndToken(
         try {
           await TradeQuotaService.useTradeQuota(deployment.user_wallet);
           console.log(
-            `    💳 Trade quota deducted for ${deployment.user_wallet.substring(0, 10)}...`
+            `    💳 Trade quota deducted for ${deployment.user_wallet.substring(
+              0,
+              10
+            )}...`
           );
         } catch (quotaError: any) {
           console.error(
@@ -1198,10 +1278,11 @@ async function generateSignalForAgentAndToken(
             type: "balance-percentage",
             value: tradeDecision.fundAllocation, // From LLM decision
             impactFactor: 0,
+            sourceTradeId: post.sourceTradeId || null,
           },
           risk_model: {
             stopLoss: post.stop_loss || 0.05,
-            takeProfit: post.take_profit || 0.10,
+            takeProfit: post.take_profit || 0.1,
             leverage: signalVenue === "OSTIUM" ? tradeDecision.leverage : 3, // Use LLM leverage for Ostium, default for Hyperliquid
           },
           source_tweets: [post.message_id],
@@ -1209,9 +1290,10 @@ async function generateSignalForAgentAndToken(
           llm_should_trade: tradeDecision.shouldOpenNewPosition,
           llm_fund_allocation: tradeDecision.fundAllocation,
           llm_leverage: tradeDecision.leverage,
-          llm_close_trade_id: tradeDecision.closeExistingPositionIds.length > 0
-            ? JSON.stringify(tradeDecision.closeExistingPositionIds)
-            : null,
+          llm_close_trade_id:
+            tradeDecision.closeExistingPositionIds.length > 0
+              ? JSON.stringify(tradeDecision.closeExistingPositionIds)
+              : null,
           llm_net_position_change: tradeDecision.netPositionChange || "NONE",
           trade_executed: null,
         },
@@ -1230,6 +1312,23 @@ async function generateSignalForAgentAndToken(
           `    ⚙️  Signal created with leverage: ${tradeDecision.leverage}x`
         );
       }
+
+      // Deduct trade quota immediately after successful signal creation
+      // This ensures quota is deducted even if an error occurs later
+      try {
+        await TradeQuotaService.useTradeQuota(deployment.user_wallet);
+        console.log(
+          `    💳 Trade quota deducted for ${deployment.user_wallet.substring(
+            0,
+            10
+          )}...`
+        );
+      } catch (quotaError: any) {
+        console.error(
+          `    ⚠️  Failed to deduct trade quota: ${quotaError.message}`
+        );
+      }
+
       return true; // Signal successfully created
     } catch (createError: any) {
       // P2002: Unique constraint violation (rare race condition)
