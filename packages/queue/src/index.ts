@@ -120,6 +120,8 @@ export {
   getMessageClassificationLockKey,
   getSignalGenerationLockKey,
   getTraderTradeLockKey,
+  getUserQuotaLockKey,
+  getQuotaNotificationLockKey,
 } from './distributed-lock';
 
 // Scheduler

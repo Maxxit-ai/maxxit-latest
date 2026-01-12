@@ -183,3 +183,21 @@ export function getSignalGenerationLockKey(postId: string, deploymentId: string,
 export function getTraderTradeLockKey(sourceTradeId: string, agentId: string): string {
   return `trader-trade:${sourceTradeId}:${agentId}`;
 }
+
+/**
+ * Generate a lock key for user quota operations
+ * This ensures only one signal per user is checked/reserved at a time
+ * preventing race conditions with parallel deployments
+ */
+export function getUserQuotaLockKey(userWallet: string): string {
+  return `user-quota:${userWallet.toLowerCase()}`;
+}
+
+/**
+ * Generate a lock key for quota exceeded notification deduplication
+ * Uses a time window to prevent spamming the same user with quota notifications
+ */
+export function getQuotaNotificationLockKey(userWallet: string, token: string, windowMinutes: number = 5): string {
+  const timeWindow = Math.floor(Date.now() / (windowMinutes * 60 * 1000));
+  return `quota-notification:${userWallet.toLowerCase()}:${token}:${timeWindow}`;
+}

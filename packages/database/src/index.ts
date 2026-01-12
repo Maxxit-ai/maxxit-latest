@@ -44,6 +44,6 @@ export async function checkDatabaseHealth(): Promise<boolean> {
 export type { PrismaClient } from '@prisma/client';
 export * from '@prisma/client';
 
-// Export TradeQuotaService
-export { TradeQuotaService } from './trade-quota-service';
+// Export TradeQuotaService and types
+export { TradeQuotaService, type QuotaReservationResult } from './trade-quota-service';
 

@@ -131,18 +131,15 @@ function escapeTelegramMarkdown(text: string): string {
 function getNotificationLockKey(
   signalId: string | undefined,
   userWallet: string,
-  notificationType?: string,
-  context?: { token?: string }
+  notificationType?: string
 ): string {
   if (signalId) {
     return `notification:${signalId}:${userWallet.toLowerCase()}`;
   }
-  // For notifications without signalId (like QUOTA_EXCEEDED), use type + wallet + token for deduplication
-  // This prevents duplicate notifications for the same token/user combination
-  const tokenKey = context?.token || "general";
+  // For notifications without signalId (like QUOTA_EXCEEDED), use type and timestamp
   return `notification:${
     notificationType || "unknown"
-  }:${userWallet.toLowerCase()}:${tokenKey}`;
+  }:${userWallet.toLowerCase()}:${Date.now()}`;
 }
 
 /**
@@ -170,14 +167,7 @@ async function processNotificationJob(
 
   // Handle QUOTA_EXCEEDED notifications (no signalId needed)
   if (notificationType === "QUOTA_EXCEEDED") {
-    // Recalculate lock key with context for proper deduplication
-    const quotaLockKey = getNotificationLockKey(
-      signalId,
-      userWallet,
-      notificationType,
-      context
-    );
-    const result = await withLock(quotaLockKey, async () => {
+    const result = await withLock(lockKey, async () => {
       return await sendQuotaExceededNotification(userWallet, context);
     });
     return (
@@ -189,14 +179,7 @@ async function processNotificationJob(
   if (!signalId) {
     // For SIGNAL_NOT_TRADED with context (from signal generator)
     if (notificationType === "SIGNAL_NOT_TRADED" && context) {
-      // Recalculate lock key with context for proper deduplication
-      const contextLockKey = getNotificationLockKey(
-        signalId,
-        userWallet,
-        notificationType,
-        context
-      );
-      const result = await withLock(contextLockKey, async () => {
+      const result = await withLock(lockKey, async () => {
         return await sendContextBasedNotification(
           userWallet,
           notificationType,
@@ -585,28 +568,6 @@ async function sendQuotaExceededNotification(
       )}...`
     );
 
-    // Check if already notified for this token within last hour (prevent spam)
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const existingNotification = await prisma.notification_logs.findFirst({
-      where: {
-        user_wallet: userWallet.toLowerCase(),
-        notification_type: "QUOTA_EXCEEDED",
-        status: "SENT",
-        sent_at: { gte: oneHourAgo },
-        // Check if message contains the same token (if provided)
-        ...(context?.token && {
-          message_content: { contains: context.token },
-        }),
-      },
-    });
-
-    if (existingNotification) {
-      console.log(
-        `[Notification] ⏭️  QUOTA_EXCEEDED already sent within last hour - skipping`
-      );
-      return { success: true, message: "Already notified recently" };
-    }
-
     // Get user's Telegram connection
     const userTelegram = await prisma.user_telegram_notifications.findUnique({
       where: { user_wallet: userWallet.toLowerCase() },
@@ -639,7 +600,7 @@ async function sendQuotaExceededNotification(
           user_wallet: userWallet.toLowerCase(),
           position_id: null,
           signal_id: null,
-          notification_type: "QUOTA_EXCEEDED",
+          notification_type: "QUOTA_EXCEEDED" as any,
           message_content: message,
           telegram_message_id: result.messageId,
           status: "SENT",
@@ -679,28 +640,6 @@ async function sendContextBasedNotification(
         6
       )}...`
     );
-
-    // Check if already notified for this token within last 10 minutes (prevent duplicates during same signal processing)
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-    const existingNotification = await prisma.notification_logs.findFirst({
-      where: {
-        user_wallet: userWallet.toLowerCase(),
-        notification_type: "SIGNAL_NOT_TRADED",
-        status: "SENT",
-        sent_at: { gte: tenMinutesAgo },
-        // Check if message contains the same token (if provided)
-        ...(context?.token && {
-          message_content: { contains: context.token },
-        }),
-      },
-    });
-
-    if (existingNotification) {
-      console.log(
-        `[Notification] ⏭️  Context-based notification already sent within last 10 mins - skipping`
-      );
-      return { success: true, message: "Already notified recently" };
-    }
 
     // Get user's Telegram connection
     const userTelegram = await prisma.user_telegram_notifications.findUnique({

@@ -34,7 +34,10 @@ import {
   shutdownQueueService,
   isRedisHealthy,
   withLock,
+  waitForLock,
+  releaseLock,
   getSignalGenerationLockKey,
+  getUserQuotaLockKey,
   QueueName,
   GenerateTelegramSignalJobData,
   GenerateTraderTradeSignalJobData,
@@ -148,12 +151,27 @@ async function queueNotification(params: {
   try {
     // Use stable job ID for deduplication:
     // - For signal-based notifications: use signalId
-    // - For quota notifications: use wallet + type + token (if available) to prevent duplicates within same signal processing
-    const jobId = params.signalId
-      ? `notify-${params.signalId}-${params.userWallet}`
-      : `notify-${params.notificationType}-${params.userWallet}-${
-          params.context?.token || "general"
-        }`;
+    // - For quota notifications: use wallet + token + time window (5 min) to prevent spam
+    let jobId: string;
+
+    if (params.signalId) {
+      // Signal-based notification - unique per signal
+      jobId = `notify-${params.signalId}-${params.userWallet.toLowerCase()}`;
+    } else if (params.notificationType === "QUOTA_EXCEEDED") {
+      // Quota exceeded - deduplicate per user + token within a 5-minute window
+      // This prevents spamming users when multiple deployments hit quota simultaneously
+      const timeWindow = Math.floor(Date.now() / (5 * 60 * 1000)); // 5-minute windows
+      const token = params.context?.token || "general";
+      jobId = `notify-quota-${params.userWallet.toLowerCase()}-${token}-${timeWindow}`;
+    } else {
+      // Other notifications - use timestamp but include more context
+      const token = params.context?.token || "general";
+      const agent =
+        params.context?.agentName?.replace(/\s+/g, "_") || "unknown";
+      jobId = `notify-${
+        params.notificationType
+      }-${params.userWallet.toLowerCase()}-${token}-${agent}-${Date.now()}`;
+    }
 
     await addJob(
       QueueName.TELEGRAM_NOTIFICATION,
@@ -171,9 +189,22 @@ async function queueNotification(params: {
     console.log(
       `[SignalGen] 📤 Queued ${
         params.notificationType
-      } notification for ${params.userWallet.substring(0, 10)}...`
+      } notification for ${params.userWallet.substring(
+        0,
+        10
+      )}... (jobId: ${jobId.substring(0, 30)}...)`
     );
   } catch (notifyError: any) {
+    // Job with same ID already exists - this is expected for deduplication
+    if (notifyError.message?.includes("already exists")) {
+      console.log(
+        `[SignalGen] ⏭️  Notification already queued for ${params.userWallet.substring(
+          0,
+          10
+        )}... (deduplication)`
+      );
+      return;
+    }
     console.error(
       `[SignalGen] ⚠️  Failed to queue notification: ${notifyError.message}`
     );
@@ -268,20 +299,45 @@ async function generateTelegramSignalForJob(
       return { success: false, error: "Post, agent, or deployment not found" };
     }
 
-    // Check trade quota before generating signal
+    // ========================================================================
+    // ATOMIC QUOTA RESERVATION WITH USER-LEVEL LOCK
+    // This prevents race conditions when multiple deployments for the same user
+    // try to reserve quota simultaneously
+    // ========================================================================
+    const quotaLockKey = getUserQuotaLockKey(deployment.user_wallet);
+    let quotaReserved = false;
+
+    // Wait for up to 10 seconds to acquire the quota lock
+    // This ensures proper ordering of quota operations for the same user
+    const quotaLockAcquired = await waitForLock(quotaLockKey, 10000, 30000);
+
+    if (!quotaLockAcquired) {
+      console.log(
+        `[SignalGen] ⚠️  Could not acquire quota lock for ${deployment.user_wallet.substring(
+          0,
+          10
+        )}... - retrying later`
+      );
+      throw new Error("Could not acquire quota lock - will retry");
+    }
+
     try {
-      const hasQuota = await TradeQuotaService.hasAvailableTrades(
+      // Atomically check and reserve quota
+      const quotaResult = await TradeQuotaService.reserveTradeQuota(
         deployment.user_wallet
       );
-      if (!hasQuota) {
+
+      if (!quotaResult.success) {
         console.log(
           `[SignalGen] ⏭️  User ${deployment.user_wallet.substring(
             0,
             10
-          )}... has no trade quota - skipping`
+          )}... has no trade quota (remaining: ${
+            quotaResult.remaining
+          }) - skipping`
         );
 
-        // Send quota exceeded notification
+        // Send quota exceeded notification (deduplicated by time window)
         await queueNotification({
           userWallet: deployment.user_wallet.toLowerCase(),
           notificationType: "QUOTA_EXCEEDED",
@@ -293,10 +349,17 @@ async function generateTelegramSignalForJob(
 
         return { success: true, message: "No trade quota available" };
       }
-    } catch (quotaCheckError: any) {
+
+      quotaReserved = true;
       console.log(
-        `[SignalGen] ⚠️  Failed to check trade quota: ${quotaCheckError.message} - proceeding anyway`
+        `[SignalGen] 💳 Quota reserved for ${deployment.user_wallet.substring(
+          0,
+          10
+        )}... (remaining: ${quotaResult.remaining})`
       );
+    } finally {
+      // Always release the quota lock
+      await releaseLock(quotaLockKey);
     }
 
     // Skip stablecoins
@@ -450,20 +513,8 @@ async function generateTelegramSignalForJob(
       )}%)`
     );
 
-    // Deduct trade quota after successful signal creation
-    try {
-      await TradeQuotaService.useTradeQuota(deployment.user_wallet);
-      console.log(
-        `[SignalGen] 💳 Trade quota deducted for ${deployment.user_wallet.substring(
-          0,
-          10
-        )}...`
-      );
-    } catch (quotaDeductError: any) {
-      console.error(
-        `[SignalGen] ⚠️  Failed to deduct trade quota: ${quotaDeductError.message}`
-      );
-    }
+    // Note: Quota was already reserved atomically at the start of this function
+    // No need to deduct again - the reservation IS the deduction
 
     return {
       success: true,
@@ -521,20 +572,44 @@ async function generateTraderTradeSignalForJob(
       return { success: false, error: "Agent or deployment not found" };
     }
 
-    // Check trade quota before generating signal
+    // ========================================================================
+    // ATOMIC QUOTA RESERVATION WITH USER-LEVEL LOCK
+    // This prevents race conditions when multiple deployments for the same user
+    // try to reserve quota simultaneously
+    // ========================================================================
+    const quotaLockKey = getUserQuotaLockKey(deployment.user_wallet);
+    let quotaReserved = false;
+
+    // Wait for up to 10 seconds to acquire the quota lock
+    const quotaLockAcquired = await waitForLock(quotaLockKey, 10000, 30000);
+
+    if (!quotaLockAcquired) {
+      console.log(
+        `[SignalGen] ⚠️  Could not acquire quota lock for ${deployment.user_wallet.substring(
+          0,
+          10
+        )}... - retrying later`
+      );
+      throw new Error("Could not acquire quota lock - will retry");
+    }
+
     try {
-      const hasQuota = await TradeQuotaService.hasAvailableTrades(
+      // Atomically check and reserve quota
+      const quotaResult = await TradeQuotaService.reserveTradeQuota(
         deployment.user_wallet
       );
-      if (!hasQuota) {
+
+      if (!quotaResult.success) {
         console.log(
           `[SignalGen] ⏭️  User ${deployment.user_wallet.substring(
             0,
             10
-          )}... has no trade quota - skipping`
+          )}... has no trade quota (remaining: ${
+            quotaResult.remaining
+          }) - skipping`
         );
 
-        // Send quota exceeded notification
+        // Send quota exceeded notification (deduplicated by time window)
         await queueNotification({
           userWallet: deployment.user_wallet.toLowerCase(),
           notificationType: "QUOTA_EXCEEDED",
@@ -546,10 +621,17 @@ async function generateTraderTradeSignalForJob(
 
         return { success: true, message: "No trade quota available" };
       }
-    } catch (quotaCheckError: any) {
+
+      quotaReserved = true;
       console.log(
-        `[SignalGen] ⚠️  Failed to check trade quota: ${quotaCheckError.message} - proceeding anyway`
+        `[SignalGen] 💳 Quota reserved for ${deployment.user_wallet.substring(
+          0,
+          10
+        )}... (remaining: ${quotaResult.remaining})`
       );
+    } finally {
+      // Always release the quota lock
+      await releaseLock(quotaLockKey);
     }
 
     // Skip stablecoins
@@ -725,22 +807,8 @@ async function generateTraderTradeSignalForJob(
       },
     });
 
-    // Deduct trade quota immediately after successful signal creation
-    // This mirrors the fix in worker-llm: quota is always consumed when a signal is created,
-    // even if later steps in this function were to throw.
-    try {
-      await TradeQuotaService.useTradeQuota(deployment.user_wallet);
-      console.log(
-        `[SignalGen] 💳 Trade quota deducted for ${deployment.user_wallet.substring(
-          0,
-          10
-        )}...`
-      );
-    } catch (quotaDeductError: any) {
-      console.error(
-        `[SignalGen] ⚠️  Failed to deduct trade quota: ${quotaDeductError.message}`
-      );
-    }
+    // Note: Quota was already reserved atomically at the start of this function
+    // No need to deduct again - the reservation IS the deduction
 
     console.log(
       `[SignalGen] ✅ Signal created (copy-trade): ${side} ${tokenSymbol} on ${signalVenue} (${tradeDecision.fundAllocation.toFixed(
@@ -952,7 +1020,8 @@ async function getMaxLeverage(
 }
 
 /**
- * Create a skipped signal record
+ * Create a skipped signal record and queue notification
+ * Returns the created signal ID for deduplication purposes
  */
 async function createSkippedSignal(
   agent: any,
@@ -963,10 +1032,11 @@ async function createSkippedSignal(
   reason: string,
   tradeDecision?: any,
   sourceTradeId?: string | null
-): Promise<void> {
+): Promise<string> {
   const side = post.signal_type === "SHORT" ? "SHORT" : "LONG";
 
-  await prisma.signals.create({
+  // Create signal and capture the ID for notification deduplication
+  const createdSignal = await prisma.signals.create({
     data: {
       agent_id: agent.id,
       deployment_id: deployment.id,
@@ -994,30 +1064,21 @@ async function createSkippedSignal(
     },
   });
 
-  // Deduct trade quota for processing this skipped signal.
-  // This mirrors the behavior in worker-llm: quota is charged for LLM processing
-  // even when no live trade signal is produced.
-  try {
-    await TradeQuotaService.useTradeQuota(deployment.user_wallet);
-    console.log(
-      `[SignalGen] 💳 Trade quota deducted for ${deployment.user_wallet.substring(
-        0,
-        10
-      )}... (skipped: ${token})`
-    );
-  } catch (quotaError: any) {
-    console.error(
-      `[SignalGen] ⚠️  Failed to deduct trade quota for skipped signal: ${quotaError.message}`
-    );
-  }
+  // Note: Quota was already reserved atomically at the start of the signal generation function
+  // No need to deduct again - the reservation IS the deduction
 
-  console.log(`[SignalGen] ⏭️  Skipped signal for ${token}: ${reason}`);
+  console.log(
+    `[SignalGen] ⏭️  Skipped signal ${createdSignal.id.substring(
+      0,
+      8
+    )}... for ${token}: ${reason.substring(0, 50)}...`
+  );
 
-  // Queue immediate notification for skipped signal
-  // This replaces the fallback polling mechanism for faster notifications
+  // Queue immediate notification for skipped signal with signalId for proper deduplication
+  // This prevents the fallback trigger from sending duplicate notifications
   await queueNotification({
     userWallet: deployment.user_wallet.toLowerCase(),
-    signalId: undefined, // Signal ID not needed as the notification worker will fetch by userWallet
+    signalId: createdSignal.id, // Include signal ID for deduplication with fallback trigger
     notificationType: "SIGNAL_NOT_TRADED",
     context: {
       token: token,
@@ -1027,6 +1088,8 @@ async function createSkippedSignal(
       reason: reason,
     },
   });
+
+  return createdSignal.id;
 }
 
 /**
