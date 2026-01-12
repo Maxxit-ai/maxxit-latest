@@ -135,7 +135,7 @@ const EXCLUDED_TOKENS = ["USDC", "USDT", "DAI", "USDC.E", "BUSD", "FRAX"];
  */
 async function queueNotification(params: {
   userWallet: string;
-  notificationType: SendNotificationJobData['notificationType'];
+  notificationType: SendNotificationJobData["notificationType"];
   signalId?: string;
   context?: {
     token?: string;
@@ -146,9 +146,14 @@ async function queueNotification(params: {
   };
 }): Promise<void> {
   try {
+    // Use stable job ID for deduplication:
+    // - For signal-based notifications: use signalId
+    // - For quota notifications: use wallet + type + token (if available) to prevent duplicates within same signal processing
     const jobId = params.signalId
       ? `notify-${params.signalId}-${params.userWallet}`
-      : `notify-${params.notificationType}-${params.userWallet}-${Date.now()}`;
+      : `notify-${params.notificationType}-${params.userWallet}-${
+          params.context?.token || "general"
+        }`;
 
     await addJob(
       QueueName.TELEGRAM_NOTIFICATION,
@@ -164,7 +169,9 @@ async function queueNotification(params: {
       { jobId }
     );
     console.log(
-      `[SignalGen] 📤 Queued ${params.notificationType} notification for ${params.userWallet.substring(0, 10)}...`
+      `[SignalGen] 📤 Queued ${
+        params.notificationType
+      } notification for ${params.userWallet.substring(0, 10)}...`
     );
   } catch (notifyError: any) {
     console.error(
@@ -385,7 +392,8 @@ async function generateTelegramSignalForJob(
     });
 
     console.log(
-      `[SignalGen] 📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
+      `[SignalGen] 📊 LLM Decision: ${
+        tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
       } | ${token}`
     );
 
@@ -657,7 +665,8 @@ async function generateTraderTradeSignalForJob(
     });
 
     console.log(
-      `[SignalGen] 📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
+      `[SignalGen] 📊 LLM Decision: ${
+        tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
       } | ${tokenSymbol}`
     );
 
@@ -870,7 +879,8 @@ async function getCurrentPositions(
   try {
     if (venue === "OSTIUM") {
       const positionsResponse = await fetch(
-        `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
+        `${
+          process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
         }/positions`,
         {
           method: "POST",
@@ -1384,7 +1394,8 @@ async function runWorker() {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("✅ Signal Generator Worker started successfully");
     console.log(
-      `📊 Effective parallel capacity: ${WORKER_COUNT * WORKER_CONCURRENCY
+      `📊 Effective parallel capacity: ${
+        WORKER_COUNT * WORKER_CONCURRENCY
       } concurrent LLM calls`
     );
   } catch (error: any) {

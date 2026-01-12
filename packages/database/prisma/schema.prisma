@@ -812,6 +812,7 @@ enum notification_type_t {
   POSITION_CLOSED
   STOP_LOSS_HIT
   TAKE_PROFIT_HIT
+  QUOTA_EXCEEDED       // User has no trade quota available
 }
 
 enum notification_status_t {
