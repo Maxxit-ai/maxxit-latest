@@ -174,7 +174,7 @@ export function TokenFilterSelector({ selectedTokens, onChange }: TokenFilterSel
             </div>
 
             {/* Token Groups */}
-            <div className="space-y-3 max-h-[350px] overflow-y-scroll border border-[var(--border)] p-3 bg-[var(--bg-deep)]">
+            <div className="space-y-3 max-h-[350px] overflow-y-scroll border border-[var(--border)] p-3 bg-[var(--bg-deep)]" onWheel={(e) => e.stopPropagation()}>
                 {filteredGroups.map(([group, groupTokens]) => {
                     const allSelected = groupTokens.every((t) => selectedTokens.includes(t.symbol));
                     const someSelected = groupTokens.some((t) => selectedTokens.includes(t.symbol));

@@ -488,19 +488,19 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
                     {/* Metrics Section - Unified Design */}
                     <div className="flex-1 flex flex-col justify-center">
-                    {/* Price Section */}
-                    <div className="mb-4 sm:mb-5 pb-3 sm:pb-4 border-b border-[#ededed]/20">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] opacity-70">
-                          COUNCIL PRICE
-                        </p>
-                        <p className={`text-xs sm:text-sm font-mono font-bold ${agent.totalCost && agent.totalCost > 0 ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
-                          {agent.totalCost && agent.totalCost > 0
-                            ? `${agent.totalCost.toFixed(0)} CREDS`
-                            : 'FREE'}
-                        </p>
+                      {/* Price Section */}
+                      <div className="mb-4 sm:mb-5 pb-3 sm:pb-4 border-b border-[#ededed]/20">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] opacity-70">
+                            COUNCIL PRICE
+                          </p>
+                          <p className={`text-xs sm:text-sm font-mono font-bold ${agent.totalCost && agent.totalCost > 0 ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+                            {agent.totalCost && agent.totalCost > 0
+                              ? `${agent.totalCost.toFixed(0)} CREDS`
+                              : 'FREE'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
                       {/* Primary Metric - 30D Return */}
                       <div className="mb-3 sm:mb-4">
                         <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 sm:mb-1.5 opacity-70">
@@ -549,10 +549,11 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                     <div className="pt-4 sm:pt-6">
                       {(() => {
                         const agentCost = agent.totalCost || 0;
-                        const isCreator = userWallet && agent.creatorWallet &&
+                        const isWalletConnected = userWallet && userWallet.trim() !== '';
+                        const isCreator = isWalletConnected && agent.creatorWallet &&
                           userWallet.toLowerCase() === agent.creatorWallet.toLowerCase();
                         const alreadyDeployed = agentDeployments[agent.id]?.length > 0;
-                        const hasInsufficientCredits = !isCreator && !alreadyDeployed && agentCost > 0 && creditBalance < agentCost;
+                        const hasInsufficientCredits = isWalletConnected && !isCreator && !alreadyDeployed && agentCost > 0 && creditBalance < agentCost;
 
                         return (
                           <button
@@ -564,13 +565,18 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                                 onDeployClick(agent);
                               }
                             }}
-                            disabled={hasInsufficientCredits}
+                            disabled={hasInsufficientCredits || false}
                             className={`w-full py-2.5 sm:py-3 border-2 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 relative transition-all ${hasInsufficientCredits
                               ? 'border-red-500/50 bg-red-500/5 text-red-500 cursor-not-allowed opacity-70'
                               : 'button-animated border-[var(--border)] bg-[var(--bg-elevated)] group/btn'
                               }`}
                           >
-                            {alreadyDeployed ? (
+                            {!isWalletConnected ? (
+                              <>
+                                <Wallet className="relative z-10" size={16} />
+                                <span className="relative z-10 font-bold">CONNECT WALLET</span>
+                              </>
+                            ) : alreadyDeployed ? (
                               <>
                                 <CheckCircle className="relative z-10" size={16} />
                                 <span className="relative z-10 font-bold">JOINED</span>

@@ -45,7 +45,7 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
         name: 'AGENT WHAT',
         subtitle: 'The Alpha Layer',
         description:
-          'Consumes signals from curated research institutes, crypto Twitter accounts, and private Telegram channels. Uses deterministic AI to filter noise and convert high-conviction calls into executable signals. Alpha creators are ranked and paid based on realized P&L of their signals.',
+          'Consumes signals from curated research institutes, crypto Twitter accounts, private Telegram channels, and top traders. Uses deterministic AI to filter noise and convert high-conviction calls into executable signals. Alpha creators are ranked and paid based on realized P&L of their signals.',
       },
       {
         id: 'how',
@@ -131,7 +131,7 @@ const ArchitectureSection = ({ activeAgent, onHover }: ArchitectureSectionProps)
                 {/* SOURCES */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
                   <div className="flex gap-2">
-                    {['CT', 'TG', 'RI'].map((source, idx) => (
+                    {['CT', 'TG', 'RI', 'TT'].map((source, idx) => (
                       <div
                         key={source}
                         className={`w-10 h-10 sm:w-12 sm:h-12 border-2 flex items-center justify-center text-xs font-bold transition-all duration-500 relative ${animationStep === 0

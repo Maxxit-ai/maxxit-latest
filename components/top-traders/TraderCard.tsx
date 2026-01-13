@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ExternalLink, TrendingUp, TrendingDown, Activity, Award, Target, Flame, Clock } from "lucide-react";
+import Link from "next/link";
 
 export interface Trader {
     id: string;
@@ -113,14 +114,14 @@ export function TraderCard({ trader }: { trader: Trader }) {
                     {/* Rank Badge */}
                     <div
                         className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg font-display ${trader.rank <= 3
-                                ? 'bg-gradient-to-br from-accent to-yellow-400 text-[var(--bg-deep)]'
+                                ? 'bg-gradient-to-br from-green-700 to-green-600 text-[var(--bg-deep)]'
                                 : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)]'
                             }`}
                     >
                         {trader.rank}
                     </div>
                     <div>
-                        <a
+                        <Link
                             href={`https://arbiscan.io/address/${trader.walletAddress}`}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -130,7 +131,7 @@ export function TraderCard({ trader }: { trader: Trader }) {
                                 {truncatedAddress}
                             </span>
                             <ExternalLink className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 transition-opacity text-accent" />
-                        </a>
+                        </Link>
                         <div className="flex items-center gap-2 mt-0.5">
                             <Clock className="w-3 h-3 text-[var(--text-muted)]" />
                             <span className="text-xs text-[var(--text-muted)]">
