@@ -577,16 +577,20 @@ async function sendQuotaExceededNotification(
       return { success: true, message: "No active Telegram connection" };
     }
 
-    // Format message
-    let message = `⚠️ *Trade Quota Exceeded*\n\n`;
-    message += `You've used all your available trade credits.\n\n`;
+    // Format message - clarify that this may apply to multiple agents
+    // and that other signals with quota may have processed successfully
+    let message = `⚠️ *Trade Quota Reached*\n\n`;
+    message += `Your trade credits have been used up for this signal.\n\n`;
     if (context?.token) {
-      message += `📊 Signal for *${context.token}* was skipped.\n`;
+      message += `📊 Signal for *${context.token}* was skipped for some agents.\n`;
     }
     if (context?.agentName) {
-      message += `🤖 Agent: ${escapeTelegramMarkdown(context.agentName)}\n`;
+      message += `🤖 Including: ${escapeTelegramMarkdown(
+        context.agentName
+      )} (and possibly others)\n`;
     }
-    message += `\n💳 Purchase more credits to continue receiving signals and executing trades.\n`;
+    message += `\nℹ️ _Signals processed before quota ran out were still executed._\n`;
+    message += `\n💳 Purchase more credits to continue receiving all signals.\n`;
     message += `\n💡 [Purchase Credits](https://maxxit.ai/pricing)`;
 
     const result = await sendTelegramMessage(
