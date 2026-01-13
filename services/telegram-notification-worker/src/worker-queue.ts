@@ -137,9 +137,8 @@ function getNotificationLockKey(
     return `notification:${signalId}:${userWallet.toLowerCase()}`;
   }
   // For notifications without signalId (like QUOTA_EXCEEDED), use type and timestamp
-  return `notification:${
-    notificationType || "unknown"
-  }:${userWallet.toLowerCase()}:${Date.now()}`;
+  return `notification:${notificationType || "unknown"
+    }:${userWallet.toLowerCase()}:${Date.now()}`;
 }
 
 /**
@@ -251,17 +250,39 @@ async function sendNotificationForSignal(
       };
     }
 
-    // Fetch signal with related data
+    // ✅ OPTIMIZED: Only select fields actually used
     const signal = await prisma.signals.findUnique({
       where: { id: signalId },
-      include: {
-        agents: true,
+      select: {
+        id: true,
+        side: true,
+        token_symbol: true,
+        venue: true,
+        skipped_reason: true,
+        trade_executed: true,
+        execution_result: true,
+        llm_decision: true,
+        llm_fund_allocation: true,
+        llm_leverage: true,
         agent_deployments: {
-          include: {
-            agents: true,
+          select: {
+            user_wallet: true,
+            agents: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
-        positions: true,
+        positions: {
+          select: {
+            id: true,
+            entry_price: true,
+            qty: true,
+            stop_loss: true,
+            take_profit: true,
+          },
+        },
       },
     });
 
@@ -275,10 +296,15 @@ async function sendNotificationForSignal(
       };
     }
 
-    // Get user's Telegram connection
+    // ✅ OPTIMIZED: Only select fields actually used
     const userTelegram = await prisma.user_telegram_notifications.findUnique({
       where: {
         user_wallet: userWallet.toLowerCase(),
+      },
+      select: {
+        id: true,
+        telegram_chat_id: true,
+        is_active: true,
       },
     });
 
@@ -568,9 +594,13 @@ async function sendQuotaExceededNotification(
       )}...`
     );
 
-    // Get user's Telegram connection
+    // ✅ OPTIMIZED: Only select fields actually used
     const userTelegram = await prisma.user_telegram_notifications.findUnique({
       where: { user_wallet: userWallet.toLowerCase() },
+      select: {
+        telegram_chat_id: true,
+        is_active: true,
+      },
     });
 
     if (!userTelegram || !userTelegram.is_active) {
@@ -641,9 +671,13 @@ async function sendContextBasedNotification(
       )}...`
     );
 
-    // Get user's Telegram connection
+    // ✅ OPTIMIZED: Only select fields actually used
     const userTelegram = await prisma.user_telegram_notifications.findUnique({
       where: { user_wallet: userWallet.toLowerCase() },
+      select: {
+        telegram_chat_id: true,
+        is_active: true,
+      },
     });
 
     if (!userTelegram || !userTelegram.is_active) {
@@ -656,8 +690,8 @@ async function sendContextBasedNotification(
       context.venue === "HYPERLIQUID"
         ? "🔵"
         : context.venue === "OSTIUM"
-        ? "🟢"
-        : "⚪";
+          ? "🟢"
+          : "⚪";
 
     let message = `📊 *Signal Generated (Not Traded)*\n\n`;
     if (context.side && context.token) {
@@ -772,7 +806,7 @@ function isRetryableError(errorMessage: string): boolean {
  */
 async function checkAndQueuePendingSignals(): Promise<void> {
   try {
-    // Find signals from last 24h that need notifications
+    // ✅ OPTIMIZED: Only select fields actually used
     const pendingSignals = await prisma.signals.findMany({
       where: {
         created_at: {
@@ -789,10 +823,20 @@ async function checkAndQueuePendingSignals(): Promise<void> {
           { trade_executed: "FAILED" },
         ],
       },
-      include: {
-        agent_deployments: true,
+      select: {
+        id: true,
+        llm_should_trade: true,
+        trade_executed: true,
+        agent_deployments: {
+          select: {
+            user_wallet: true,
+          },
+        },
       },
-      take: 50,
+      // orderBy: {
+      //   created_at: "desc",
+      // },
+      take: 71,
     });
 
     if (pendingSignals.length === 0) {
@@ -906,8 +950,7 @@ async function runWorker() {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("✅ Telegram Notification Worker started successfully");
     console.log(
-      `📊 Effective parallel capacity: ${
-        WORKER_COUNT * WORKER_CONCURRENCY
+      `📊 Effective parallel capacity: ${WORKER_COUNT * WORKER_CONCURRENCY
       } concurrent notifications`
     );
   } catch (error: any) {

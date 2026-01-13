@@ -62,7 +62,7 @@ dotenv.config();
 const PORT = process.env.PORT || 5008;
 const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || "3");
 const WORKER_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "3");
-const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "60000"); // 60 seconds
+const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "15000"); // 60 seconds
 
 // Duplicate signal check configuration
 const DUPLICATE_CHECK_ENABLED =
@@ -168,9 +168,8 @@ async function queueNotification(params: {
       const token = params.context?.token || "general";
       const agent =
         params.context?.agentName?.replace(/\s+/g, "_") || "unknown";
-      jobId = `notify-${
-        params.notificationType
-      }-${params.userWallet.toLowerCase()}-${token}-${agent}-${Date.now()}`;
+      jobId = `notify-${params.notificationType
+        }-${params.userWallet.toLowerCase()}-${token}-${agent}-${Date.now()}`;
     }
 
     await addJob(
@@ -187,8 +186,7 @@ async function queueNotification(params: {
       { jobId }
     );
     console.log(
-      `[SignalGen] 📤 Queued ${
-        params.notificationType
+      `[SignalGen] 📤 Queued ${params.notificationType
       } notification for ${params.userWallet.substring(
         0,
         10
@@ -253,10 +251,10 @@ async function processSignalGenerationJob(
       return await generateTraderTradeSignalForJob(jobData);
     });
 
-  if (result === undefined) {
-    // Lock could not be acquired, throw error so BullMQ retries
-    throw new Error(`Lock busy for signal ${postId.substring(0, 8)}-${token} - will retry`);
-  }
+    if (result === undefined) {
+      // Lock could not be acquired, throw error so BullMQ retries
+      throw new Error(`Lock busy for signal ${postId.substring(0, 8)}-${token} - will retry`);
+    }
 
     return result;
   }
@@ -327,11 +325,7 @@ async function generateTelegramSignalForJob(
 
       if (!quotaResult.success) {
         console.log(
-          `[SignalGen] ⏭️  User ${deployment.user_wallet.substring(
-            0,
-            10
-          )}... has no trade quota (remaining: ${
-            quotaResult.remaining
+          `[SignalGen] ⏭️  User ${deployment.user_wallet} has no trade quota (remaining: ${quotaResult.remaining
           }) - skipping`
         );
 
@@ -350,10 +344,7 @@ async function generateTelegramSignalForJob(
 
       quotaReserved = true;
       console.log(
-        `[SignalGen] 💳 Quota reserved for ${deployment.user_wallet.substring(
-          0,
-          10
-        )}... (remaining: ${quotaResult.remaining})`
+        `[SignalGen] 💳 Quota reserved for ${deployment.user_wallet} (remaining: ${quotaResult.remaining})`
       );
     } finally {
       // Always release the quota lock
@@ -453,8 +444,7 @@ async function generateTelegramSignalForJob(
     });
 
     console.log(
-      `[SignalGen] 📊 LLM Decision: ${
-        tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
+      `[SignalGen] 📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
       } | ${token}`
     );
 
@@ -602,8 +592,7 @@ async function generateTraderTradeSignalForJob(
           `[SignalGen] ⏭️  User ${deployment.user_wallet.substring(
             0,
             10
-          )}... has no trade quota (remaining: ${
-            quotaResult.remaining
+          )}... has no trade quota (remaining: ${quotaResult.remaining
           }) - skipping`
         );
 
@@ -745,8 +734,7 @@ async function generateTraderTradeSignalForJob(
     });
 
     console.log(
-      `[SignalGen] 📊 LLM Decision: ${
-        tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
+      `[SignalGen] 📊 LLM Decision: ${tradeDecision.shouldOpenNewPosition ? "OPEN" : "SKIP"
       } | ${tokenSymbol}`
     );
 
@@ -842,12 +830,14 @@ async function checkVenueAvailability(
   reason?: string;
 }> {
   if (agent.venue === "MULTI") {
+    // ✅ OPTIMIZED: Only check existence, no need to fetch all columns
     const ostiumMarket = await prisma.venue_markets.findFirst({
       where: {
         token_symbol: token.toUpperCase(),
         venue: "OSTIUM",
         is_active: true,
       },
+      select: { id: true },
     });
 
     if (ostiumMarket) {
@@ -860,12 +850,14 @@ async function checkVenueAvailability(
       reason: `Token ${token} not available on OSTIUM`,
     };
   } else {
+    // ✅ OPTIMIZED: Only check existence, no need to fetch all columns
     const venueMarket = await prisma.venue_markets.findFirst({
       where: {
         token_symbol: token.toUpperCase(),
         venue: agent.venue,
         is_active: true,
       },
+      select: { id: true },
     });
 
     if (venueMarket) {
@@ -891,6 +883,7 @@ async function checkDuplicateSignal(
   const checkWindowMs = DUPLICATE_CHECK_HOURS * 60 * 60 * 1000;
   const checkWindowStart = new Date(Date.now() - checkWindowMs);
 
+  // ✅ OPTIMIZED: Only check existence, no need to fetch all columns
   const existingSignal = await prisma.signals.findFirst({
     where: {
       agent_id: agentId,
@@ -898,6 +891,7 @@ async function checkDuplicateSignal(
       token_symbol: token.toUpperCase(),
       created_at: { gte: checkWindowStart },
     },
+    select: { id: true },
   });
 
   return !!existingSignal;
@@ -945,8 +939,7 @@ async function getCurrentPositions(
   try {
     if (venue === "OSTIUM") {
       const positionsResponse = await fetch(
-        `${
-          process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
+        `${process.env.OSTIUM_SERVICE_URL || "http://localhost:5002"
         }/positions`,
         {
           method: "POST",
@@ -994,6 +987,7 @@ async function getMaxLeverage(
   if (venue !== "OSTIUM") return {};
 
   const tokenSymbol = token.toUpperCase();
+  // ✅ OPTIMIZED: Only select fields actually used
   const ostiumPair = await prisma.ostium_available_pairs.findFirst({
     where: {
       OR: [
@@ -1002,6 +996,10 @@ async function getMaxLeverage(
         { symbol: { startsWith: `${tokenSymbol}/` } },
         { symbol: { endsWith: `/${tokenSymbol}` } },
       ],
+    },
+    select: {
+      max_leverage: true,
+      maker_max_leverage: true,
     },
   });
 
@@ -1096,13 +1094,20 @@ async function createSkippedSignal(
 async function checkAndQueuePendingPosts(): Promise<void> {
   try {
     // Get pending posts
+    // ✅ OPTIMIZED: Only select fields actually used
     const pendingPosts = await prisma.telegram_posts.findMany({
       where: {
         is_signal_candidate: true,
         processed_for_signals: false,
       },
+      select: {
+        id: true,
+        alpha_user_id: true,
+        extracted_tokens: true,
+        message_id: true,
+      },
       orderBy: { message_created_at: "desc" },
-      // take: 3,
+      take: 3,
     });
 
     if (pendingPosts.length === 0) {
@@ -1211,11 +1216,21 @@ async function checkAndQueuePendingPosts(): Promise<void> {
         );
 
         // Get the agent and its deployments
+        // ✅ OPTIMIZED: Only select fields actually used
         const agent = await prisma.agents.findUnique({
           where: { id: traderTrade.agent_id },
-          include: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            description: true,
+            token_filters: true,
+            venue: true,
             agent_deployments: {
               where: { status: "ACTIVE" },
+              select: {
+                id: true,
+              },
             },
           },
         });
@@ -1370,8 +1385,14 @@ async function getAgentsForPost(post: any): Promise<{
   let influencerImpactFactor = 50;
 
   if (post.alpha_user_id) {
+    // ✅ OPTIMIZED: Only select fields actually used
     const alphaUser = await prisma.telegram_alpha_users.findUnique({
       where: { id: post.alpha_user_id },
+      select: {
+        lazy_trader: true,
+        public_source: true,
+        impact_factor: true,
+      },
     });
 
     if (!alphaUser) return { agents: [], influencerImpactFactor };
@@ -1384,12 +1405,21 @@ async function getAgentsForPost(post: any): Promise<{
       return { agents: [], influencerImpactFactor };
     }
 
+    // ✅ OPTIMIZED: Only select fields actually used
     const agentLinks = await prisma.agent_telegram_users.findMany({
       where: { telegram_alpha_user_id: post.alpha_user_id },
-      include: {
+      select: {
         agents: {
-          include: {
-            agent_deployments: { where: { status: "ACTIVE" } },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            agent_deployments: {
+              where: { status: "ACTIVE" },
+              select: {
+                id: true,
+              },
+            },
           },
         },
       },
@@ -1455,8 +1485,7 @@ async function runWorker() {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("✅ Signal Generator Worker started successfully");
     console.log(
-      `📊 Effective parallel capacity: ${
-        WORKER_COUNT * WORKER_CONCURRENCY
+      `📊 Effective parallel capacity: ${WORKER_COUNT * WORKER_CONCURRENCY
       } concurrent LLM calls`
     );
   } catch (error: any) {

@@ -88,12 +88,14 @@ function setupBullBoard() {
   const telegramAlphaQueue = createQueue(QueueName.TELEGRAM_ALPHA_CLASSIFICATION);
   const tradeExecutionQueue = createQueue(QueueName.TRADE_EXECUTION);
   const signalGenerationQueue = createQueue(QueueName.SIGNAL_GENERATION);
+  const telegramNotificationQueue = createQueue(QueueName.TELEGRAM_NOTIFICATION);
 
   createBullBoard({
     queues: [
       new BullMQAdapter(telegramAlphaQueue),
       new BullMQAdapter(tradeExecutionQueue),
       new BullMQAdapter(signalGenerationQueue),
+      new BullMQAdapter(telegramNotificationQueue),
     ],
     serverAdapter,
   });
@@ -140,10 +142,26 @@ async function processClassificationJob(
 async function classifyMessage(messageId: string): Promise<JobResult> {
   try {
     // Fetch the message
+    // ✅ OPTIMIZED: Only select fields actually used
     const message = await prisma.telegram_posts.findUnique({
       where: { id: messageId },
-      include: {
-        telegram_alpha_users: true,
+      select: {
+        id: true,
+        is_signal_candidate: true,
+        alpha_user_id: true,
+        source_id: true,
+        message_id: true,
+        message_text: true,
+        message_created_at: true,
+        sender_id: true,
+        sender_username: true,
+        telegram_alpha_users: {
+          select: {
+            telegram_username: true,
+            first_name: true,
+            impact_factor: true,
+          },
+        },
       },
     });
 
@@ -220,8 +238,8 @@ async function classifyMessage(messageId: string): Promise<JobResult> {
             classification.sentiment === "bullish"
               ? "LONG"
               : classification.sentiment === "bearish"
-              ? "SHORT"
-              : null,
+                ? "SHORT"
+                : null,
           token_price:
             typeof classification.tokenPrice === "number"
               ? classification.tokenPrice
@@ -334,7 +352,7 @@ async function checkAndQueuePendingMessages(): Promise<void> {
       orderBy: {
         message_created_at: "desc",
       },
-      // take: 3,
+      take: 3,
     });
 
     if (unprocessedMessages.length === 0) {

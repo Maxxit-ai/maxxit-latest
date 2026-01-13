@@ -366,9 +366,10 @@ async function processTraderTradeJob(
 
     // Use distributed lock to prevent duplicate processing
     const result = await withLock(lockKey, async () => {
-        // Check if already stored
+        // ✅ OPTIMIZED: Only check existence, no need to fetch all columns
         const existing = await prisma.trader_trades.findUnique({
             where: { source_trade_id: sourceTradeId },
+            select: { id: true },
         });
 
         if (existing) {
@@ -464,7 +465,7 @@ async function processCheckTraderTradeStatusJob(
  */
 async function checkAndQueueTraderJobs(): Promise<void> {
     try {
-        // Get all copy-trade agents with active tracked traders
+        // ✅ OPTIMIZED: Only select fields actually used
         const copyTradeAgents = await prisma.agents.findMany({
             where: {
                 is_copy_trade_club: true,
@@ -475,10 +476,12 @@ async function checkAndQueueTraderJobs(): Promise<void> {
                     },
                 },
             },
-            include: {
+            select: {
+                id: true,
+                token_filters: true,
                 agent_top_traders: {
                     where: { is_active: true },
-                    include: {
+                    select: {
                         top_traders: {
                             select: { wallet_address: true },
                         },

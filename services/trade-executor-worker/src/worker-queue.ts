@@ -87,26 +87,26 @@ async function processTradeExecutionJob(
   }
 
   const { signalId, deploymentId } = data as ExecuteSignalJobData;
-  
+
   // First, get the wallet address to apply wallet-level lock
   // This prevents nonce conflicts when multiple trades target same wallet
   const deployment = await prisma.agent_deployments.findUnique({
     where: { id: deploymentId },
     select: { safe_wallet: true, user_wallet: true },
   });
-  
+
   if (!deployment) {
     return { success: false, error: "Deployment not found" };
   }
-  
+
   const walletAddress = deployment.safe_wallet || deployment.user_wallet;
   const walletLockKey = getWalletTradeLockKey(walletAddress);
   const signalLockKey = getSignalDeploymentLockKey(signalId, deploymentId);
-  
+
   // WALLET-LEVEL LOCK: WAIT for lock (up to 5 minutes) instead of failing
   // This ensures all trades for same wallet execute sequentially without retry failures
   console.log(`[TradeExecutor] Waiting for wallet lock: ${walletAddress.substring(0, 10)}...`);
-  
+
   const result = await withLockWait(walletLockKey, async () => {
     console.log(`[TradeExecutor] Acquired wallet lock for ${walletAddress.substring(0, 10)}...`);
     // SIGNAL-LEVEL LOCK: Prevent duplicate execution of same signal
@@ -114,7 +114,7 @@ async function processTradeExecutionJob(
       return await executeSignal(signalId, deploymentId);
     }, 120000);
   }, 300000, 180000); // Wait up to 5 min for lock, lock TTL 3 min
-  
+
   if (result === undefined) {
     // Inner signal lock failed (shouldn't happen with outer wait)
     throw new Error(`Signal lock failed for ${signalId.substring(0, 8)}`);
@@ -477,29 +477,39 @@ async function checkAndQueuePendingSignals(): Promise<void> {
             in: ["PUBLIC", "PRIVATE"],
           },
         },
+        agent_deployments: {
+          status: "ACTIVE",
+        },
       },
-      include: {
-        agents: true,
-        // Include positions to check if one already exists for this signal's deployment
+      // ✅ OPTIMIZED: Only select fields actually used
+      select: {
+        id: true,
+        deployment_id: true,
+        // For debug logging only:
+        llm_fund_allocation: true,
+        skipped_reason: true,
+        // Related data with minimal fields
         positions: {
           select: {
             id: true,
             deployment_id: true,
           },
         },
-        // Include the designated deployment to verify it's active
-        agent_deployments: true,
+        agent_deployments: {
+          select: {
+            status: true,  // ✅ Only field used
+          },
+        },
         agents: {
           select: {
-            id: true,
-            name: true,
-            status: true,
+            status: true,  // ✅ Only field used (for debug)
           },
         },
       },
       orderBy: {
         created_at: "desc",
-      }
+      },
+      take: 17,
     });
 
     console.log(`[Trigger] 📊 Query returned ${pendingSignals.length} signals from DB`);
@@ -540,18 +550,11 @@ async function checkAndQueuePendingSignals(): Promise<void> {
       return;
     }
 
-    // Filter signals that need processing
-    let filteredOutDeployment = 0;
+    // Filter signals that already have positions
     let filteredOutPosition = 0;
 
     const signalsToProcess = pendingSignals.filter((signal) => {
-      const designatedDeployment = (signal as any).agent_deployments;
-      if (!designatedDeployment || designatedDeployment.status !== "ACTIVE") {
-        filteredOutDeployment++;
-        console.log(`[Trigger] ⏭️  Signal ${signal.id.substring(0, 8)} filtered: deployment status = ${designatedDeployment?.status || "not found"}`);
-        return false;
-      }
-
+      // Check if position already exists for this deployment
       const existingPosition = signal.positions.find(
         (p: any) => p.deployment_id === signal.deployment_id
       );
@@ -566,7 +569,6 @@ async function checkAndQueuePendingSignals(): Promise<void> {
 
     if (signalsToProcess.length === 0) {
       console.log(`[Trigger] ⚠️  All ${pendingSignals.length} signals filtered out:`);
-      console.log(`         - Deployment not ACTIVE: ${filteredOutDeployment}`);
       console.log(`         - Position already exists: ${filteredOutPosition}`);
       return;
     }

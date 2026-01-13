@@ -318,7 +318,7 @@ export const DEFAULT_JOB_OPTIONS: Record<QueueName, JobOptions> = {
     removeOnFail: 50,
   },
   [QueueName.SIGNAL_GENERATION]: {
-    attempts: 2,
+    attempts: 4,
     backoff: {
       type: 'fixed',
       delay: 3000,

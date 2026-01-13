@@ -64,24 +64,27 @@ export class TradeQuotaService {
   static async reserveTradeQuota(
     userWallet: string
   ): Promise<QuotaReservationResult> {
-    const normalizedWallet = userWallet.toLowerCase().trim();
+    const walletToQuery = userWallet.trim();
 
     try {
       // Atomic update: only deduct if trades_remaining > 0
       // This prevents race conditions - the WHERE clause ensures we only update
       // if there's actually quota available
+      // Using LOWER() for case-insensitive wallet matching
       const result = await prisma.$executeRaw`
                 UPDATE user_trade_quota 
                 SET trades_used = trades_used + 1,
                     trades_remaining = trades_remaining - 1,
                     updated_at = NOW()
-                WHERE user_wallet = ${normalizedWallet} 
+                WHERE LOWER(user_wallet) = LOWER(${userWallet.trim()}) 
                 AND trades_remaining > 0
             `;
 
       if (result === 0) {
         // No rows updated - either wallet doesn't exist or insufficient quota
-        const quota = await this.getTradeQuota(normalizedWallet);
+        console.log(`[TradeQuota] DEBUG: UPDATE returned 0 rows for wallet: ${walletToQuery}`);
+        const quota = await this.getTradeQuota(walletToQuery);
+        console.log(`[TradeQuota] DEBUG: getTradeQuota returned:`, quota);
 
         if (quota.trades_total === 0) {
           return {
@@ -99,12 +102,9 @@ export class TradeQuotaService {
       }
 
       // Successfully reserved
-      const quota = await this.getTradeQuota(normalizedWallet);
+      const quota = await this.getTradeQuota(walletToQuery);
       console.log(
-        `[TradeQuota] Reserved 1 trade for ${normalizedWallet.substring(
-          0,
-          10
-        )}... Remaining: ${quota.trades_remaining}`
+        `[TradeQuota] Reserved 1 trade for ${walletToQuery}. Remaining: ${quota.trades_remaining}`
       );
 
       return {
@@ -114,7 +114,7 @@ export class TradeQuotaService {
       };
     } catch (error: any) {
       console.error(
-        `[TradeQuota] Error reserving quota for ${normalizedWallet}:`,
+        `[TradeQuota] Error reserving quota for ${walletToQuery}:`,
         error.message
       );
       return {
@@ -165,22 +165,37 @@ export class TradeQuotaService {
    * Returns all three fields: trades_total, trades_used, trades_remaining
    */
   static async getTradeQuota(userWallet: string) {
-    const normalizedWallet = userWallet.toLowerCase().trim();
+    const walletToQuery = userWallet.trim();
 
-    // @ts-ignore
-    const quota = await prisma.user_trade_quota.findUnique({
-      where: { user_wallet: normalizedWallet },
-    });
+    try {
+      // Use raw SQL with LOWER() for reliable case-insensitive matching
+      // @ts-ignore - user_trade_quota may not be in types yet
+      const result = await prisma.$queryRaw<Array<{
+        trades_total: number;
+        trades_used: number;
+        trades_remaining: number;
+      }>>`
+        SELECT trades_total, trades_used, trades_remaining
+        FROM user_trade_quota
+        WHERE LOWER(user_wallet) = LOWER(${walletToQuery})
+        LIMIT 1
+      `;
 
-    if (!quota) {
+      if (!result || result.length === 0) {
+        console.log(`[TradeQuota] DEBUG: No quota found for wallet: ${walletToQuery}`);
+        return { trades_total: 0, trades_used: 0, trades_remaining: 0 };
+      }
+
+      const quota = result[0];
+      return {
+        trades_total: quota.trades_total,
+        trades_used: quota.trades_used,
+        trades_remaining: quota.trades_remaining,
+      };
+    } catch (error: any) {
+      console.error(`[TradeQuota] Error in getTradeQuota:`, error.message);
       return { trades_total: 0, trades_used: 0, trades_remaining: 0 };
     }
-
-    return {
-      trades_total: quota.trades_total,
-      trades_used: quota.trades_used,
-      trades_remaining: quota.trades_remaining,
-    };
   }
 
   /**
