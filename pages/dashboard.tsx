@@ -260,74 +260,83 @@ export default function Dashboard() {
         <div className="min-h-screen bg-[var(--bg-deep)] text-[var(--text-primary)] font-mono">
             <Header />
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-12">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 sm:mb-12">
+            <main className="max-w-7xl mx-auto px-2 sm:px-4 md:px-6 py-3 sm:py-6 md:py-12">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 sm:gap-4 mb-3 sm:mb-6 md:mb-12">
                     <div>
-                        <p className="data-label mb-2 text-xs sm:text-sm">PORTFOLIO OVERVIEW</p>
-                        <h1 className="text-2xl sm:text-3xl md:text-4xl font-display flex flex-wrap items-center gap-2 sm:gap-3">
-                            COMMAND CENTER <span className="text-[var(--accent)] text-xs border border-[var(--accent)] px-2 py-1 animate-pulse">LIVE</span>
+                        <p className="data-label mb-1 sm:mb-2 text-[8px] sm:text-xs md:text-sm">PORTFOLIO OVERVIEW</p>
+                        <h1 className="text-lg sm:text-2xl md:text-3xl lg:text-4xl font-display flex flex-wrap items-center gap-1 sm:gap-2 md:gap-3">
+                            COMMAND CENTER <span className="text-[var(--accent)] text-[8px] sm:text-xs border border-[var(--accent)] px-1 sm:px-2 py-0.5 sm:py-1 animate-pulse">LIVE</span>
                         </h1>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+                    <div className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 md:gap-3 w-full sm:w-auto">
                         <Link href="/pricing" className="w-full sm:w-auto">
-                            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 border border-[var(--border)] hover:border-[var(--accent)] transition-colors text-xs sm:text-sm font-bold">
-                                <Plus className="h-3 w-3 sm:h-4 sm:w-4" /> BUY CREDITS
+                            <button className="w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 border border-[var(--border)] hover:border-[var(--accent)] transition-colors text-[8px] sm:text-xs md:text-sm font-bold">
+                                <Plus className="h-2.5 w-2.5 sm:h-3 sm:w-3 md:h-4 md:w-4" />
+                                <span className="hidden sm:inline">BUY CREDITS</span>
+                                <span className="sm:hidden">CREDITS</span>
                             </button>
                         </Link>
                         <Link href="/creator" className="w-full sm:w-auto">
-                            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent)] text-[var(--bg-deep)] hover:bg-[var(--accent-dim)] transition-colors text-xs sm:text-sm font-bold">
-                                <Zap className="h-3 w-3 sm:h-4 sm:w-4" /> DEPLOY AGENT
+                            <button className="w-full sm:w-auto flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-[var(--accent)] text-[var(--bg-deep)] hover:bg-[var(--accent-dim)] transition-colors text-[8px] sm:text-xs md:text-sm font-bold">
+                                <Zap className="h-2.5 w-2.5 sm:h-3 sm:w-3 md:h-4 md:w-4" />
+                                <span className="hidden sm:inline">DEPLOY AGENT</span>
+                                <span className="sm:hidden">DEPLOY</span>
                             </button>
                         </Link>
                     </div>
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-12">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 lg:gap-6 mb-3 sm:mb-6 md:mb-12">
                     {stats.map((stat, i) => (
-                        <div key={i} className="border-box p-4 sm:p-6 bg-[var(--bg-surface)] hover:border-[var(--accent)]/50 transition-colors group relative overflow-hidden">
-                            <div className="flex justify-between items-start mb-3 sm:mb-4">
-                                <div className="p-2 border border-[var(--border)] group-hover:border-[var(--accent)]/30">
-                                    <stat.icon className="h-4 w-4 sm:h-5 sm:w-5 text-[var(--accent)]" />
+                        <div key={i} className="border-box p-2 sm:p-3 md:p-4 lg:p-6 bg-[var(--bg-surface)] hover:border-[var(--accent)]/50 transition-colors group relative overflow-hidden">
+                            <div className="flex justify-between items-start mb-1.5 sm:mb-2 md:mb-3 lg:mb-4">
+                                <div className="p-1 sm:p-1.5 md:p-2 border border-[var(--border)] group-hover:border-[var(--accent)]/30">
+                                    <stat.icon className="h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5 text-[var(--accent)]" />
                                 </div>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 whitespace-nowrap ${stat.positive ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                <span className={`text-[7px] sm:text-[8px] md:text-[10px] font-bold px-1 sm:px-1.5 md:px-2 py-0.5 whitespace-nowrap ${stat.positive ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
                                     {stat.change}
                                 </span>
                             </div>
-                            <p className="data-label mb-1 text-xs">{stat.label}</p>
-                            <p className="text-xl sm:text-2xl font-display break-words">{stat.value}</p>
+                            <p className="data-label mb-0.5 sm:mb-1 text-[8px] sm:text-[10px] md:text-xs">{stat.label}</p>
+                            <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-display break-words">{stat.value}</p>
 
                             {stat.label === "CREDIT BALANCE" && (
-                                <Link href="/credit-history" className="absolute bottom-0 right-0 p-2 text-[10px] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--bg-deep)] transition-all font-bold">
-                                    VIEW HISTORY
+                                <Link href="/credit-history" className="absolute bottom-0 right-0 p-1 sm:p-1.5 md:p-2 text-[7px] sm:text-[8px] md:text-[10px] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--bg-deep)] transition-all font-bold">
+                                    <span className="hidden sm:inline">VIEW HISTORY</span>
+                                    <span className="sm:hidden">HISTORY</span>
                                 </Link>
                             )}
                         </div>
                     ))}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 lg:gap-8">
                     {/* Main Content Area - Activity */}
-                    <div className="lg:col-span-2 space-y-6 sm:space-y-8">
+                    <div className="lg:col-span-2 space-y-3 sm:space-y-4 md:space-y-6 lg:space-y-8">
                         <section className="border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden h-full">
-                            <div className="border-b border-[var(--border)] p-3 sm:p-4 flex justify-between items-center bg-[var(--bg-deep)]/50 gap-2">
-                                <h2 className="text-xs sm:text-sm font-bold flex items-center gap-2">
-                                    <History className="h-3 w-3 sm:h-4 sm:w-4 text-[var(--accent)]" /> RECENT ACTIVITY
+                            <div className="border-b border-[var(--border)] p-2 sm:p-3 md:p-4 flex justify-between items-center bg-[var(--bg-deep)]/50 gap-1 sm:gap-2">
+                                <h2 className="text-[10px] sm:text-xs md:text-sm font-bold flex items-center gap-1 sm:gap-2">
+                                    <History className="h-2.5 w-2.5 sm:h-3 sm:w-3 md:h-4 md:w-4 text-[var(--accent)]" />
+                                    <span className="hidden sm:inline">RECENT ACTIVITY</span>
+                                    <span className="sm:hidden">ACTIVITY</span>
                                 </h2>
-                                <Link href="/my-trades" className="text-[10px] text-[var(--text-muted)] hover:text-[var(--accent)] flex items-center gap-1 transition-colors whitespace-nowrap">
-                                    VIEW ALL <ChevronRight className="h-3 w-3" />
+                                <Link href="/my-trades" className="text-[8px] sm:text-[10px] text-[var(--text-muted)] hover:text-[var(--accent)] flex items-center gap-0.5 sm:gap-1 transition-colors whitespace-nowrap">
+                                    <span className="hidden sm:inline">VIEW ALL</span>
+                                    <span className="sm:hidden">ALL</span>
+                                    <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                                 </Link>
                             </div>
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left text-xs min-w-[600px]">
+                                <table className="w-full text-left text-xs min-w-[500px] sm:min-w-[600px]">
                                     <thead className="border-b border-[var(--border)] text-[var(--text-muted)] uppercase tracking-tighter">
                                         <tr>
-                                            <th className="p-2 sm:p-4 font-normal">AGENT</th>
-                                            <th className="p-2 sm:p-4 font-normal">ASSET</th>
-                                            <th className="p-2 sm:p-4 font-normal">SIDE</th>
-                                            <th className="p-2 sm:p-4 font-normal">PRICE</th>
-                                            <th className="p-2 sm:p-4 font-normal hidden sm:table-cell">TIME</th>
-                                            <th className="p-2 sm:p-4 font-normal text-right">STATUS</th>
+                                            <th className="p-1.5 sm:p-2 md:p-4 font-normal text-[10px] sm:text-xs">AGENT</th>
+                                            <th className="p-1.5 sm:p-2 md:p-4 font-normal text-[10px] sm:text-xs">ASSET</th>
+                                            <th className="p-1.5 sm:p-2 md:p-4 font-normal text-[10px] sm:text-xs">SIDE</th>
+                                            <th className="p-1.5 sm:p-2 md:p-4 font-normal text-[10px] sm:text-xs">PRICE</th>
+                                            <th className="p-1.5 sm:p-2 md:p-4 font-normal text-[10px] sm:text-xs hidden sm:table-cell">TIME</th>
+                                            <th className="p-1.5 sm:p-2 md:p-4 font-normal text-[10px] sm:text-xs text-right">STATUS</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[var(--border)]/50">
@@ -344,24 +353,24 @@ export default function Dashboard() {
                                             ))
                                         ) : trades.length === 0 ? (
                                             <tr>
-                                                <td colSpan={6} className="p-8 sm:p-12 text-center text-[var(--text-muted)] text-xs sm:text-sm">
+                                                <td colSpan={6} className="p-6 sm:p-8 md:p-12 text-center text-[var(--text-muted)] text-[10px] sm:text-xs md:text-sm">
                                                     NO RECENT ACTIVITY FOUND
                                                 </td>
                                             </tr>
                                         ) : (
                                             trades.map((trade) => (
                                                 <tr key={trade.id} className="hover:bg-[var(--bg-elevated)]/30 transition-colors">
-                                                    <td className="p-2 sm:p-4 font-bold text-xs sm:text-sm">{trade.agentName}</td>
-                                                    <td className="p-2 sm:p-4 text-[var(--text-secondary)] text-xs sm:text-sm">{trade.tokenSymbol}</td>
-                                                    <td className="p-2 sm:p-4">
-                                                        <span className={`text-xs sm:text-sm ${trade.side === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
+                                                    <td className="p-1.5 sm:p-2 md:p-4 font-bold text-[10px] sm:text-xs md:text-sm truncate max-w-[80px] sm:max-w-none" title={trade.agentName}>{trade.agentName}</td>
+                                                    <td className="p-1.5 sm:p-2 md:p-4 text-[var(--text-secondary)] text-[10px] sm:text-xs md:text-sm">{trade.tokenSymbol}</td>
+                                                    <td className="p-1.5 sm:p-2 md:p-4">
+                                                        <span className={`text-[10px] sm:text-xs md:text-sm ${trade.side === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                                                             {trade.side}
                                                         </span>
                                                     </td>
-                                                    <td className="p-2 sm:p-4 font-mono text-xs sm:text-sm">${trade.entryPrice}</td>
-                                                    <td className="p-2 sm:p-4 text-[var(--text-muted)] text-xs sm:text-sm hidden sm:table-cell">{formatDate(trade.openedAt)}</td>
-                                                    <td className="p-2 sm:p-4 text-right leading-none">
-                                                        <span className={`text-[10px] border px-1.5 py-0.5 ${trade.status === 'OPEN' ? 'border-green-500/30 text-green-400' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>
+                                                    <td className="p-1.5 sm:p-2 md:p-4 font-mono text-[10px] sm:text-xs md:text-sm">${trade.entryPrice}</td>
+                                                    <td className="p-1.5 sm:p-2 md:p-4 text-[var(--text-muted)] text-[10px] sm:text-xs md:text-sm hidden sm:table-cell">{formatDate(trade.openedAt)}</td>
+                                                    <td className="p-1.5 sm:p-2 md:p-4 text-right leading-none">
+                                                        <span className={`text-[8px] sm:text-[10px] border px-1 sm:px-1.5 py-0.5 whitespace-nowrap ${trade.status === 'OPEN' ? 'border-green-500/30 text-green-400' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>
                                                             {trade.status}
                                                         </span>
                                                     </td>
@@ -375,60 +384,62 @@ export default function Dashboard() {
                     </div>
 
                     {/* Sidebar - Quick Info */}
-                    <div className="space-y-4 sm:space-y-6">
-                        <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-4 sm:p-6">
-                            <h3 className="data-label mb-3 sm:mb-4 text-xs">TRADE USAGE</h3>
-                            <div className="flex items-end gap-2 mb-2">
-                                <span className="text-xl sm:text-2xl font-display text-[var(--accent)]">
+                    <div className="space-y-3 sm:space-y-4 md:space-y-6">
+                        <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-2 sm:p-3 md:p-4 lg:p-6">
+                            <h3 className="data-label mb-1.5 sm:mb-2 md:mb-3 lg:mb-4 text-[8px] sm:text-[10px] md:text-xs">TRADE USAGE</h3>
+                            <div className="flex items-end gap-1 sm:gap-2 mb-1.5 sm:mb-2">
+                                <span className="text-sm sm:text-lg md:text-xl lg:text-2xl font-display text-[var(--accent)]">
                                     {tradeQuota ? `${tradeQuota.trades_used} / ${tradeQuota.trades_total}` : '-- / --'}
                                 </span>
-                                <span className="text-[var(--text-muted)] text-[10px] mb-1">USED</span>
+                                <span className="text-[var(--text-muted)] text-[7px] sm:text-[8px] md:text-[10px] mb-0.5 sm:mb-1">USED</span>
                             </div>
-                            <div className="h-2 bg-[var(--bg-deep)] border border-[var(--border)] overflow-hidden mb-4 sm:mb-6">
+                            <div className="h-1 sm:h-1.5 md:h-2 bg-[var(--bg-deep)] border border-[var(--border)] overflow-hidden mb-2 sm:mb-3 md:mb-4 lg:mb-6">
                                 <div
                                     className="h-full bg-[var(--accent)] transition-all duration-500"
                                     style={{ width: tradeQuota && tradeQuota.trades_total > 0 ? `${(tradeQuota.trades_remaining / tradeQuota.trades_total) * 100}%` : '0%' }}
                                 />
                             </div>
                             <Link href="/pricing">
-                                <button className="w-full py-2 sm:py-3 bg-[var(--bg-elevated)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors text-[10px] font-bold tracking-widest uppercase">
-                                    BUY MORE TRADES
+                                <button className="w-full py-1 sm:py-1.5 md:py-2 lg:py-3 bg-[var(--bg-elevated)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors text-[7px] sm:text-[8px] md:text-[10px] font-bold tracking-widest uppercase">
+                                    <span className="hidden md:inline">BUY MORE TRADES</span>
+                                    <span className="md:hidden">BUY TRADES</span>
                                 </button>
                             </Link>
                         </section>
 
-                        <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-4 sm:p-6 relative overflow-hidden">
+                        <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-3 sm:p-4 md:p-6 relative overflow-hidden">
                             <div className="relative z-10">
-                                <h3 className="data-label mb-3 sm:mb-4 text-xs">ACTIVE CLUBS</h3>
-                                <div className="space-y-3 sm:space-y-4">
+                                <h3 className="data-label mb-2 sm:mb-3 md:mb-4 text-[10px] sm:text-xs">ACTIVE CLUBS</h3>
+                                <div className="space-y-2 sm:space-y-3 md:space-y-4">
                                     {loading ? (
                                         [1, 2, 3].map((idx) => (
-                                            <div key={idx} className="flex items-center justify-between p-2 sm:p-3 bg-[var(--bg-deep)] border border-[var(--border)] animate-pulse">
-                                                <div className="h-6 sm:h-8 w-24 sm:w-32 bg-[var(--bg-elevated)]" />
-                                                <div className="h-4 w-10 sm:w-12 bg-[var(--bg-elevated)]" />
+                                            <div key={idx} className="flex items-center justify-between p-1.5 sm:p-2 md:p-3 bg-[var(--bg-deep)] border border-[var(--border)] animate-pulse">
+                                                <div className="h-4 sm:h-6 md:h-8 w-20 sm:w-24 md:w-32 bg-[var(--bg-elevated)]" />
+                                                <div className="h-3 sm:h-4 w-8 sm:w-10 md:w-12 bg-[var(--bg-elevated)]" />
                                             </div>
                                         ))
                                     ) : deployments.length === 0 ? (
-                                        <div className="p-3 sm:p-4 text-center border border-dashed border-[var(--border)] text-[var(--text-muted)] text-xs">
+                                        <div className="p-2 sm:p-3 md:p-4 text-center border border-dashed border-[var(--border)] text-[var(--text-muted)] text-[10px] sm:text-xs">
                                             NO ACTIVE CLUBS
                                         </div>
                                     ) : (
                                         deployments.slice(0, 5).map((deployment) => (
-                                            <div key={deployment.id} className="flex items-center justify-between p-2 sm:p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/30 transition-colors cursor-pointer group">
+                                            <div key={deployment.id} className="flex items-center justify-between p-1.5 sm:p-2 md:p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/30 transition-colors cursor-pointer group">
                                                 <div className="min-w-0 flex-1">
-                                                    <p className="text-xs sm:text-sm font-bold group-hover:text-[var(--accent)] transition-colors truncate">{deployment.agent.name}</p>
-                                                    <p className="text-[10px] text-[var(--text-muted)] tracking-wider uppercase font-mono truncate">
+                                                    <p className="text-[10px] sm:text-xs md:text-sm font-bold group-hover:text-[var(--accent)] transition-colors truncate">{deployment.agent.name}</p>
+                                                    <p className="text-[8px] sm:text-[10px] text-[var(--text-muted)] tracking-wider uppercase font-mono truncate">
                                                         {deployment.agent.venue} · {deployment.status}
                                                     </p>
                                                 </div>
-                                                <Activity className={`h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0 ${deployment.status === 'ACTIVE' ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`} />
+                                                <Activity className={`h-2.5 w-2.5 sm:h-3 sm:w-3 md:h-4 md:w-4 flex-shrink-0 ${deployment.status === 'ACTIVE' ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`} />
                                             </div>
                                         ))
                                     )}
                                 </div>
                                 <Link href="/my-deployments">
-                                    <button className="w-full mt-4 sm:mt-6 py-2 sm:py-3 border border-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--bg-deep)] hover:border-[var(--accent)] transition-all text-[10px] font-bold tracking-widest uppercase">
-                                        MANAGE ALL SUBSCRIPTIONS
+                                    <button className="w-full mt-3 sm:mt-4 md:mt-6 py-1.5 sm:py-2 md:py-3 border border-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--bg-deep)] hover:border-[var(--accent)] transition-all text-[8px] sm:text-[10px] font-bold tracking-widest uppercase">
+                                        <span className="hidden sm:inline">MANAGE ALL SUBSCRIPTIONS</span>
+                                        <span className="sm:hidden">MANAGE SUBS</span>
                                     </button>
                                 </Link>
                             </div>

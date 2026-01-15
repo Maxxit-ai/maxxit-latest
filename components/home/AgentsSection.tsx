@@ -268,8 +268,8 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
           {/* Trading Wallets Display - Single Location */}
           {userAgentAddresses && (userAgentAddresses.hyperliquid || userAgentAddresses.ostium) && (
             <div className="mb-6 sm:mb-8 p-3 sm:p-4 border border-[var(--accent)]/40 bg-[var(--accent)]/5">
-              <p className="data-label mb-2 sm:mb-3">YOUR TRADING WALLETS</p>
-              <div className="grid md:grid-cols-2 gap-2 sm:gap-3">
+              <p className="data-label mb-2 sm:mb-3 text-xs sm:text-sm">YOUR TRADING WALLETS</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
                 {/* {userAgentAddresses.hyperliquid && (
                   <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -298,27 +298,27 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                 )} */}
 
                 {userAgentAddresses.ostium && (
-                  <div className="flex items-center justify-between gap-3 p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="w-8 h-8 border-2 border-[var(--accent)]/60 flex items-center justify-center flex-shrink-0">
-                        <Wallet className="w-4 h-4 text-[var(--accent)]" />
+                  <div className="flex items-center justify-between gap-2 sm:gap-3 p-2 sm:p-3 bg-[var(--bg-deep)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-[var(--accent)]/60 flex items-center justify-center flex-shrink-0">
+                        <Wallet className="w-3 h-3 sm:w-4 sm:h-4 text-[var(--accent)]" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-[var(--accent)] uppercase">OSTIUM</p>
-                        <p className="text-xs font-mono text-[var(--text-primary)] truncate" title={userAgentAddresses.ostium}>
+                        <p className="text-[10px] sm:text-xs font-bold text-[var(--accent)] uppercase">OSTIUM</p>
+                        <p className="text-[10px] sm:text-xs font-mono text-[var(--text-primary)] truncate" title={userAgentAddresses.ostium}>
                           {formatAddress(userAgentAddresses.ostium)}
                         </p>
                       </div>
                     </div>
                     <button
                       onClick={() => handleCopyAddress(userAgentAddresses.ostium!, 'ostium')}
-                      className="p-2 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors flex-shrink-0 border border-[var(--border)] hover:border-[var(--accent)]/50"
+                      className="p-1.5 sm:p-2 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors flex-shrink-0 border border-[var(--border)] hover:border-[var(--accent)]/50"
                       title="Copy full address"
                     >
                       {copiedAddress === `ostium-${userAgentAddresses.ostium}` ? (
-                        <Check className="w-4 h-4 text-[var(--accent)]" />
+                        <Check className="w-3 h-3 sm:w-4 sm:h-4 text-[var(--accent)]" />
                       ) : (
-                        <Copy className="w-4 h-4" />
+                        <Copy className="w-3 h-3 sm:w-4 sm:h-4" />
                       )}
                     </button>
                   </div>
@@ -330,21 +330,21 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
           {/* Ostium Delegation Status Card */}
           {userAgentAddresses?.ostium && (
             <div className="mb-6 sm:mb-8 p-3 sm:p-4 border border-[var(--border)] bg-[var(--bg-surface)]">
-              <p className="data-label mb-2 sm:mb-3">OSTIUM STATUS</p>
-              <div className="grid md:grid-cols-2 gap-3 sm:gap-4">
+              <p className="data-label mb-2 sm:mb-3 text-xs sm:text-sm">OSTIUM STATUS</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 {/* Delegation Status */}
-                <div className="p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
+                <div className="p-2 sm:p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Delegation</span>
+                    <span className="text-[10px] sm:text-xs font-bold text-[var(--text-muted)] uppercase">Delegation</span>
                     {ostiumDelegationStatus === null || ostiumDelegationStatus === undefined ? (
-                      <Activity className="w-4 h-4 text-[var(--accent)] animate-spin" />
+                      <Activity className="w-3 h-3 sm:w-4 sm:h-4 text-[var(--accent)] animate-spin" />
                     ) : ostiumDelegationStatus.isDelegatedToAgent ? (
-                      <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                      <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-[var(--accent)]" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-[var(--danger)]" />
+                      <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 text-[var(--danger)]" />
                     )}
                   </div>
-                  <p className="text-sm font-mono text-[var(--text-primary)]">
+                  <p className="text-xs sm:text-sm font-mono text-[var(--text-primary)]">
                     {ostiumDelegationStatus === null || ostiumDelegationStatus === undefined
                       ? 'Checking...'
                       : ostiumDelegationStatus.isDelegatedToAgent
@@ -354,39 +354,39 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                           : 'Not delegated'}
                   </p>
                   {ostiumDelegationStatus?.delegatedAddress && (
-                    <p className="text-xs font-mono text-[var(--text-muted)] mt-1 truncate" title={ostiumDelegationStatus.delegatedAddress}>
+                    <p className="text-[10px] sm:text-xs font-mono text-[var(--text-muted)] mt-1 truncate" title={ostiumDelegationStatus.delegatedAddress}>
                       {formatAddress(ostiumDelegationStatus.delegatedAddress)}
                     </p>
                   )}
                   {ostiumDelegationStatus !== null && ostiumDelegationStatus !== undefined && !ostiumDelegationStatus.isDelegatedToAgent && (
                     <button
                       onClick={() => setShowDelegationModal(true)}
-                      className="mt-3 w-full py-2 px-3 bg-[var(--accent)] text-[var(--bg-deep)] text-xs font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-1"
+                      className="mt-2 sm:mt-3 w-full py-1.5 sm:py-2 px-2 sm:px-3 bg-[var(--accent)] text-[var(--bg-deep)] text-[10px] sm:text-xs font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-1"
                     >
-                      <Settings className="w-3 h-3" />
+                      <Settings className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                       SETUP DELEGATION
                     </button>
                   )}
                 </div>
 
                 {/* USDC Allowance */}
-                <div className="p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
+                <div className="p-2 sm:p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-[var(--text-muted)] uppercase">USDC Allowance</span>
+                    <span className="text-[10px] sm:text-xs font-bold text-[var(--text-muted)] uppercase">USDC Allowance</span>
                     {ostiumUsdcAllowance === null || ostiumUsdcAllowance === undefined ? (
-                      <Activity className="w-4 h-4 text-[var(--accent)] animate-spin" />
+                      <Activity className="w-3 h-3 sm:w-4 sm:h-4 text-[var(--accent)] animate-spin" />
                     ) : ostiumUsdcAllowance.hasApproval ? (
-                      <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                      <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-[var(--accent)]" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-[var(--danger)]" />
+                      <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 text-[var(--danger)]" />
                     )}
                   </div>
-                  <p className="text-sm font-mono text-[var(--text-primary)]">
+                  <p className="text-xs sm:text-sm font-mono text-[var(--text-primary)]">
                     {ostiumUsdcAllowance === null || ostiumUsdcAllowance === undefined
                       ? 'Checking...'
                       : `$${ostiumUsdcAllowance.usdcAllowance.toLocaleString()}`}
                   </p>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                  <p className="text-[10px] sm:text-xs text-[var(--text-muted)] mt-1">
                     {ostiumUsdcAllowance === null || ostiumUsdcAllowance === undefined
                       ? 'Checking status...'
                       : ostiumUsdcAllowance.hasApproval
@@ -396,9 +396,9 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                   {ostiumUsdcAllowance !== null && ostiumUsdcAllowance !== undefined && !ostiumUsdcAllowance.hasApproval && (
                     <button
                       onClick={() => setShowUsdcApprovalModal(true)}
-                      className="mt-3 w-full py-2 px-3 bg-[var(--accent)] text-[var(--bg-deep)] text-xs font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-1"
+                      className="mt-2 sm:mt-3 w-full py-1.5 sm:py-2 px-2 sm:px-3 bg-[var(--accent)] text-[var(--bg-deep)] text-[10px] sm:text-xs font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-1"
                     >
-                      <Settings className="w-3 h-3" />
+                      <Settings className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                       APPROVE USDC
                     </button>
                   )}
@@ -432,14 +432,14 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
               </Link>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
               {agents.map((agent, i) => (
                 <div
                   key={agent.id}
                   onClick={() => onCardClick(agent)}
                   onMouseEnter={() => setHoveredCard(agent.id)}
                   onMouseLeave={() => setHoveredCard(null)}
-                  className="border-scan flex h-full flex-col justify-between border-2 border-[var(--border)] p-4 sm:p-5 md:p-6 cursor-pointer bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-all group card-enter relative overflow-hidden"
+                  className="border-scan flex h-full flex-col justify-between border-2 border-[var(--border)] p-3 sm:p-4 md:p-5 lg:p-6 cursor-pointer bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-all group card-enter relative overflow-hidden"
                   style={{ animationDelay: `${i * 0.1}s` }}
                 >
                   {/* Decorative gradient overlay on hover */}
@@ -452,9 +452,9 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                   }} />
 
                   <div className="relative z-10">
-                    <div className="flex items-start justify-between mb-3 sm:mb-4">
+                    <div className="flex items-start justify-between mb-2 sm:mb-3 md:mb-4">
                       <div className="flex-1 min-w-0 pr-2">
-                        <h3 className="font-display text-lg sm:text-xl group-hover:text-accent transition-colors mb-1 sm:mb-2 truncate">
+                        <h3 className="font-display text-base sm:text-lg md:text-xl group-hover:text-accent transition-colors mb-1 sm:mb-2 truncate">
                           {agent.name}
                         </h3>
                         {/* <div className="flex items-center gap-2 flex-wrap">
@@ -469,8 +469,8 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                           )}
                         </div> */}
                       </div>
-                      <div className="border-2 border-[var(--border)] px-1.5 sm:px-2 py-0.5 sm:py-1 bg-[var(--bg-elevated)] flex-shrink-0 ml-2">
-                        <span className="text-[var(--text-muted)] text-xs font-mono font-bold">
+                      <div className="border-2 border-[var(--border)] px-1 sm:px-1.5 md:px-2 py-0.5 sm:py-1 bg-[var(--bg-elevated)] flex-shrink-0 ml-1 sm:ml-2">
+                        <span className="text-[var(--text-muted)] text-[10px] sm:text-xs font-mono font-bold">
                           #{String(i + 1).padStart(2, '0')}
                         </span>
                       </div>
@@ -478,8 +478,8 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 
                     {/* Description Section */}
                     {agent.description && (
-                      <div className="mb-3 sm:mb-4">
-                        <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed opacity-80">
+                      <div className="mb-2 sm:mb-3 md:mb-4">
+                        <p className="text-[10px] sm:text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed opacity-80">
                           {agent.description}
                         </p>
                       </div>
@@ -489,12 +489,12 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                     {/* Metrics Section - Unified Design */}
                     <div className="flex-1 flex flex-col justify-center">
                       {/* Price Section */}
-                      <div className="mb-4 sm:mb-5 pb-3 sm:pb-4 border-b border-[#ededed]/20">
+                      <div className="mb-3 sm:mb-4 md:mb-5 pb-2 sm:pb-3 md:pb-4 border-b border-[#ededed]/20">
                         <div className="flex items-center justify-between">
-                          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] opacity-70">
+                          <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] opacity-70">
                             COUNCIL PRICE
                           </p>
-                          <p className={`text-xs sm:text-sm font-mono font-bold ${agent.totalCost && agent.totalCost > 0 ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+                          <p className={`text-[10px] sm:text-xs md:text-sm font-mono font-bold ${agent.totalCost && agent.totalCost > 0 ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
                             {agent.totalCost && agent.totalCost > 0
                               ? `${agent.totalCost.toFixed(0)} CREDS`
                               : 'FREE'}
@@ -502,12 +502,12 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                         </div>
                       </div>
                       {/* Primary Metric - 30D Return */}
-                      <div className="mb-3 sm:mb-4">
-                        <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 sm:mb-1.5 opacity-70">
+                      <div className="mb-2 sm:mb-3 md:mb-4">
+                        <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 sm:mb-1.5 opacity-70">
                           30D RETURN
                         </p>
                         <p
-                          className={`text-2xl sm:text-3xl font-display leading-none font-bold ${agent.apr30d && agent.apr30d > 0
+                          className={`text-lg sm:text-2xl md:text-3xl font-display leading-none font-bold ${agent.apr30d && agent.apr30d > 0
                             ? 'text-accent'
                             : agent.apr30d && agent.apr30d < 0
                               ? 'text-[var(--danger)]'
@@ -521,23 +521,23 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                       </div>
 
                       {/* Secondary Metrics */}
-                      <div className="flex gap-2 sm:gap-3">
+                      <div className="flex gap-1.5 sm:gap-2 md:gap-3">
                         {agent.sharpe30d != null && (
-                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-2 sm:px-3 py-2 sm:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
-                            <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 opacity-70">
+                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                            <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
                               SHARPE
                             </p>
-                            <p className="font-mono font-bold text-accent text-sm sm:text-base leading-none">
+                            <p className="font-mono font-bold text-accent text-xs sm:text-sm md:text-base leading-none">
                               {agent.sharpe30d.toFixed(2)}
                             </p>
                           </div>
                         )}
                         {agent.apr90d != null && (
-                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-2 sm:px-3 py-2 sm:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
-                            <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 opacity-70">
+                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                            <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
                               90D
                             </p>
-                            <p className={`font-mono font-bold text-sm sm:text-base leading-none ${agent.apr90d > 0 ? 'text-accent' : agent.apr90d < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
+                            <p className={`font-mono font-bold text-xs sm:text-sm md:text-base leading-none ${agent.apr90d > 0 ? 'text-accent' : agent.apr90d < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
                               {agent.apr90d > 0 ? '+' : ''}{agent.apr90d.toFixed(1)}%
                             </p>
                           </div>
@@ -546,7 +546,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                     </div>
 
                     {/* Button Section */}
-                    <div className="pt-4 sm:pt-6">
+                    <div className="pt-3 sm:pt-4 md:pt-6">
                       {(() => {
                         const agentCost = agent.totalCost || 0;
                         const isWalletConnected = userWallet && userWallet.trim() !== '';
@@ -566,40 +566,40 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                               }
                             }}
                             disabled={hasInsufficientCredits || false}
-                            className={`w-full py-2.5 sm:py-3 border-2 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 relative transition-all ${hasInsufficientCredits
+                            className={`w-full py-2 sm:py-2.5 md:py-3 border-2 text-[10px] sm:text-xs md:text-sm font-bold flex items-center justify-center gap-1 sm:gap-2 relative transition-all ${hasInsufficientCredits
                               ? 'border-red-500/50 bg-red-500/5 text-red-500 cursor-not-allowed opacity-70'
                               : 'button-animated border-[var(--border)] bg-[var(--bg-elevated)] group/btn'
                               }`}
                           >
                             {!isWalletConnected ? (
                               <>
-                                <Wallet className="relative z-10" size={16} />
+                                <Wallet className="relative z-10 w-3 h-3 sm:w-4 sm:h-4" />
                                 <span className="relative z-10 font-bold">CONNECT WALLET</span>
                               </>
                             ) : alreadyDeployed ? (
                               <>
-                                <CheckCircle className="relative z-10" size={16} />
+                                <CheckCircle className="relative z-10 w-3 h-3 sm:w-4 sm:h-4" />
                                 <span className="relative z-10 font-bold">JOINED</span>
                               </>
                             ) : hasInsufficientCredits ? (
                               <>
-                                <AlertCircle className="relative z-10" size={16} />
-                                <span className="relative z-10 font-bold">INSUFFICIENT CREDITS</span>
+                                <AlertCircle className="relative z-10 w-3 h-3 sm:w-4 sm:h-4" />
+                                <span className="relative z-10 font-bold hidden sm:inline">INSUFFICIENT CREDITS</span>
+                                <span className="relative z-10 font-bold sm:hidden">NO CREDITS</span>
                               </>
                             ) : isCreator ? (
                               <>
-                                <span className="relative z-10 font-bold">JOIN CLUB (FREE)</span>
+                                <span className="relative z-10 font-bold hidden sm:inline">JOIN CLUB (FREE)</span>
+                                <span className="relative z-10 font-bold sm:hidden">JOIN (FREE)</span>
                                 <ArrowRight
-                                  className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
-                                  size={16}
+                                  className={`relative z-10 transition-transform w-3 h-3 sm:w-4 sm:h-4 ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
                                 />
                               </>
                             ) : (
                               <>
                                 <span className="relative z-10 font-bold">JOIN CLUB</span>
                                 <ArrowRight
-                                  className={`relative z-10 transition-transform ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
-                                  size={16}
+                                  className={`relative z-10 transition-transform w-3 h-3 sm:w-4 sm:h-4 ${hoveredButton === agent.id ? 'translate-x-1' : ''}`}
                                 />
                               </>
                             )}

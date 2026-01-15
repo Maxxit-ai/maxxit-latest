@@ -8,15 +8,15 @@ import { Trophy, TrendingUp, Users, Zap } from "lucide-react";
 
 function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
     return (
-        <div className="p-4 flex items-center gap-3 bg-[var(--bg-surface)] border border-[var(--border)] hover-lift">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[var(--accent-glow)]">
-                <Icon className="w-5 h-5 text-accent" />
+        <div className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3 bg-[var(--bg-surface)] border border-[var(--border)] hover-lift">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center bg-[var(--accent-glow)] flex-shrink-0">
+                <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
             </div>
-            <div>
-                <div className="text-xs uppercase tracking-wide text-[var(--text-muted)]">
+            <div className="min-w-0 flex-1">
+                <div className="text-[10px] sm:text-xs uppercase tracking-wide text-[var(--text-muted)]">
                     {label}
                 </div>
-                <div className="text-lg font-bold text-[var(--text-primary)] font-display">
+                <div className="text-sm sm:text-lg font-bold text-[var(--text-primary)] font-display truncate">
                     {value}
                 </div>
             </div>

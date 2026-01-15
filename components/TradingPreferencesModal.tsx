@@ -283,14 +283,14 @@ export function TradingPreferencesForm({
     };
 
     return (
-      <div ref={sliderRowRef} className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-5 space-y-4 rounded-lg">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <h3 className="text-base font-bold text-[var(--text-primary)]">{title}</h3>
-            <p className="text-xs text-[var(--text-secondary)] mt-1">{helper}</p>
+      <div ref={sliderRowRef} className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-3 sm:p-4 md:p-5 space-y-3 sm:space-y-4 rounded-lg">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex-1 w-full sm:w-auto">
+            <h3 className="text-sm sm:text-base font-bold text-[var(--text-primary)]">{title}</h3>
+            <p className="text-[10px] sm:text-xs text-[var(--text-secondary)] mt-0.5 sm:mt-1">{helper}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-[var(--accent)] font-bold uppercase px-2 py-1 bg-[var(--accent)]/10 rounded">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <span className="text-[10px] sm:text-xs text-[var(--accent)] font-bold uppercase px-2 py-1 bg-[var(--accent)]/10 rounded">
               {badge}
             </span>
             <input
@@ -306,20 +306,20 @@ export function TradingPreferencesForm({
                   e.currentTarget.blur();
                 }
               }}
-              className="w-16 px-2 py-1.5 text-center border-2 border-[var(--accent)]/60 bg-black text-[var(--accent)] font-mono font-bold text-sm rounded hover:border-[var(--accent)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+              className="w-14 sm:w-16 px-2 py-1 sm:py-1.5 text-center border-2 border-[var(--accent)]/60 bg-black text-[var(--accent)] font-mono font-bold text-xs sm:text-sm rounded hover:border-[var(--accent)] focus:border-[var(--accent)] focus:outline-none transition-colors"
               placeholder="0-100"
             />
           </div>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-gray-400 px-1 font-medium">
+        <div className="space-y-1.5 sm:space-y-2">
+          <div className="flex items-center justify-between text-[10px] sm:text-xs text-gray-400 px-1 font-medium">
             <span>{left}</span>
             <span>{right}</span>
           </div>
 
           <Slider
-            className="relative flex items-center select-none touch-none w-full h-12 group cursor-pointer"
+            className="relative flex items-center select-none touch-none w-full h-10 sm:h-12 group cursor-pointer"
             value={[tempValue]}
             onValueChange={(vals) => {
               const v = Math.min(100, Math.max(0, vals[0]));
@@ -354,19 +354,19 @@ export function TradingPreferencesForm({
             draggable={true}
           >
             <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[var(--accent)]/15 via-transparent to-[var(--accent)]/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <SliderTrack className="bg-gray-500/60 relative grow rounded-full h-3 cursor-pointer hover:bg-gray-300/60 transition-colors shadow-inner overflow-hidden">
+            <SliderTrack className="bg-gray-500/60 relative grow rounded-full h-2.5 sm:h-3 cursor-pointer hover:bg-gray-300/60 transition-colors shadow-inner overflow-hidden">
               <SliderRange className="absolute bg-gradient-to-r from-[var(--accent)] to-[var(--accent)]/60 h-full rounded-full shadow-[0_0_10px_rgba(0,0,0,0.45)]" />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_50%,rgba(255,255,255,0.18),transparent_35%),radial-gradient(circle_at_90%_50%,rgba(255,255,255,0.18),transparent_35%)] opacity-60 pointer-events-none" />
             </SliderTrack>
             <SliderThumb
-              className="relative flex items-center justify-center w-10 h-10 bg-[var(--accent)] text-black text-[11px] font-bold border-[3px] border-black rounded-full hover:scale-110 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 transition-all duration-150 cursor-grab active:cursor-grabbing active:scale-105 shadow-xl"
+              className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 bg-[var(--accent)] text-black text-[9px] sm:text-[10px] md:text-[11px] font-bold border-[2px] sm:border-[3px] border-black rounded-full hover:scale-110 focus:outline-none focus:ring-2 sm:focus:ring-4 focus:ring-[var(--accent)]/50 transition-all duration-150 cursor-grab active:cursor-grabbing active:scale-105 shadow-xl"
               aria-label={title}
             >
               {Math.round(tempValue)}
             </SliderThumb>
           </Slider>
 
-          <div className="flex justify-between text-xs text-gray-500 px-1 font-mono">
+          <div className="flex justify-between text-[10px] sm:text-xs text-gray-500 px-1 font-mono">
             <span>0</span>
             <span>25</span>
             <span>50</span>
@@ -375,7 +375,7 @@ export function TradingPreferencesForm({
           </div>
         </div>
 
-        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{description}</p>
+        <p className="text-[10px] sm:text-xs text-[var(--text-secondary)] leading-relaxed">{description}</p>
       </div>
     );
   };
@@ -400,7 +400,7 @@ export function TradingPreferencesForm({
   return (
     <div
       ref={scrollContainerRef}
-      className="p-6 space-y-4 bg-[var(--bg-deep)] overflow-y-auto flex-1 modal-scrollable"
+      className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 bg-[var(--bg-deep)] overflow-y-auto flex-1 modal-scrollable"
       style={{ overscrollBehavior: 'contain' }}
       onWheel={(e) => {
         const target = e.currentTarget;
@@ -413,9 +413,9 @@ export function TradingPreferencesForm({
       }}
     >
       {loading ? (
-        <div className="text-center py-10 space-y-3">
-          <Activity className="h-10 w-10 mx-auto text-[var(--accent)] animate-pulse" />
-          <p className="text-sm text-[var(--text-muted)]">Loading preferences...</p>
+        <div className="text-center py-8 sm:py-10 space-y-2 sm:space-y-3">
+          <Activity className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-[var(--accent)] animate-pulse" />
+          <p className="text-xs sm:text-sm text-[var(--text-muted)]">Loading preferences...</p>
         </div>
       ) : (
         <>
@@ -504,9 +504,9 @@ export function TradingPreferencesForm({
             }
           />
 
-          <div className="border border-[var(--accent)]/60 p-4 bg-[var(--accent)]/8">
-            <p className="data-label mb-2">HOW THIS WORKS</p>
-            <ul className="text-xs text-[var(--text-secondary)] space-y-1">
+          <div className="border border-[var(--accent)]/60 p-3 sm:p-4 bg-[var(--accent)]/8">
+            <p className="data-label mb-1.5 sm:mb-2 text-[10px] sm:text-xs">HOW THIS WORKS</p>
+            <ul className="text-[10px] sm:text-xs text-[var(--text-secondary)] space-y-0.5 sm:space-y-1">
               <li>• Preferences adjust position sizing weights (Agent HOW)</li>
               <li>• Combines with LLM classification and LunarCrush data</li>
               <li>• Creates a personalized trade profile across deployments</li>
@@ -514,16 +514,16 @@ export function TradingPreferencesForm({
           </div>
 
           {error && (
-            <div className="border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="border border-destructive bg-destructive/10 p-2.5 sm:p-3 text-xs sm:text-sm text-destructive">
               {error}
             </div>
           )}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
             {onBack && (
               <button
                 onClick={onBack}
-                className="flex-1 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
+                className="w-full sm:flex-1 py-2.5 sm:py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors text-xs sm:text-sm"
                 type="button"
                 disabled={saving}
               >
@@ -533,19 +533,23 @@ export function TradingPreferencesForm({
             <button
               onClick={handleSave}
               disabled={saving || (onNext && nextDisabled)}
-              className="flex-1 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full sm:flex-1 py-2.5 sm:py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm"
             >
               {saving || (onNext && nextLoading) ? (
                 <>
-                  <Activity className="w-4 h-4 animate-spin" />
-                  {saving ? 'Saving...' : 'Checking...'}
+                  <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+                  <span className="hidden sm:inline">{saving ? 'Saving...' : 'Checking...'}</span>
+                  <span className="sm:hidden">{saving ? 'Saving...' : 'Checking...'}</span>
                 </>
               ) : (
                 <>
-                  {onNext 
+                  <span className="hidden sm:inline">{onNext 
                     ? (primaryLabel || 'Save and Next')
-                    : (primaryLabel || (localOnly ? 'Save & Continue' : 'Save Preferences'))}
-                  {onNext && <ArrowRight className="w-4 h-4" />}
+                    : (primaryLabel || (localOnly ? 'Save & Continue' : 'Save Preferences'))}</span>
+                  <span className="sm:hidden">{onNext 
+                    ? (primaryLabel || 'Next')
+                    : (primaryLabel || (localOnly ? 'Save' : 'Save'))}</span>
+                  {onNext && <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                 </>
               )}
             </button>
@@ -570,21 +574,21 @@ export function TradingPreferencesModal(props: TradingPreferencesModalProps) {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-3 md:p-4">
       <div
-        className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-[var(--bg-deep)] border border-[var(--accent)] max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col overflow-hidden"
       >
-        <div className="border-b border-[var(--accent)] p-6 flex items-center justify-between flex-shrink-0">
-          <div>
-            <p className="data-label mb-2">AGENT HOW</p>
-            <h2 className="font-display text-2xl text-[var(--accent)]">Trading Preferences</h2>
-            <p className="text-sm text-[var(--text-secondary)]">Tune your sizing and filters</p>
+        <div className="border-b border-[var(--accent)] p-3 sm:p-4 md:p-6 flex items-center justify-between flex-shrink-0">
+          <div className="flex-1 min-w-0">
+            <p className="data-label mb-1 sm:mb-2 text-[10px] sm:text-xs">AGENT HOW</p>
+            <h2 className="font-display text-lg sm:text-xl md:text-2xl text-[var(--accent)]">Trading Preferences</h2>
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)]">Tune your sizing and filters</p>
           </div>
           <button
             onClick={props.onClose}
-            className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            className="p-1.5 sm:p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0 ml-2"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
         </div>
 

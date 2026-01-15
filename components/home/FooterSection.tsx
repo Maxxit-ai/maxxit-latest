@@ -21,19 +21,19 @@ const FooterSection = () => {
 
   return (
     <footer className="border-t border-[var(--border)] bg-[var(--bg-surface)]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 sm:gap-8 mb-6 sm:mb-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-12">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 md:gap-8">
           {/* Brand Section */}
-          <div className="space-y-3 sm:space-y-4">
+          <div className="space-y-2 sm:space-y-3 md:space-y-4 flex-1">
             <Link href="/" className="flex items-center gap-2 group">
-              <Image src="/logo.png" alt="Maxxit" width={1000} height={1000} className="sm:w-[100px]" />
+              <Image src="/logo.png" alt="Maxxit" width={1000} height={1000} className="w-20 sm:w-24 md:w-[100px] h-auto" />
             </Link>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed max-w-sm">
+            <p className="text-[10px] sm:text-xs text-[var(--text-muted)] leading-relaxed max-w-sm">
               DeFi trading involves risk. Past performance ≠ future results. Non-custodial & gasless.
             </p>
           </div>
 
-          <p className="text-xs sm:text-sm text-[var(--text-muted)]">
+          <p className="text-[10px] sm:text-xs md:text-sm text-[var(--text-muted)] text-center sm:text-right">
             © {currentYear} MAXXIT. All rights reserved.
           </p>
         </div>

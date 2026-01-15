@@ -98,9 +98,8 @@ function SortableHeader({
     return (
         <th
             onClick={() => onSort(column)}
-            className={`px-4 py-3 text-${align} text-xs font-semibold uppercase tracking-wide cursor-pointer select-none transition-colors hover:bg-opacity-80 ${
-                currentColumn === column ? 'text-accent' : 'text-[var(--text-muted)]'
-            }`}
+            className={`px-4 py-3 text-${align} text-xs font-semibold uppercase tracking-wide cursor-pointer select-none transition-colors hover:bg-opacity-80 ${currentColumn === column ? 'text-accent' : 'text-[var(--text-muted)]'
+                }`}
         >
             <div className={`flex items-center gap-1.5 ${align === "right" ? "justify-end" : ""}`}>
                 <span>{label}</span>
@@ -139,41 +138,42 @@ function Pagination({
     };
 
     return (
-        <div className="flex items-center justify-center gap-2 mt-6">
+        <div className="flex items-center justify-center gap-1 sm:gap-2 mt-6">
             <button
                 onClick={() => onPageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="p-2 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-primary)] hover-lift"
+                className="p-1.5 sm:p-2 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-primary)] hover-lift"
             >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
 
-            {getPageNumbers().map((page, idx) =>
-                typeof page === "number" ? (
-                    <button
-                        key={idx}
-                        onClick={() => onPageChange(page)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${
-                            page === currentPage
-                                ? 'bg-accent text-[var(--bg-deep)] border-accent'
-                                : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)] hover-lift'
-                        }`}
-                    >
-                        {page}
-                    </button>
-                ) : (
-                    <span key={idx} className="px-2 text-[var(--text-muted)]">
-                        {page}
-                    </span>
-                )
-            )}
+            <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto max-w-[200px] sm:max-w-none">
+                {getPageNumbers().map((page, idx) =>
+                    typeof page === "number" ? (
+                        <button
+                            key={idx}
+                            onClick={() => onPageChange(page)}
+                            className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all border whitespace-nowrap ${page === currentPage
+                                    ? 'bg-accent text-[var(--bg-deep)] border-accent'
+                                    : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)] hover-lift'
+                                }`}
+                        >
+                            {page}
+                        </button>
+                    ) : (
+                        <span key={idx} className="px-1 sm:px-2 text-[var(--text-muted)] text-xs sm:text-sm">
+                            {page}
+                        </span>
+                    )
+                )}
+            </div>
 
             <button
                 onClick={() => onPageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="p-2 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-primary)] hover-lift"
+                className="p-1.5 sm:p-2 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-primary)] hover-lift"
             >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
         </div>
     );
@@ -276,125 +276,116 @@ export function TraderTable({ traders, isLoading, error }: TraderTableProps) {
     return (
         <div>
             <div className="rounded-xl overflow-hidden bg-[var(--bg-surface)] border border-[var(--border)]">
-                {/* Desktop Table */}
-                <div className="hidden md:block">
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="bg-[var(--bg-elevated)]">
-                                    <SortableHeader column="rank" label="Rank" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
-                                    <SortableHeader column="wallet" label="Wallet" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
-                                    <SortableHeader column="pnl" label="PnL" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
-                                    <SortableHeader column="winRate" label="Win Rate" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
-                                    <SortableHeader column="trades" label="Trades" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
-                                    <SortableHeader column="volume" label="Volume" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
-                                    <SortableHeader column="impact" label="Impact" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
-                                    <SortableHeader column="lastActive" label="Last Active" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {paginatedTraders.map((trader) => {
-                                    const { formatted: pnlFormatted, isPositive } = formatPnl(trader.totalPnl);
-                                    const winRate = trader.totalTrades > 0
-                                        ? ((trader.totalProfitTrades / trader.totalTrades) * 100).toFixed(1)
-                                        : "0";
-                                    const truncatedAddress = `${trader.walletAddress.slice(0, 6)}...${trader.walletAddress.slice(-4)}`;
+                {/* Unified Scrollable Table for All Screen Sizes */}
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
+                        <thead>
+                            <tr className="bg-[var(--bg-elevated)]">
+                                <SortableHeader column="rank" label="Rank" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+                                <SortableHeader column="wallet" label="Wallet" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
+                                <SortableHeader column="pnl" label="PnL" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
+                                <SortableHeader column="winRate" label="Win Rate" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
+                                <SortableHeader column="trades" label="Trades" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
+                                <SortableHeader column="volume" label="Volume" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
+                                <SortableHeader column="impact" label="Impact" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
+                                <SortableHeader column="lastActive" label="Last Active" currentColumn={sortColumn} direction={sortDirection} onSort={handleSort} align="right" />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {paginatedTraders.map((trader) => {
+                                const { formatted: pnlFormatted, isPositive } = formatPnl(trader.totalPnl);
+                                const winRate = trader.totalTrades > 0
+                                    ? ((trader.totalProfitTrades / trader.totalTrades) * 100).toFixed(1)
+                                    : "0";
+                                const truncatedAddress = `${trader.walletAddress.slice(0, 6)}...${trader.walletAddress.slice(-4)}`;
 
-                                    return (
-                                        <tr
-                                            key={trader.id}
-                                            className="transition-colors border-t border-[var(--border)] hover:bg-[var(--bg-elevated)]"
-                                        >
-                                            <td className="px-4 py-3">
-                                                <div
-                                                    className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm font-display ${
-                                                        trader.rank <= 3
-                                                            ? 'bg-gradient-to-br from-green-700 to-green-600 text-[var(--bg-deep)]'
-                                                            : 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                                return (
+                                    <tr
+                                        key={trader.id}
+                                        className="transition-colors border-t border-[var(--border)] hover:bg-[var(--bg-elevated)]"
+                                    >
+                                        <td className="px-2 sm:px-4 py-2 sm:py-3">
+                                            <div
+                                                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-bold text-xs sm:text-sm font-display ${trader.rank <= 3
+                                                        ? 'bg-gradient-to-br from-green-700 to-green-600 text-[var(--bg-deep)]'
+                                                        : 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                                                     }`}
-                                                >
-                                                    {trader.rank}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <Link
-                                                    href={`https://arbiscan.io/address/${trader.walletAddress}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex items-center gap-1.5 group"
-                                                >
-                                                    <span className="font-mono text-sm group-hover:underline text-[var(--text-primary)] glitch-hover">
-                                                        {truncatedAddress}
-                                                    </span>
-                                                    <ExternalLink className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 transition-opacity text-accent" />
-                                                </Link>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    {isPositive ? (
-                                                        <TrendingUp className="w-3.5 h-3.5 text-accent" />
-                                                    ) : (
-                                                        <TrendingDown className="w-3.5 h-3.5 text-[var(--danger)]" />
-                                                    )}
-                                                    <span
-                                                        className={`text-sm font-semibold font-display ${
-                                                            isPositive ? 'text-accent' : 'text-[var(--danger)]'
-                                                        }`}
-                                                    >
-                                                        {pnlFormatted}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <span className="text-sm text-[var(--text-primary)]">
-                                                    {winRate}%
+                                            >
+                                                {trader.rank}
+                                            </div>
+                                        </td>
+                                        <td className="px-2 sm:px-4 py-2 sm:py-3">
+                                            <Link
+                                                href={`https://arbiscan.io/address/${trader.walletAddress}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-1 sm:gap-1.5 group"
+                                            >
+                                                <span className="font-mono text-xs sm:text-sm group-hover:underline text-[var(--text-primary)] glitch-hover">
+                                                    {truncatedAddress}
                                                 </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <span className="text-sm text-[var(--text-primary)]">
+                                                <ExternalLink className="w-3 h-3 sm:w-3.5 sm:h-3.5 opacity-50 group-hover:opacity-100 transition-opacity text-accent" />
+                                            </Link>
+                                        </td>
+                                        <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                {isPositive ? (
+                                                    <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-accent" />
+                                                ) : (
+                                                    <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[var(--danger)]" />
+                                                )}
+                                                <span
+                                                    className={`text-xs sm:text-sm font-semibold font-display ${isPositive ? 'text-accent' : 'text-[var(--danger)]'
+                                                        }`}
+                                                >
+                                                    {pnlFormatted}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                            <span className="text-xs sm:text-sm text-[var(--text-primary)]">
+                                                {winRate}%
+                                            </span>
+                                        </td>
+                                        <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                            <div className="flex flex-col items-end">
+                                                <span className="text-xs sm:text-sm text-[var(--text-primary)]">
                                                     {trader.totalTrades}
                                                 </span>
-                                                <span className="text-xs ml-1 text-[var(--text-muted)]">
-                                                    ({trader.totalProfitTrades}W/{trader.totalLossTrades}L)
+                                                <span className="text-[10px] sm:text-xs text-[var(--text-muted)] whitespace-nowrap">
+                                                    {trader.totalProfitTrades}W/{trader.totalLossTrades}L
                                                 </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <span className="text-sm text-[var(--text-primary)]">
-                                                    {formatVolume(trader.totalVolume)}
+                                            </div>
+                                        </td>
+                                        <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                            <span className="text-xs sm:text-sm text-[var(--text-primary)]">
+                                                {formatVolume(trader.totalVolume)}
+                                            </span>
+                                        </td>
+                                        <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                            <span className="text-xs sm:text-sm font-bold text-accent font-display">
+                                                {trader.impactFactor.toFixed(1)}
+                                            </span>
+                                        </td>
+                                        <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-[var(--text-muted)]" />
+                                                <span className="text-[10px] sm:text-xs text-[var(--text-muted)] whitespace-nowrap">
+                                                    {getRelativeTime(trader.lastActiveAt)}
                                                 </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <span className="text-sm font-bold text-accent font-display">
-                                                    {trader.impactFactor.toFixed(1)}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    <Clock className="w-3 h-3 text-[var(--text-muted)]" />
-                                                    <span className="text-xs text-[var(--text-muted)]">
-                                                        {getRelativeTime(trader.lastActiveAt)}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* Mobile Cards */}
-                <div className="block md:hidden p-3 space-y-3">
-                    {paginatedTraders.map((trader) => (
-                        <TraderCard key={trader.id} trader={trader} />
-                    ))}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
             {/* Pagination */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4">
-                <p className="text-sm text-[var(--text-muted)]">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
+                <p className="text-xs sm:text-sm text-[var(--text-muted)] text-center sm:text-left">
                     Showing {startIndex + 1}-{Math.min(startIndex + TRADERS_PER_PAGE, sortedTraders.length)} of {sortedTraders.length} traders
                 </p>
                 <Pagination

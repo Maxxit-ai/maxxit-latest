@@ -845,47 +845,47 @@ export function OstiumConnect({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-1 sm:p-2 md:p-4"
       onWheelCapture={(e) => {
         // Keep scroll inside the modal stack; don't bubble to page
         e.stopPropagation();
       }}
     >
-      <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden overscroll-contain">
+      <div className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-5xl w-full max-h-[98vh] sm:max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden overscroll-contain">
         {/* Header */}
-        <div className="border-b border-[var(--border)] px-6 py-4 flex-shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center">
-              <Zap className="h-5 w-5 text-[var(--accent)]" />
+        <div className="border-b border-[var(--border)] px-2 sm:px-3 md:px-4 lg:px-6 py-2 sm:py-3 md:py-4 flex-shrink-0 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 min-w-0 flex-1">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 border border-[var(--accent)] flex items-center justify-center flex-shrink-0">
+              <Zap className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 text-[var(--accent)]" />
             </div>
-            <div>
-              <p className="data-label mb-1">JOIN ALPHA CLUB</p>
-              <h2 className="font-display text-xl">Join {agentName}</h2>
+            <div className="min-w-0 flex-1">
+              <p className="data-label mb-0.5 sm:mb-1 text-[9px] sm:text-[10px] md:text-xs">JOIN ALPHA CLUB</p>
+              <h2 className="font-display text-xs sm:text-sm md:text-lg lg:text-xl truncate">Join {agentName}</h2>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            className="p-1 sm:p-1.5 md:p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4 sm:h-4 sm:w-4 md:h-5 md:w-5" />
           </button>
         </div>
 
         {/* Content */}
         <div className="flex-1 flex">
           {/* Left: Journey steps */}
-          <aside className="hidden md:flex w-64 flex-col border-r border-[var(--border)] bg-[var(--bg-deep)] px-6 py-6 space-y-6">
+          <aside className="hidden lg:flex w-56 xl:w-64 flex-col border-r border-[var(--border)] bg-[var(--bg-deep)] px-4 xl:px-6 py-4 xl:py-6 space-y-4 xl:space-y-6">
             <div>
-              <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">Your setup journey</p>
-              <p className="text-xs text-[var(--text-secondary)]">
+              <p className="text-[10px] xl:text-xs font-semibold text-[var(--text-muted)] mb-1 xl:mb-2">Your setup journey</p>
+              <p className="text-[10px] xl:text-xs text-[var(--text-secondary)]">
                 Follow the steps to connect your wallet, set your trading style, and let the agent trade on your behalf.
               </p>
             </div>
 
-            <ol className="space-y-4 text-xs">
-              <li className="flex items-start gap-3">
+            <ol className="space-y-3 xl:space-y-4 text-[10px] xl:text-xs">
+              <li className="flex items-start gap-2 xl:gap-3">
                 <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold ${step === 'connect'
+                  className={`flex h-5 w-5 xl:h-6 xl:w-6 items-center justify-center rounded-full border text-[8px] xl:text-[10px] font-bold ${step === 'connect'
                     ? 'border-[var(--accent)] text-[var(--accent)]'
                     : 'border-[var(--border)] text-[var(--text-muted)]'
                     }`}
@@ -894,13 +894,13 @@ export function OstiumConnect({
                 </span>
                 <div>
                   <p className="font-semibold">Connect wallet</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Authorize your Arbitrum wallet.</p>
+                  <p className="text-[8px] xl:text-[10px] text-[var(--text-muted)]">Authorize your Arbitrum wallet.</p>
                 </div>
               </li>
 
-              <li className="flex items-start gap-3">
+              <li className="flex items-start gap-2 xl:gap-3">
                 <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold ${step === 'preferences'
+                  className={`flex h-5 w-5 xl:h-6 xl:w-6 items-center justify-center rounded-full border text-[8px] xl:text-[10px] font-bold ${step === 'preferences'
                     ? 'border-[var(--accent)] text-[var(--accent)]'
                     : 'border-[var(--border)] text-[var(--text-muted)]'
                     }`}
@@ -909,13 +909,13 @@ export function OstiumConnect({
                 </span>
                 <div>
                   <p className="font-semibold">Trading style</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Set risk, frequency, and filters.</p>
+                  <p className="text-[8px] xl:text-[10px] text-[var(--text-muted)]">Set risk, frequency, and filters.</p>
                 </div>
               </li>
 
-              <li className="flex items-start gap-3">
+              <li className="flex items-start gap-2 xl:gap-3">
                 <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold ${step === 'approvals'
+                  className={`flex h-5 w-5 xl:h-6 xl:w-6 items-center justify-center rounded-full border text-[8px] xl:text-[10px] font-bold ${step === 'approvals'
                     ? 'border-[var(--accent)] text-[var(--accent)]'
                     : 'border-[var(--border)] text-[var(--text-muted)]'
                     }`}
@@ -924,13 +924,13 @@ export function OstiumConnect({
                 </span>
                 <div>
                   <p className="font-semibold">Enable 1-Click Trading</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Delegate signatures and set allowance.</p>
+                  <p className="text-[8px] xl:text-[10px] text-[var(--text-muted)]">Delegate signatures and set allowance.</p>
                 </div>
               </li>
 
-              <li className="flex items-start gap-3">
+              <li className="flex items-start gap-2 xl:gap-3">
                 <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-bold ${step === 'complete'
+                  className={`flex h-5 w-5 xl:h-6 xl:w-6 items-center justify-center rounded-full border text-[8px] xl:text-[10px] font-bold ${step === 'complete'
                     ? 'border-[var(--accent)] text-[var(--accent)]'
                     : 'border-[var(--border)] text-[var(--text-muted)]'
                     }`}
@@ -939,7 +939,7 @@ export function OstiumConnect({
                 </span>
                 <div>
                   <p className="font-semibold">Join Agent</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Deploy the agent and start trading.</p>
+                  <p className="text-[8px] xl:text-[10px] text-[var(--text-muted)]">Deploy the agent and start trading.</p>
                 </div>
               </li>
             </ol>
@@ -947,7 +947,7 @@ export function OstiumConnect({
 
           {/* Right: Active step content */}
           <div
-            className="flex-1 p-6 space-y-4 overflow-y-auto custom-scrollbar min-h-0"
+            className="flex-1 p-2 sm:p-3 md:p-4 lg:p-6 space-y-2 sm:space-y-3 md:space-y-4 overflow-y-auto custom-scrollbar min-h-0"
             onWheelCapture={(e) => {
               const el = e.currentTarget;
               const isScrollable = el.scrollHeight > el.clientHeight;
@@ -959,36 +959,36 @@ export function OstiumConnect({
             }}
           >
             {showTopUpUI ? (
-              <div className="space-y-5 py-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center bg-[var(--accent)]/10 flex-shrink-0">
-                    <Plus className="w-5 h-5 text-[var(--accent)]" />
+              <div className="space-y-3 sm:space-y-4 md:space-y-5 py-0">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 border border-[var(--accent)] flex items-center justify-center bg-[var(--accent)]/10 flex-shrink-0">
+                    <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[var(--accent)]" />
                   </div>
                   <div>
-                    <h3 className="font-display text-lg uppercase tracking-tight">Top-up Required</h3>
-                    <p className="text-[10px] text-[var(--text-muted)]">You need more credits to join this project's signals.</p>
+                    <h3 className="font-display text-xs sm:text-sm md:text-lg uppercase tracking-tight">Top-up Required</h3>
+                    <p className="text-[8px] sm:text-[9px] md:text-[10px] text-[var(--text-muted)]">You need more credits to join this project's signals.</p>
                   </div>
                 </div>
 
                 {/* Cost Breakdown */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="border border-[var(--border)] p-3 bg-[var(--bg-deep)]/50">
-                    <p className="text-[9px] text-[var(--text-muted)] uppercase font-bold mb-0.5">Join Cost</p>
-                    <p className="text-lg font-display">{totalCost.toFixed(0)} <span className="text-[9px] text-[var(--text-secondary)]">CREDS</span></p>
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
+                  <div className="border border-[var(--border)] p-1.5 sm:p-2 md:p-3 bg-[var(--bg-deep)]/50">
+                    <p className="text-[7px] sm:text-[8px] md:text-[9px] text-[var(--text-muted)] uppercase font-bold mb-0.5">Join Cost</p>
+                    <p className="text-xs sm:text-sm md:text-lg font-display">{totalCost.toFixed(0)} <span className="text-[7px] sm:text-[8px] md:text-[9px] text-[var(--text-secondary)]">CREDS</span></p>
                   </div>
-                  <div className="border border-[var(--border)] p-3 bg-[var(--bg-deep)]/50">
-                    <p className="text-[9px] text-[var(--text-muted)] uppercase font-bold mb-0.5">Your Balance</p>
-                    <p className="text-lg font-display">{creditBalance.toFixed(0)} <span className="text-[9px] text-[var(--text-secondary)]">CREDS</span></p>
+                  <div className="border border-[var(--border)] p-1.5 sm:p-2 md:p-3 bg-[var(--bg-deep)]/50">
+                    <p className="text-[7px] sm:text-[8px] md:text-[9px] text-[var(--text-muted)] uppercase font-bold mb-0.5">Your Balance</p>
+                    <p className="text-xs sm:text-sm md:text-lg font-display">{creditBalance.toFixed(0)} <span className="text-[7px] sm:text-[8px] md:text-[9px] text-[var(--text-secondary)]">CREDS</span></p>
                   </div>
-                  <div className="border border-[var(--accent)]/30 p-3 bg-[var(--accent)]/5">
-                    <p className="text-[9px] text-[var(--accent)] uppercase font-bold mb-0.5">Shortfall</p>
-                    <p className="text-lg font-display text-[var(--accent)]">{(totalCost - creditBalance).toFixed(0)} <span className="text-[9px]">CREDS</span></p>
+                  <div className="border border-[var(--accent)]/30 p-1.5 sm:p-2 md:p-3 bg-[var(--accent)]/5">
+                    <p className="text-[7px] sm:text-[8px] md:text-[9px] text-[var(--accent)] uppercase font-bold mb-0.5">Shortfall</p>
+                    <p className="text-xs sm:text-sm md:text-lg font-display text-[var(--accent)]">{(totalCost - creditBalance).toFixed(0)} <span className="text-[7px] sm:text-[8px] md:text-[9px]">CREDS</span></p>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--text-secondary)]">Select a Package</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="space-y-2 sm:space-y-3">
+                  <p className="text-[8px] sm:text-[9px] md:text-[10px] font-bold tracking-widest uppercase text-[var(--text-secondary)]">Select a Package</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
                     {(() => {
                       const shortfall = totalCost - creditBalance;
                       const recommendedTier = pricingTiers.find(t => t.value >= shortfall) || pricingTiers[pricingTiers.length - 1];
@@ -999,19 +999,19 @@ export function OstiumConnect({
                           <button
                             key={tier.name}
                             onClick={() => handleBuyCredits(tier)}
-                            className={`relative text-left p-4 border transition-all group overflow-hidden ${isRecommended ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/50 bg-[var(--bg-elevated)]/30'
+                            className={`relative text-left p-2.5 sm:p-3 md:p-4 border transition-all group overflow-hidden ${isRecommended ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--accent)]/50 bg-[var(--bg-elevated)]/30'
                               }`}
                           >
                             {isRecommended && (
-                              <div className="absolute top-0 right-0 px-2 py-0.5 bg-[var(--accent)] text-[var(--bg-deep)] text-[8px] font-bold uppercase">
+                              <div className="absolute top-0 right-0 px-1 sm:px-1.5 md:px-2 py-0.5 bg-[var(--accent)] text-[var(--bg-deep)] text-[6px] sm:text-[7px] md:text-[8px] font-bold uppercase">
                                 Recommended
                               </div>
                             )}
-                            <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase mb-0.5">{tier.name}</p>
-                            <p className="text-md font-display text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">{tier.credits}</p>
-                            <p className="text-lg font-display text-[var(--accent)] mt-1">{tier.price}</p>
-                            <div className="mt-3 flex items-center gap-1 text-[9px] font-bold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">
-                              BUY NOW <ArrowRight className="w-3 h-3" />
+                            <p className="text-[7px] sm:text-[8px] font-bold text-[var(--text-muted)] uppercase mb-0.5">{tier.name}</p>
+                            <p className="text-xs sm:text-sm md:text-md font-display text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">{tier.credits}</p>
+                            <p className="text-sm sm:text-md md:text-lg font-display text-[var(--accent)] mt-1">{tier.price}</p>
+                            <div className="mt-2 sm:mt-3 flex items-center gap-1 text-[7px] sm:text-[8px] md:text-[9px] font-bold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">
+                              BUY NOW <ArrowRight className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" />
                             </div>
                           </button>
                         );
@@ -1020,15 +1020,15 @@ export function OstiumConnect({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-4 border-t border-[var(--border)]">
+                <div className="flex flex-col sm:flex-row items-center justify-between pt-3 sm:pt-4 border-t border-[var(--border)] gap-2 sm:gap-0">
                   <button
                     onClick={() => setShowTopUpUI(false)}
-                    className="px-5 py-2.5 border border-[var(--border)] text-[var(--text-secondary)] text-xs font-bold hover:text-[var(--text-primary)] hover:border-[var(--text-muted)] transition-colors"
+                    className="w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 border border-[var(--border)] text-[var(--text-secondary)] text-[10px] sm:text-xs font-bold hover:text-[var(--text-primary)] hover:border-[var(--text-muted)] transition-colors"
                   >
                     CANCEL
                   </button>
-                  <div className="text-right">
-                    <p className="text-[9px] text-[var(--text-muted)] uppercase italic">CONTINUE JOINING AFTER TOP-UP</p>
+                  <div className="text-center sm:text-right">
+                    <p className="text-[8px] sm:text-[9px] text-[var(--text-muted)] uppercase italic">CONTINUE JOINING AFTER TOP-UP</p>
                   </div>
                 </div>
               </div>
@@ -1043,18 +1043,18 @@ export function OstiumConnect({
 
                 {step === 'connect' ? (
                   authenticated && user?.wallet?.address ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3 p-4 border border-[var(--accent)]/60 bg-[var(--accent)]/5 rounded">
-                        <div className="w-12 h-12 border border-[var(--accent)] flex items-center justify-center bg-[var(--bg-deep)]">
-                          <Wallet className="w-6 h-6 text-[var(--accent)]" />
+                    <div className="space-y-3 sm:space-y-4">
+                      <div className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-[var(--accent)]/60 bg-[var(--accent)]/5 rounded">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 border border-[var(--accent)] flex items-center justify-center bg-[var(--bg-deep)] flex-shrink-0">
+                          <Wallet className="w-5 h-5 sm:w-6 sm:h-6 text-[var(--accent)]" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[var(--text-primary)]">Wallet connected</p>
-                          <p className="text-xs text-[var(--text-secondary)] truncate font-mono">
+                          <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)]">Wallet connected</p>
+                          <p className="text-[10px] sm:text-xs text-[var(--text-secondary)] truncate font-mono">
                             {user.wallet.address}
                           </p>
                         </div>
-                        <div className="text-[10px] px-2 py-1 border border-[var(--accent)] text-[var(--accent)] font-bold">
+                        <div className="text-[8px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 sm:py-1 border border-[var(--accent)] text-[var(--accent)] font-bold whitespace-nowrap">
                           ARBITRUM
                         </div>
                       </div>
@@ -1064,41 +1064,41 @@ export function OstiumConnect({
                       </div>
                       <button
                         onClick={() => setStep('preferences')}
-                        className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
+                        className="w-full py-2.5 sm:py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors text-sm sm:text-base"
                       >
                         Continue
                       </button>
                     </div>
                   ) : (
                     // Show connect button if not authenticated
-                    <div className="text-center space-y-6 py-4">
-                      <div className="w-16 h-16 mx-auto border border-[var(--accent)] flex items-center justify-center">
-                        <Wallet className="w-8 h-8 text-[var(--accent)]" />
+                    <div className="text-center space-y-4 sm:space-y-6 py-3 sm:py-4">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto border border-[var(--accent)] flex items-center justify-center">
+                        <Wallet className="w-6 h-6 sm:w-8 sm:h-8 text-[var(--accent)]" />
                       </div>
                       <div>
-                        <h3 className="font-display text-lg mb-2">CONNECT WALLET</h3>
-                        <p className="text-sm text-[var(--text-secondary)]">
+                        <h3 className="font-display text-base sm:text-lg mb-1 sm:mb-2">CONNECT WALLET</h3>
+                        <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
                           Connect your Arbitrum wallet to whitelist the agent
                         </p>
                       </div>
                       <button
                         onClick={handleConnect}
-                        className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
+                        className="w-full py-3 sm:py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
                       >
-                        <Wallet className="w-5 h-5" />
+                        <Wallet className="w-4 h-4 sm:w-5 sm:h-5" />
                         CONNECT WALLET
                       </button>
                     </div>
                   )
                 ) : step === 'preferences' ? (
-                  <div className="space-y-4 py-2">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 border border-[var(--accent)] flex items-center justify-center">
-                        <Zap className="w-6 h-6 text-[var(--accent)]" />
+                  <div className="space-y-2 sm:space-y-3 md:space-y-4 py-1 sm:py-2">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
+                      <div className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 border border-[var(--accent)] flex items-center justify-center flex-shrink-0">
+                        <Zap className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-[var(--accent)]" />
                       </div>
-                      <div>
-                        <h3 className="font-display text-lg">Set Your Trading Preferences</h3>
-                        <p className="text-xs text-[var(--text-muted)]">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-display text-xs sm:text-sm md:text-lg">Set Your Trading Preferences</h3>
+                        <p className="text-[9px] sm:text-[10px] md:text-xs text-[var(--text-muted)]">
                           {firstDeploymentPreferences
                             ? 'Using values from your first deployment. Adjust as needed.'
                             : 'Configure how this agent should size and filter trades for you.'}
@@ -1106,10 +1106,10 @@ export function OstiumConnect({
                       </div>
                     </div>
 
-                    <div className="border border-[var(--border)] bg-[var(--bg-deep)] flex flex-col max-h-[60vh]">
+                    <div className="border border-[var(--border)] bg-[var(--bg-deep)] flex flex-col max-h-[55vh] sm:max-h-[60vh]">
                       {loadingFirstDeploymentPreferences ? (
-                        <div className="flex items-center justify-center py-20">
-                          <Activity className="w-8 h-8 text-[var(--accent)] animate-spin" />
+                        <div className="flex items-center justify-center py-12 sm:py-20">
+                          <Activity className="w-6 h-6 sm:w-8 sm:h-8 text-[var(--accent)] animate-spin" />
                         </div>
                       ) : (
                         <TradingPreferencesForm
@@ -1134,41 +1134,41 @@ export function OstiumConnect({
                     </div>
                   </div>
                 ) : step === 'agent' ? (
-                  <div className="space-y-6 py-4">
+                  <div className="space-y-4 sm:space-y-5 md:space-y-6 py-2 sm:py-3 md:py-4">
                     <div>
-                      <h3 className="font-display text-2xl mb-2">Assign Agent Wallet</h3>
-                      <p className="text-sm text-[var(--text-secondary)]">
+                      <h3 className="font-display text-lg sm:text-xl md:text-2xl mb-1 sm:mb-2">Assign Agent Wallet</h3>
+                      <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
                         Generate a unique agent wallet address for this deployment.
                       </p>
                     </div>
 
                     {loading ? (
-                      <div className="text-center space-y-4 py-8">
-                        <Activity className="w-16 h-16 mx-auto text-[var(--accent)] animate-pulse" />
+                      <div className="text-center space-y-3 sm:space-y-4 py-6 sm:py-8">
+                        <Activity className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto text-[var(--accent)] animate-pulse" />
                         <div>
-                          <h3 className="font-display text-lg mb-2">ASSIGNING AGENT...</h3>
-                          <p className="text-sm text-[var(--text-muted)]">
+                          <h3 className="font-display text-sm sm:text-base md:text-lg mb-1 sm:mb-2">ASSIGNING AGENT...</h3>
+                          <p className="text-xs sm:text-sm text-[var(--text-muted)]">
                             Assigning your agent wallet
                           </p>
                         </div>
                       </div>
                     ) : agentAddress ? (
-                      <div className="border border-[var(--accent)]/60 bg-[var(--accent)]/5 p-4 rounded">
-                        <p className="text-xs font-semibold text-[var(--accent)] mb-2 uppercase">Agent Address Assigned</p>
-                        <p className="text-xs text-[var(--text-secondary)] font-mono break-all">{agentAddress}</p>
+                      <div className="border border-[var(--accent)]/60 bg-[var(--accent)]/5 p-3 sm:p-4 rounded">
+                        <p className="text-[10px] sm:text-xs font-semibold text-[var(--accent)] mb-1 sm:mb-2 uppercase">Agent Address Assigned</p>
+                        <p className="text-[9px] sm:text-[10px] md:text-xs text-[var(--text-secondary)] font-mono break-all">{agentAddress}</p>
                       </div>
                     ) : (
-                      <div className="border border-[var(--border)] p-4 rounded">
-                        <p className="text-sm text-[var(--text-secondary)] mb-4">
+                      <div className="border border-[var(--border)] p-3 sm:p-4 rounded">
+                        <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-3 sm:mb-4">
                           Generating your agent wallet address...
                         </p>
                       </div>
                     )}
 
-                    <div className="flex gap-3 justify-end">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end">
                       <button
                         onClick={goBack}
-                        className="px-4 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
+                        className="w-full sm:w-auto px-3 sm:px-4 py-2 sm:py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors text-xs sm:text-sm"
                         type="button"
                         disabled={loading}
                       >
@@ -1177,100 +1177,100 @@ export function OstiumConnect({
                       {agentAddress && (
                         <button
                           onClick={() => setStep('approvals')}
-                          className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center gap-2"
+                          className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm"
                           type="button"
                         >
                           Next
-                          <ArrowRight className="w-4 h-4" />
+                          <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4" />
                         </button>
                       )}
                     </div>
                   </div>
                 ) : step === 'approvals' ? (
                   <>
-                    <div className="space-y-6">
+                    <div className="space-y-4 sm:space-y-5 md:space-y-6">
                       {/* Header */}
                       <div>
-                        <h3 className="font-display text-2xl mb-2">Enable 1-Click Trading</h3>
-                        <p className="text-sm text-[var(--text-secondary)]">
+                        <h3 className="font-display text-base sm:text-lg md:text-2xl mb-1 sm:mb-2">Enable 1-Click Trading</h3>
+                        <p className="text-[10px] sm:text-xs md:text-sm text-[var(--text-secondary)]">
                           Make the most of Ostium. Enable gasless transactions and 1-click trading.
                         </p>
                       </div>
 
                       {/* Steps Section */}
-                      <div className="space-y-4">
+                      <div className="space-y-2 sm:space-y-3 md:space-y-4">
                         <div>
-                          <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">STEPS</p>
-                          <p className="text-xs text-[var(--text-secondary)] mb-4">Sign the following wallet requests.</p>
+                          <p className="text-[9px] sm:text-[10px] md:text-xs font-semibold text-[var(--text-muted)] mb-1 sm:mb-2">STEPS</p>
+                          <p className="text-[9px] sm:text-[10px] md:text-xs text-[var(--text-secondary)] mb-2 sm:mb-3 md:mb-4">Sign the following wallet requests.</p>
                         </div>
 
                         {/* Step 1: Enable Account Delegation */}
-                        <div className="flex items-start gap-4 p-4 border border-[var(--border)] rounded">
-                          <div className={`w-10 h-10 rounded border-2 flex items-center justify-center flex-shrink-0 ${checkingApprovalStatus && delegationStatus === null
+                        <div className="flex items-start gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 border border-[var(--border)] rounded">
+                          <div className={`w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded border-2 flex items-center justify-center flex-shrink-0 ${checkingApprovalStatus && delegationStatus === null
                             ? 'border-[var(--border)] bg-[var(--bg-deep)]'
                             : delegateApproved
                               ? 'border-[var(--accent)] bg-[var(--accent)]/10'
                               : 'border-[var(--border)] bg-[var(--bg-deep)]'
                             }`}>
                             {checkingApprovalStatus && delegationStatus === null ? (
-                              <Activity className="w-5 h-5 text-[var(--text-muted)] animate-spin" />
+                              <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[var(--text-muted)] animate-spin" />
                             ) : delegateApproved ? (
-                              <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
+                              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[var(--accent)]" />
                             ) : (
-                              <div className="w-5 h-5 flex items-center justify-center">
-                                <div className="w-3 h-3 border-2 border-[var(--text-muted)] rounded" />
+                              <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 flex items-center justify-center">
+                                <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3 border-2 border-[var(--text-muted)] rounded" />
                               </div>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-[var(--text-muted)] mb-1">ENABLE ACCOUNT DELEGATION</p>
-                            <p className="text-xs text-[var(--text-secondary)]">Delegate signatures to a smart wallet.</p>
+                            <p className="text-[9px] sm:text-[10px] md:text-xs font-semibold text-[var(--text-muted)] mb-0.5 sm:mb-1">ENABLE ACCOUNT DELEGATION</p>
+                            <p className="text-[9px] sm:text-[10px] md:text-xs text-[var(--text-secondary)]">Delegate signatures to a smart wallet.</p>
                           </div>
                         </div>
 
                         {/* Step 2: Set Allowance */}
-                        <div className="flex items-start gap-4 p-4 border border-[var(--border)] rounded">
-                          <div className={`w-10 h-10 rounded border-2 flex items-center justify-center flex-shrink-0 ${checkingApprovalStatus && usdcAllowanceStatus === null
+                        <div className="flex items-start gap-2 sm:gap-3 md:gap-4 p-2.5 sm:p-3 md:p-4 border border-[var(--border)] rounded">
+                          <div className={`w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded border-2 flex items-center justify-center flex-shrink-0 ${checkingApprovalStatus && usdcAllowanceStatus === null
                             ? 'border-[var(--border)] bg-[var(--bg-deep)]'
                             : usdcApproved
                               ? 'border-[var(--accent)] bg-[var(--accent)]/10'
                               : 'border-[var(--border)] bg-[var(--bg-deep)]'
                             }`}>
                             {checkingApprovalStatus && usdcAllowanceStatus === null ? (
-                              <Activity className="w-5 h-5 text-[var(--text-muted)] animate-spin" />
+                              <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[var(--text-muted)] animate-spin" />
                             ) : usdcApproved ? (
-                              <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
+                              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[var(--accent)]" />
                             ) : (
-                              <span className="text-sm font-bold text-[var(--text-muted)]">2</span>
+                              <span className="text-[10px] sm:text-xs md:text-sm font-bold text-[var(--text-muted)]">2</span>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-[var(--text-muted)] mb-1">SET ALLOWANCE</p>
-                            <p className="text-xs text-[var(--text-secondary)]">Set the maximum allowance. It's advisable to set this high.</p>
+                            <p className="text-[9px] sm:text-[10px] md:text-xs font-semibold text-[var(--text-muted)] mb-0.5 sm:mb-1">SET ALLOWANCE</p>
+                            <p className="text-[9px] sm:text-[10px] md:text-xs text-[var(--text-secondary)]">Set the maximum allowance. It's advisable to set this high.</p>
                           </div>
                         </div>
                       </div>
 
                       {/* Transaction Status */}
                       {txHash && (
-                        <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-3 rounded">
-                          <p className="text-[var(--accent)] text-sm mb-2">✓ Transaction confirmed</p>
+                        <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-2.5 sm:p-3 rounded">
+                          <p className="text-[var(--accent)] text-xs sm:text-sm mb-1 sm:mb-2">✓ Transaction confirmed</p>
                           <a
                             href={`https://sepolia.arbiscan.io/tx/${txHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1"
+                            className="text-[10px] sm:text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1"
                           >
-                            View on Arbiscan <ExternalLink className="w-3 h-3" />
+                            View on Arbiscan <ExternalLink className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                           </a>
                         </div>
                       )}
 
                       {/* Action Buttons */}
-                      <div className="flex gap-3">
+                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                         <button
                           onClick={goBack}
-                          className="w-32 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
+                          className="w-full sm:w-32 py-2 sm:py-2.5 md:py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors text-xs sm:text-sm"
                           type="button"
                           disabled={loading || checkingApprovalStatus}
                         >
@@ -1279,30 +1279,34 @@ export function OstiumConnect({
                         {delegateApproved && usdcApproved ? (
                           <button
                             onClick={() => setStep('complete')}
-                            className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
+                            className="flex-1 py-2.5 sm:py-3 md:py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm"
                           >
-                            <CheckCircle className="w-5 h-5" />
+                            <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5" />
                             Next
-                            <ArrowRight className="w-4 h-4" />
+                            <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         ) : (
                           <button
                             onClick={enableOneClickTrading}
                             disabled={loading || checkingApprovalStatus}
-                            className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="flex-1 py-2.5 sm:py-3 md:py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm"
                           >
                             {checkingApprovalStatus ? (
                               <>
-                                <Activity className="w-5 h-5 animate-spin" />
-                                CHECKING STATUS...
+                                <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 animate-spin" />
+                                <span className="hidden sm:inline">CHECKING STATUS...</span>
+                                <span className="sm:hidden">CHECKING...</span>
                               </>
                             ) : loading ? (
                               <>
-                                <Activity className="w-5 h-5 animate-pulse" />
+                                <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 animate-pulse" />
                                 SIGNING...
                               </>
                             ) : (
-                              'ENABLE 1-CLICK TRADING'
+                              <>
+                                <span className="hidden sm:inline">ENABLE 1-CLICK TRADING</span>
+                                <span className="sm:hidden">ENABLE TRADING</span>
+                              </>
                             )}
                           </button>
                         )}
@@ -1310,13 +1314,13 @@ export function OstiumConnect({
                     </div>
                   </>
                 ) : deploymentId ? (
-                  <div className="text-center space-y-6 py-4">
-                    <div className="w-16 h-16 mx-auto border border-[var(--accent)] bg-[var(--accent)] flex items-center justify-center">
-                      <CheckCircle className="w-10 h-10 text-[var(--bg-deep)]" />
+                  <div className="text-center space-y-4 sm:space-y-5 md:space-y-6 py-3 sm:py-4">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto border border-[var(--accent)] bg-[var(--accent)] flex items-center justify-center">
+                      <CheckCircle className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 text-[var(--bg-deep)]" />
                     </div>
                     <div>
-                      <h3 className="font-display text-xl mb-2">AGENT DEPLOYED</h3>
-                      <p className="text-sm text-[var(--text-secondary)]">
+                      <h3 className="font-display text-lg sm:text-xl mb-1 sm:mb-2">AGENT DEPLOYED</h3>
+                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] px-2">
                         Agent is now live and ready to trade on Ostium
                       </p>
                     </div>
@@ -1326,42 +1330,42 @@ export function OstiumConnect({
                         href={`https://sepolia.arbiscan.io/tx/${txHash}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-[var(--accent)] hover:underline flex items-center justify-center gap-1"
+                        className="text-xs sm:text-sm text-[var(--accent)] hover:underline flex items-center justify-center gap-1"
                       >
-                        View transaction <ExternalLink className="w-3 h-3" />
+                        View transaction <ExternalLink className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                       </a>
                     )}
 
-                    <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-4 space-y-2 text-sm text-left">
+                    <div className="border border-[var(--accent)] bg-[var(--accent)]/5 p-3 sm:p-4 space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-left">
                       <div className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--accent)] flex-shrink-0" />
                         <span>Agent whitelisted</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--accent)] flex-shrink-0" />
                         <span>USDC approved</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--accent)] flex-shrink-0" />
                         <span>Agent deployed and active</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--accent)] flex-shrink-0" />
                         <span>Ready to execute signals</span>
                       </div>
                     </div>
 
-                    <div className="flex gap-3 justify-center">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center">
                       <button
                         onClick={goBack}
-                        className="px-4 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
+                        className="w-full sm:w-auto px-4 py-2.5 sm:py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors text-xs sm:text-sm"
                         type="button"
                       >
                         Back
                       </button>
                       <button
                         onClick={onClose}
-                        className="px-4 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors"
+                        className="w-full sm:w-auto px-4 py-2.5 sm:py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors text-xs sm:text-sm"
                         type="button"
                       >
                         Close
@@ -1369,52 +1373,52 @@ export function OstiumConnect({
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center space-y-6 py-4">
-                    <div className="w-16 h-16 mx-auto border border-[var(--accent)] flex items-center justify-center">
-                      <Zap className="w-10 h-10 text-[var(--accent)]" />
+                  <div className="text-center space-y-4 sm:space-y-5 md:space-y-6 py-3 sm:py-4">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto border border-[var(--accent)] flex items-center justify-center">
+                      <Zap className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 text-[var(--accent)]" />
                     </div>
                     <div>
-                      <h3 className="font-display text-xl mb-2">AGENT LIVE</h3>
-                      <p className="text-sm text-[var(--text-secondary)]">
+                      <h3 className="font-display text-lg sm:text-xl mb-1 sm:mb-2">AGENT LIVE</h3>
+                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] px-2">
                         All approvals complete. Ready to deploy the agent.
                       </p>
                     </div>
 
-                    <div className="border border-[var(--border)] bg-[var(--bg-deep)]/50 p-4 space-y-4 text-left">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-[var(--accent)] uppercase tracking-widest">Setup Complete</p>
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
-                          <span className="text-[10px] text-[var(--text-muted)] font-bold">READY TO ACTIVATE</span>
+                    <div className="border border-[var(--border)] bg-[var(--bg-deep)]/50 p-3 sm:p-4 space-y-3 sm:space-y-4 text-left">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                        <p className="text-[10px] sm:text-xs font-bold text-[var(--accent)] uppercase tracking-widest">Setup Complete</p>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--accent)] flex-shrink-0" />
+                          <span className="text-[9px] sm:text-[10px] text-[var(--text-muted)] font-bold">READY TO ACTIVATE</span>
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 py-1">
-                          <div className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full" />
-                          <span className="text-xs text-[var(--text-secondary)]">Agent whitelisted & assigned</span>
+                      <div className="space-y-1.5 sm:space-y-2">
+                        <div className="flex items-center gap-2 py-0.5 sm:py-1">
+                          <div className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full flex-shrink-0" />
+                          <span className="text-[10px] sm:text-xs text-[var(--text-secondary)]">Agent whitelisted & assigned</span>
                         </div>
-                        <div className="flex items-center gap-2 py-1">
-                          <div className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full" />
-                          <span className="text-xs text-[var(--text-secondary)]">USDC approved (Non-custodial)</span>
+                        <div className="flex items-center gap-2 py-0.5 sm:py-1">
+                          <div className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full flex-shrink-0" />
+                          <span className="text-[10px] sm:text-xs text-[var(--text-secondary)]">USDC approved (Non-custodial)</span>
                         </div>
                       </div>
 
                       {totalCost > 0 && (
-                        <div className="mt-4 pt-4 border-t border-[var(--border)]">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Credit Summary</p>
-                            <span className={`text-[10px] px-2 py-0.5 border font-bold rounded ${isCreator ? 'border-green-500/30 text-green-500' : 'border-[var(--accent)]/30 text-[var(--accent)]'}`}>
+                        <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-[var(--border)]">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
+                            <p className="text-[10px] sm:text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Credit Summary</p>
+                            <span className={`text-[9px] sm:text-[10px] px-2 py-0.5 border font-bold rounded ${isCreator ? 'border-green-500/30 text-green-500' : 'border-[var(--accent)]/30 text-[var(--accent)]'}`}>
                               {isCreator ? 'CREATOR - FREE ACCESS' : 'PAID ACCESS'}
                             </span>
                           </div>
 
                           {!isCreator && (
-                            <div className="mb-4 space-y-1">
+                            <div className="mb-3 sm:mb-4 space-y-1">
                               {agentData?.agent_telegram_users?.map((au: any, idx: number) => {
                                 if (au.telegram_alpha_users?.credit_price && parseFloat(au.telegram_alpha_users.credit_price) > 0) {
                                   return (
-                                    <div key={idx} className="flex justify-between text-[10px]">
+                                    <div key={idx} className="flex flex-col sm:flex-row justify-between gap-1 text-[9px] sm:text-[10px]">
                                       <span className="text-[var(--text-secondary)] italic">Alpha Access: {au.telegram_alpha_users.telegram_username || 'Provider'}</span>
                                       <span className="text-[var(--text-primary)]">{parseFloat(au.telegram_alpha_users.credit_price).toFixed(0)} CREDS</span>
                                     </div>
@@ -1422,7 +1426,7 @@ export function OstiumConnect({
                                 }
                                 return null;
                               })}
-                              <div className="flex justify-between text-[10px] pt-1 border-t border-[var(--border)] border-dashed">
+                              <div className="flex flex-col sm:flex-row justify-between gap-1 text-[9px] sm:text-[10px] pt-1 border-t border-[var(--border)] border-dashed">
                                 <span className="text-[var(--text-muted)]">Platform Fee (10%)</span>
                                 <span className="text-[var(--text-primary)]">{(totalCost * (10 / 110)).toFixed(0)} CREDS</span>
                               </div>
@@ -1430,36 +1434,36 @@ export function OstiumConnect({
                           )}
 
                           {isCreator ? (
-                            <div className="bg-green-500/5 p-3 border border-green-500/20 rounded">
-                              <p className="text-[11px] text-green-500 font-bold text-center">
+                            <div className="bg-green-500/5 p-2.5 sm:p-3 border border-green-500/20 rounded">
+                              <p className="text-[10px] sm:text-[11px] text-green-500 font-bold text-center">
                                 ✓ AS THE CREATOR, YOU JOIN FOR FREE
                               </p>
-                              <p className="text-[9px] text-[var(--text-muted)] text-center mt-1">
+                              <p className="text-[8px] sm:text-[9px] text-[var(--text-muted)] text-center mt-1">
                                 You already paid when creating this club
                               </p>
                             </div>
                           ) : (
                             <>
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                                 <div className="space-y-1">
-                                  <p className="text-[10px] text-[var(--text-muted)] uppercase">Cost to Join</p>
-                                  <p className="text-xl font-display text-[var(--text-primary)]">{totalCost.toFixed(0)} <span className="text-[10px] text-[var(--text-secondary)]">CREDS</span></p>
+                                  <p className="text-[9px] sm:text-[10px] text-[var(--text-muted)] uppercase">Cost to Join</p>
+                                  <p className="text-lg sm:text-xl font-display text-[var(--text-primary)]">{totalCost.toFixed(0)} <span className="text-[9px] sm:text-[10px] text-[var(--text-secondary)]">CREDS</span></p>
                                 </div>
                                 <div className="space-y-1 text-right">
-                                  <p className="text-[10px] text-[var(--text-muted)] uppercase">Your Balance</p>
-                                  <p className={`text-xl font-display ${creditBalance < totalCost ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>{creditBalance.toFixed(0)} <span className="text-[10px] text-[var(--text-secondary)]">CREDS</span></p>
+                                  <p className="text-[9px] sm:text-[10px] text-[var(--text-muted)] uppercase">Your Balance</p>
+                                  <p className={`text-lg sm:text-xl font-display ${creditBalance < totalCost ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>{creditBalance.toFixed(0)} <span className="text-[9px] sm:text-[10px] text-[var(--text-secondary)]">CREDS</span></p>
                                 </div>
                               </div>
 
                               {creditBalance >= totalCost ? (
-                                <div className="mt-3 bg-[var(--accent)]/5 p-2 border border-[var(--accent)]/10">
-                                  <p className="text-[10px] text-[var(--accent)] font-bold text-center">
+                                <div className="mt-2 sm:mt-3 bg-[var(--accent)]/5 p-2 border border-[var(--accent)]/10">
+                                  <p className="text-[9px] sm:text-[10px] text-[var(--accent)] font-bold text-center">
                                     NEW BALANCE AFTER JOIN: {(creditBalance - totalCost).toFixed(0)} CREDS
                                   </p>
                                 </div>
                               ) : (
-                                <div className="mt-3 bg-red-500/5 p-2 border border-red-500/20">
-                                  <p className="text-[10px] text-red-500 font-bold text-center">
+                                <div className="mt-2 sm:mt-3 bg-red-500/5 p-2 border border-red-500/20">
+                                  <p className="text-[9px] sm:text-[10px] text-red-500 font-bold text-center">
                                     ⚠ INSUFFICIENT CREDITS - NEED {(totalCost - creditBalance).toFixed(0)} MORE
                                   </p>
                                 </div>
@@ -1470,10 +1474,10 @@ export function OstiumConnect({
                       )}
                     </div>
 
-                    <div className="flex gap-3 justify-center">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center">
                       <button
                         onClick={goBack}
-                        className="px-4 py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors"
+                        className="w-full sm:w-auto px-4 py-2.5 sm:py-3 border border-[var(--accent)]/60 text-[var(--text-primary)] font-semibold hover:border-[var(--accent)] transition-colors text-xs sm:text-sm"
                         type="button"
                       >
                         Back
@@ -1481,23 +1485,26 @@ export function OstiumConnect({
                       <button
                         onClick={joinAgent}
                         disabled={joiningAgent || (!isCreator && totalCost > 0 && creditBalance < totalCost)}
-                        className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-xs sm:text-sm"
                         type="button"
                       >
                         {joiningAgent ? (
                           <>
-                            <Activity className="w-5 h-5 animate-spin" />
-                            JOINING AGENT...
+                            <Activity className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                            <span className="hidden sm:inline">JOINING AGENT...</span>
+                            <span className="sm:hidden">JOINING...</span>
                           </>
                         ) : !isCreator && totalCost > 0 && creditBalance < totalCost ? (
                           <>
-                            <AlertCircle className="w-5 h-5" />
-                            INSUFFICIENT CREDITS
+                            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <span className="hidden sm:inline">INSUFFICIENT CREDITS</span>
+                            <span className="sm:hidden">INSUFFICIENT</span>
                           </>
                         ) : (
                           <>
-                            <Zap className="w-5 h-5" />
-                            {isCreator ? 'JOIN AGENT (FREE - CREATOR)' : totalCost > 0 ? `JOIN AGENT (${totalCost.toFixed(0)} CREDS)` : 'JOIN AGENT (FREE)'}
+                            <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <span className="hidden sm:inline">{isCreator ? 'JOIN AGENT (FREE - CREATOR)' : totalCost > 0 ? `JOIN AGENT (${totalCost.toFixed(0)} CREDS)` : 'JOIN AGENT (FREE)'}</span>
+                            <span className="sm:hidden">JOIN AGENT</span>
                           </>
                         )}
                       </button>
@@ -1530,11 +1537,11 @@ export function OstiumConnect({
         />
 
         {isRedirecting && (
-          <div className="fixed inset-0 z-[200] bg-[var(--bg-deep)]/90 backdrop-blur-xl flex items-center justify-center flex-col gap-6">
-            <Activity className="h-16 w-16 text-[var(--accent)] animate-spin" />
+          <div className="fixed inset-0 z-[200] bg-[var(--bg-deep)]/90 backdrop-blur-xl flex items-center justify-center flex-col gap-4 sm:gap-6 px-4">
+            <Activity className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 text-[var(--accent)] animate-spin" />
             <div className="text-center">
-              <h2 className="text-2xl font-display uppercase tracking-widest text-[var(--accent)] mb-2">Redirecting to Secure Payment</h2>
-              <p className="text-[var(--text-muted)] text-xs font-bold">PLEASE WAIT · STACK: STRIPE</p>
+              <h2 className="text-lg sm:text-xl md:text-2xl font-display uppercase tracking-widest text-[var(--accent)] mb-1 sm:mb-2">Redirecting to Secure Payment</h2>
+              <p className="text-[var(--text-muted)] text-[10px] sm:text-xs font-bold">PLEASE WAIT · STACK: STRIPE</p>
             </div>
           </div>
         )}

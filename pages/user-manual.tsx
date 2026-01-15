@@ -344,28 +344,28 @@ export default function UserManualPage() {
     <div className="min-h-screen bg-[var(--bg-deep)]">
       <Header />
 
-      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 max-w-7xl">
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 max-w-7xl">
         {/* Page Header */}
-        <div className="mb-6 sm:mb-10">
-          <div className="flex items-center gap-3 sm:gap-4 mb-4">
-            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent)]/60 flex items-center justify-center shadow-[0_0_20px_var(--accent-glow)] flex-shrink-0">
-              <svg className="w-5 h-5 sm:w-7 sm:h-7 text-[var(--bg-deep)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="mb-4 sm:mb-6 md:mb-10">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 mb-3 sm:mb-4">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-14 md:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent)]/60 flex items-center justify-center shadow-[0_0_20px_var(--accent-glow)] flex-shrink-0">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-7 md:h-7 text-[var(--bg-deep)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
               </svg>
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl sm:text-4xl font-display font-bold text-[var(--text-primary)]">
+              <h1 className="text-xl sm:text-2xl md:text-4xl font-display font-bold text-[var(--text-primary)]">
                 User Manual
               </h1>
-              <p className="text-[var(--text-secondary)] text-sm sm:text-lg mt-1">
+              <p className="text-[var(--text-secondary)] text-xs sm:text-sm md:text-lg mt-0.5 sm:mt-1">
                 Step-by-step guide to using Maxxit
               </p>
             </div>
           </div>
 
           {/* Quick intro */}
-          <div className="p-4 sm:p-6 rounded-xl bg-gradient-to-r from-[var(--accent)]/10 to-transparent border border-[var(--accent)]/30 mt-4 sm:mt-6">
-            <p className="text-[var(--text-primary)] text-sm sm:text-base">
+          <div className="p-3 sm:p-4 md:p-6 rounded-lg sm:rounded-xl bg-gradient-to-r from-[var(--accent)]/10 to-transparent border border-[var(--accent)]/30 mt-3 sm:mt-4 md:mt-6">
+            <p className="text-[var(--text-primary)] text-xs sm:text-sm md:text-base">
               Welcome to Maxxit! This guide will walk you through everything you need to know — from connecting your wallet to monitoring your AI-powered trades.
               <span className="text-[var(--accent)] font-semibold"> Click on any step to expand and see detailed instructions with screenshots.</span>
             </p>
@@ -377,23 +377,23 @@ export default function UserManualPage() {
           <aside className="lg:col-span-1">
             <div className="sticky top-20 sm:top-28 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-3 sm:p-4 max-h-[calc(100vh-6rem)] sm:max-h-[calc(100vh-8rem)] overflow-y-auto">
               {/* Join Club Section */}
-              <h3 className="text-xs font-semibold text-[var(--accent)] uppercase tracking-wide mb-3 px-2 flex items-center gap-2">
-                <Users className="h-3.5 w-3.5" />
+              <h3 className="text-[10px] sm:text-xs font-semibold text-[var(--accent)] uppercase tracking-wide mb-2 sm:mb-3 px-1.5 sm:px-2 flex items-center gap-1.5 sm:gap-2">
+                <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
                 Join a Club
               </h3>
-              <nav className="space-y-1 mb-4">
+              <nav className="space-y-0.5 sm:space-y-1 mb-3 sm:mb-4">
                 {joinClubSteps.map((step) => {
                   const isActive = activeSection === step.id;
                   return (
                     <button
                       key={step.id}
                       onClick={() => scrollToStep(step.id)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all duration-200 text-left ${isActive
+                      className={`w-full flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-[10px] sm:text-xs transition-all duration-200 text-left ${isActive
                         ? 'bg-[var(--accent)]/20 text-[var(--accent)] border-l-2 border-[var(--accent)]'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
                         }`}
                     >
-                      <span className={`flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-semibold flex items-center justify-center ${isActive
+                      <span className={`flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 rounded-full text-[9px] sm:text-[10px] font-semibold flex items-center justify-center ${isActive
                         ? 'bg-[var(--accent)] text-[var(--bg-deep)]'
                         : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
                         }`}>
@@ -461,20 +461,20 @@ export default function UserManualPage() {
           </aside>
 
           {/* Main Content */}
-          <main className="lg:col-span-3 space-y-4 sm:space-y-6">
+          <main className="lg:col-span-3 space-y-3 sm:space-y-4 md:space-y-6">
             {/* Section: Join a Club */}
-            <div className="mb-6 sm:mb-8">
-              <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-[var(--accent)]" />
+            <div className="mb-4 sm:mb-6 md:mb-8">
+              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded-lg sm:rounded-xl bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0">
+                  <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 text-[var(--accent)]" />
                 </div>
                 <div>
-                  <h2 className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">Join an Alpha Club</h2>
-                  <p className="text-xs sm:text-sm text-[var(--text-secondary)]">Follow these steps to join an existing club and start trading</p>
+                  <h2 className="text-base sm:text-lg md:text-xl font-bold text-[var(--text-primary)]">Join an Alpha Club</h2>
+                  <p className="text-[10px] sm:text-xs md:text-sm text-[var(--text-secondary)]">Follow these steps to join an existing club and start trading</p>
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {joinClubSteps.map((step) => (
                   <div key={step.id} id={step.id} className="scroll-mt-32">
                     <StepCard
@@ -528,8 +528,8 @@ export default function UserManualPage() {
                 ))}
               </div>
 
-              <div className="mt-3 sm:mt-4 p-3 sm:p-4 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)]">
-                <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+              <div className="mt-2 sm:mt-3 md:mt-4 p-2.5 sm:p-3 md:p-4 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)]">
+                <p className="text-[10px] sm:text-xs md:text-sm text-[var(--text-secondary)]">
                   After selecting your sources, continue with steps 7-11 from the "Join a Club" flow above
                   (Select Venue → Trading Preferences → Agent Assignment → Costs → Monitor Trades).
                 </p>
@@ -537,22 +537,22 @@ export default function UserManualPage() {
             </div>
 
             {/* Completion Message */}
-            <div className="mt-6 sm:mt-8 p-6 sm:p-8 rounded-xl bg-gradient-to-r from-[var(--accent)]/20 to-[var(--accent)]/5 border border-[var(--accent)]/30 text-center">
-              <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-full bg-[var(--accent)] flex items-center justify-center">
-                <CheckCircle2 className="h-6 w-6 sm:h-8 sm:w-8 text-[var(--bg-deep)]" />
+            <div className="mt-4 sm:mt-6 md:mt-8 p-4 sm:p-6 md:p-8 rounded-lg sm:rounded-xl bg-gradient-to-r from-[var(--accent)]/20 to-[var(--accent)]/5 border border-[var(--accent)]/30 text-center">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 mx-auto mb-2 sm:mb-3 md:mb-4 rounded-full bg-[var(--accent)] flex items-center justify-center">
+                <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8 text-[var(--bg-deep)]" />
               </div>
-              <h3 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] mb-2">You're All Set!</h3>
-              <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-4 sm:mb-6 max-w-lg mx-auto">
+              <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-[var(--text-primary)] mb-1.5 sm:mb-2">You're All Set!</h3>
+              <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-3 sm:mb-4 md:mb-6 max-w-lg mx-auto px-2">
                 You've completed the user manual. You're now ready to start trading with AI-powered agents on Maxxit.
               </p>
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 md:gap-4 justify-center px-2">
                 <Link href="/" className="w-full sm:w-auto">
-                  <button className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-semibold rounded-lg hover:opacity-90 transition-opacity text-sm">
+                  <button className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-semibold rounded-lg hover:opacity-90 transition-opacity text-xs sm:text-sm">
                     Browse Alpha Clubs
                   </button>
                 </Link>
                 <Link href="/create-agent" className="w-full sm:w-auto">
-                  <button className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 border border-[var(--accent)] text-[var(--accent)] font-semibold rounded-lg hover:bg-[var(--accent)]/10 transition-colors text-sm">
+                  <button className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 border border-[var(--accent)] text-[var(--accent)] font-semibold rounded-lg hover:bg-[var(--accent)]/10 transition-colors text-xs sm:text-sm">
                     Create Your Own Club
                   </button>
                 </Link>
@@ -560,12 +560,12 @@ export default function UserManualPage() {
             </div>
 
             {/* Help Section */}
-            <div className="mt-4 sm:mt-6 p-4 sm:p-6 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
-              <h3 className="font-semibold text-[var(--text-primary)] mb-2 text-sm sm:text-base">Need More Help?</h3>
-              <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-3 sm:mb-4">
+            <div className="mt-3 sm:mt-4 md:mt-6 p-3 sm:p-4 md:p-6 rounded-lg sm:rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
+              <h3 className="font-semibold text-[var(--text-primary)] mb-1.5 sm:mb-2 text-xs sm:text-sm md:text-base">Need More Help?</h3>
+              <p className="text-[10px] sm:text-xs md:text-sm text-[var(--text-secondary)] mb-2 sm:mb-3 md:mb-4">
                 If you have questions or run into issues, we're here to help.
               </p>
-              <div className="flex flex-wrap gap-2 sm:gap-3 text-xs sm:text-sm">
+              <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3 text-[10px] sm:text-xs md:text-sm">
                 <Link href="/docs" className="text-[var(--accent)] hover:underline">
                   Read Full Documentation →
                 </Link>

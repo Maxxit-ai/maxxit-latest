@@ -401,7 +401,7 @@ export function Header() {
         <Link key={href} href={href}>
           <button
             onClick={onClick}
-            className={`relative inline-flex items-center justify-center gap-2 px-3 py-2 text-sm transition-colors w-full text-left md:w-auto md:text-center group ${isActive
+            className={`relative inline-flex lg:items-center justify-center gap-2 px-3 py-2 text-sm transition-colors w-full text-left md:w-auto md:text-center group ${isActive
               ? 'text-[var(--text-primary)]'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
