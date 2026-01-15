@@ -13,17 +13,20 @@ export interface MessageResult {
 export class TelegramUserClient {
     private client: TelegramClient | null = null;
     private session: StringSession;
+    private originalSessionString: string;
 
     constructor(sessionString?: string) {
         validateConfig();
-        this.session = new StringSession(sessionString || config.session);
+        const finalSession = sessionString || config.session;
+        this.originalSessionString = finalSession;
+        this.session = new StringSession(finalSession);
     }
 
     /**
      * Connect to Telegram (uses saved session, no interactive auth)
      */
     async connect(): Promise<void> {
-        if (!this.session.save()) {
+        if (!this.originalSessionString) {
             throw new Error(
                 'No session string provided. Run `npm run auth` first to generate one.'
             );
