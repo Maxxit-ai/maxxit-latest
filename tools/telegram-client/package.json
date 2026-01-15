@@ -1,0 +1,21 @@
+{
+    "name": "telegram-client",
+    "version": "1.0.0",
+    "description": "Telegram user client for interacting with external bots programmatically",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "auth": "ts-node src/auth.ts",
+        "example:send": "ts-node examples/send-message.ts"
+    },
+    "dependencies": {
+        "telegram": "^2.26.22",
+        "dotenv": "^16.4.5"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "typescript": "^5.3.3",
+        "ts-node": "^10.9.2"
+    }
+}
