@@ -103,6 +103,24 @@ AnimatedNumber.displayName = "AnimatedNumber";
 const HeroSection = memo(
   ({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) => {
     const router = useRouter();
+    const [tradingPairs, setTradingPairs] = useState<number>(261);
+
+    useEffect(() => {
+      async function fetchStats() {
+        try {
+          const response = await fetch('/api/stats');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.tradingPairs) {
+              setTradingPairs(data.tradingPairs);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch stats:', error);
+        }
+      }
+      fetchStats();
+    }, []);
 
     const handleDeployClick = useCallback(
       (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -238,7 +256,7 @@ const HeroSection = memo(
           <div className="flex flex-wrap justify-center gap-4 sm:gap-6 md:gap-8 lg:gap-16">
             <div className="text-center">
               <p className="font-display text-3xl sm:text-4xl md:text-5xl text-accent">
-                <AnimatedNumber value={261} duration={2000} />
+                <AnimatedNumber value={tradingPairs} duration={2000} />
               </p>
               <p className="text-xs text-[var(--text-muted)] mt-1">
                 TRADING PAIRS
