@@ -1,11 +1,11 @@
 /**
  * Redis Connection Manager
- * 
+ *
  * Singleton pattern for managing Redis connections used by BullMQ.
  * Provides connection pooling and graceful shutdown support.
  */
 
-import Redis from 'ioredis';
+import Redis from "ioredis";
 
 let connection: Redis | null = null;
 let subscriberConnection: Redis | null = null;
@@ -29,10 +29,11 @@ export interface RedisConnectionOptions {
  */
 export function getConnection(options?: RedisConnectionOptions): Redis {
   if (!connection) {
-    const redisUrl = options?.url || process.env.REDIS_URL || 'redis://localhost:6379';
+    const redisUrl =
+      options?.url || process.env.REDIS_URL || "redis://localhost:6379";
 
     // Parse the URL to check if it's a Railway private network URL
-    const isRailwayPrivate = redisUrl.includes('.railway.internal');
+    // const isRailwayPrivate = redisUrl.includes('.railway.internal');
 
     connection = new Redis(redisUrl, {
       maxRetriesPerRequest: options?.maxRetriesPerRequest ?? null,
@@ -40,19 +41,20 @@ export function getConnection(options?: RedisConnectionOptions): Redis {
       lazyConnect: options?.lazyConnect ?? false,
       // family: 0 enables IPv4/IPv6 dual-stack support, required for Railway private networking
       // See: https://docs.railway.com/guides/private-networking#ioredis
-      family: 0,
+      // family: 0,
     });
 
-    connection.on('connect', () => {
-      console.log(`🔗 Redis connection established ${isRailwayPrivate ? '(private network)' : '(public)'}`);
+    connection.on("connect", () => {
+      // console.log(`🔗 Redis connection established ${isRailwayPrivate ? '(private network)' : '(public)'}`);
+      console.log("🔗 Redis connection established");
     });
 
-    connection.on('error', (error) => {
-      console.error('❌ Redis connection error:', error.message);
+    connection.on("error", (error) => {
+      console.error("❌ Redis connection error:", error.message);
     });
 
-    connection.on('close', () => {
-      console.log('🔌 Redis connection closed');
+    connection.on("close", () => {
+      console.log("🔌 Redis connection closed");
     });
   }
 
@@ -63,9 +65,12 @@ export function getConnection(options?: RedisConnectionOptions): Redis {
  * Get or create a subscriber Redis connection
  * BullMQ requires a separate connection for subscribing to events
  */
-export function getSubscriberConnection(options?: RedisConnectionOptions): Redis {
+export function getSubscriberConnection(
+  options?: RedisConnectionOptions
+): Redis {
   if (!subscriberConnection) {
-    const redisUrl = options?.url || process.env.REDIS_URL || 'redis://localhost:6379';
+    const redisUrl =
+      options?.url || process.env.REDIS_URL || "redis://localhost:6379";
 
     subscriberConnection = new Redis(redisUrl, {
       maxRetriesPerRequest: options?.maxRetriesPerRequest ?? null,
@@ -76,12 +81,12 @@ export function getSubscriberConnection(options?: RedisConnectionOptions): Redis
       family: 0,
     });
 
-    subscriberConnection.on('connect', () => {
-      console.log('🔗 Redis subscriber connection established');
+    subscriberConnection.on("connect", () => {
+      console.log("🔗 Redis subscriber connection established");
     });
 
-    subscriberConnection.on('error', (error) => {
-      console.error('❌ Redis subscriber connection error:', error.message);
+    subscriberConnection.on("error", (error) => {
+      console.error("❌ Redis subscriber connection error:", error.message);
     });
   }
 
@@ -97,7 +102,7 @@ export async function closeConnections(): Promise<void> {
   if (connection) {
     closePromises.push(
       connection.quit().then(() => {
-        console.log('✅ Redis main connection closed');
+        console.log("✅ Redis main connection closed");
         connection = null;
       })
     );
@@ -106,7 +111,7 @@ export async function closeConnections(): Promise<void> {
   if (subscriberConnection) {
     closePromises.push(
       subscriberConnection.quit().then(() => {
-        console.log('✅ Redis subscriber connection closed');
+        console.log("✅ Redis subscriber connection closed");
         subscriberConnection = null;
       })
     );
@@ -122,7 +127,7 @@ export async function isRedisHealthy(): Promise<boolean> {
   try {
     const conn = getConnection();
     const result = await conn.ping();
-    return result === 'PONG';
+    return result === "PONG";
   } catch (error) {
     return false;
   }
