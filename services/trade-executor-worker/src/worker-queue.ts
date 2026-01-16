@@ -34,7 +34,7 @@ dotenv.config();
 const PORT = process.env.PORT || 5001;
 const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || "3");
 const WORKER_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "10");
-const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "15000"); // 15 seconds
+const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "20000"); // 20 seconds
 
 // Health check server
 const app = express();
@@ -507,9 +507,9 @@ async function checkAndQueuePendingSignals(): Promise<void> {
         },
       },
       orderBy: {
-        created_at: "desc",
+        created_at: "asc",
       },
-      take: 17,
+      take: 100,
     });
 
     console.log(`[Trigger] 📊 Query returned ${pendingSignals.length} signals from DB`);
@@ -536,7 +536,7 @@ async function checkAndQueuePendingSignals(): Promise<void> {
             agent_deployments: { select: { status: true } },
           },
           take: 3,
-          orderBy: { created_at: "desc" },
+          orderBy: { created_at: "asc" },
         });
 
         for (const sig of debugSignals) {

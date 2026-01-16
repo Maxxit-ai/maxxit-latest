@@ -49,7 +49,7 @@ dotenv.config();
 const PORT = process.env.PORT || 5010;
 const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || "2");
 const WORKER_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "5");
-const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "30000"); // 30 seconds
+const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "15000"); //15 seconds
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -837,10 +837,10 @@ async function checkAndQueuePendingSignals(): Promise<void> {
           },
         },
       },
-      // orderBy: {
-      //   created_at: "desc",
-      // },
-      take: 71,
+      orderBy: {
+        created_at: "asc",
+      },
+      take: 100,
     });
 
     if (pendingSignals.length === 0) {

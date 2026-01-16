@@ -30,15 +30,21 @@ export interface RedisConnectionOptions {
 export function getConnection(options?: RedisConnectionOptions): Redis {
   if (!connection) {
     const redisUrl = options?.url || process.env.REDIS_URL || 'redis://localhost:6379';
-    
+
+    // Parse the URL to check if it's a Railway private network URL
+    const isRailwayPrivate = redisUrl.includes('.railway.internal');
+
     connection = new Redis(redisUrl, {
       maxRetriesPerRequest: options?.maxRetriesPerRequest ?? null,
       enableReadyCheck: options?.enableReadyCheck ?? false,
       lazyConnect: options?.lazyConnect ?? false,
+      // family: 0 enables IPv4/IPv6 dual-stack support, required for Railway private networking
+      // See: https://docs.railway.com/guides/private-networking#ioredis
+      family: 0,
     });
 
     connection.on('connect', () => {
-      console.log('🔗 Redis connection established');
+      console.log(`🔗 Redis connection established ${isRailwayPrivate ? '(private network)' : '(public)'}`);
     });
 
     connection.on('error', (error) => {
@@ -60,11 +66,14 @@ export function getConnection(options?: RedisConnectionOptions): Redis {
 export function getSubscriberConnection(options?: RedisConnectionOptions): Redis {
   if (!subscriberConnection) {
     const redisUrl = options?.url || process.env.REDIS_URL || 'redis://localhost:6379';
-    
+
     subscriberConnection = new Redis(redisUrl, {
       maxRetriesPerRequest: options?.maxRetriesPerRequest ?? null,
       enableReadyCheck: options?.enableReadyCheck ?? false,
       lazyConnect: options?.lazyConnect ?? false,
+      // family: 0 enables IPv4/IPv6 dual-stack support, required for Railway private networking
+      // See: https://docs.railway.com/guides/private-networking#ioredis
+      family: 0,
     });
 
     subscriberConnection.on('connect', () => {

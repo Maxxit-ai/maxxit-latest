@@ -62,7 +62,7 @@ dotenv.config();
 const PORT = process.env.PORT || 5008;
 const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || "3");
 const WORKER_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "3");
-const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "15000"); // 60 seconds
+const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "60000"); // 60 seconds
 
 // Duplicate signal check configuration
 const DUPLICATE_CHECK_ENABLED =
@@ -1106,8 +1106,8 @@ async function checkAndQueuePendingPosts(): Promise<void> {
         extracted_tokens: true,
         message_id: true,
       },
-      orderBy: { message_created_at: "desc" },
-      take: 3,
+      orderBy: { message_created_at: "asc" },
+      take: 100,
     });
 
     if (pendingPosts.length === 0) {
@@ -1196,7 +1196,7 @@ async function checkAndQueuePendingPosts(): Promise<void> {
         processed_for_signals: false,
       },
       orderBy: {
-        trade_timestamp: "desc",
+        trade_timestamp: "asc",
       },
     });
 

@@ -21,9 +21,11 @@ const PORT = process.env.BULL_BOARD_PORT || 5050;
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
 // Create Redis connection
+// family: 0 enables IPv4/IPv6 dual-stack support, required for Railway private networking
 const connection = new IORedis(REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    family: 0,
 });
 
 // Define all queues to monitor

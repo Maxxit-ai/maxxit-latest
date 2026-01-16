@@ -42,7 +42,7 @@ dotenv.config();
 const PORT = process.env.PORT || 5006;
 const WORKER_COUNT = parseInt(process.env.WORKER_COUNT || "3");
 const WORKER_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "5");
-const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "15000"); // 15 seconds
+const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "30000"); // 30 seconds
 
 // Health check server
 const app = express();
@@ -350,9 +350,9 @@ async function checkAndQueuePendingMessages(): Promise<void> {
       },
       select: { id: true },
       orderBy: {
-        message_created_at: "desc",
+        message_created_at: "asc",
       },
-      take: 3,
+      take: 100,
     });
 
     if (unprocessedMessages.length === 0) {
