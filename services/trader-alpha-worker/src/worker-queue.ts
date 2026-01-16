@@ -49,7 +49,7 @@ const TRIGGER_INTERVAL = parseInt(process.env.TRIGGER_INTERVAL || "60000"); // 1
 // Lookback window for fetching trades (in seconds)
 const TRADE_LOOKBACK_SECONDS = parseInt(process.env.TRADE_LOOKBACK_SECONDS || "86400"); // 24 hours
 
-const SUBGRAPH_URL = "https://api.goldsky.com/api/public/project_cmgql529ykrlw01v6b9so0woq/subgraphs/ost-prod/v8/gn";
+const SUBGRAPH_URL = "https://api.subgraph.ormilabs.com/api/public/67a599d5-c8d2-4cc4-9c4d-2975a97bc5d8/subgraphs/ost-prod/live/gn";
 
 // Health check server
 const app = express();
