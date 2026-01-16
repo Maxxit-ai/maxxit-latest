@@ -253,7 +253,7 @@ async function processSignalGenerationJob(
 
     if (result === undefined) {
       // Lock could not be acquired, throw error so BullMQ retries
-      throw new Error(`Lock busy for signal ${postId.substring(0, 8)}-${token} - will retry`);
+      throw new Error(`Lock busy for signal ${tradeId.substring(0, 8)}-${tokenSymbol} - will retry`);
     }
 
     return result;
