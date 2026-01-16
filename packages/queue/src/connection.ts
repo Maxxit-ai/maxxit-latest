@@ -41,7 +41,7 @@ export function getConnection(options?: RedisConnectionOptions): Redis {
       lazyConnect: options?.lazyConnect ?? false,
       // family: 0 enables IPv4/IPv6 dual-stack support, required for Railway private networking
       // See: https://docs.railway.com/guides/private-networking#ioredis
-      // family: 0,
+      family: 0,
     });
 
     connection.on("connect", () => {
