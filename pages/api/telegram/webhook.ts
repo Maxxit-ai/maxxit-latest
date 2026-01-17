@@ -315,6 +315,24 @@ async function handleAlphaMessage(
     // This ensures consistent classification logic in one place
     const messageKey = `alpha_${telegramUserId}_${message.message_id}`;
 
+    // Check for duplicate webhook (Telegram retries if response is slow)
+    // After worker processes, original row is deleted and token-specific rows are created
+    // So we check for both: original message_id AND any processed token-specific versions
+    const existingPost = await prisma.telegram_posts.findFirst({
+      where: {
+        OR: [
+          { message_id: messageKey }, // Original row still exists
+          { message_id: { startsWith: `${messageKey}_` } }, // Token-specific row (e.g., "alpha_..._BTC")
+        ],
+      },
+      select: { id: true, is_signal_candidate: true },
+    });
+
+    if (existingPost) {
+      console.log(`[Alpha] ⏭️ Duplicate webhook detected, message already exists: ${messageKey.substring(0, 20)}...`);
+      return;
+    }
+
     const createdPost = await prisma.telegram_posts.create({
       data: {
         alpha_user_id: alphaUser.id,

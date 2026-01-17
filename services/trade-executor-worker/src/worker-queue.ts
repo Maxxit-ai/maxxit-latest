@@ -296,9 +296,16 @@ async function executeSignal(signalId: string, deploymentId: string): Promise<Jo
       const isRetryable = isRetryableError(errorMessage);
 
       if (isRetryable) {
-        await handleRetryableError(signalId, deploymentId, errorMessage);
-        // Throw to trigger BullMQ retry
-        throw new Error(`Retryable: ${errorMessage}`);
+        const shouldRetry = await handleRetryableError(signalId, deploymentId, errorMessage);
+        if (shouldRetry) {
+          // Throw to trigger BullMQ retry
+          throw new Error(`Retryable: ${errorMessage}`);
+        }
+        // Max retries exceeded - already marked as failed with notification sent
+        return {
+          success: false,
+          error: `Max retries exceeded: ${errorMessage}`,
+        };
       } else {
         await markSignalAsFailed(signalId, deploymentId, errorMessage);
         return {
@@ -313,8 +320,15 @@ async function executeSignal(signalId: string, deploymentId: string): Promise<Jo
     const isRetryable = isRetryableError(error.message);
 
     if (isRetryable) {
-      await handleRetryableError(signalId, deploymentId, error.message);
-      throw error; // Re-throw to trigger BullMQ retry
+      const shouldRetry = await handleRetryableError(signalId, deploymentId, error.message);
+      if (shouldRetry) {
+        throw error; // Re-throw to trigger BullMQ retry
+      }
+      // Max retries exceeded - already marked as failed with notification sent
+      return {
+        success: false,
+        error: `Max retries exceeded: ${error.message}`,
+      };
     } else {
       await markSignalAsFailed(signalId, deploymentId, `Execution error: ${error.message}`);
       return {
@@ -327,8 +341,11 @@ async function executeSignal(signalId: string, deploymentId: string): Promise<Jo
 
 /**
  * Handle retryable error by updating signal status
+ * @returns true if should continue retrying, false if max retries exceeded (notification sent)
  */
-async function handleRetryableError(signalId: string, deploymentId: string, errorMessage: string): Promise<void> {
+async function handleRetryableError(signalId: string, deploymentId: string, errorMessage: string): Promise<boolean> {
+  const MAX_RETRIES_BEFORE_FAIL = 3; // Stop retrying after 3 attempts and notify user
+  
   try {
     const signal = await prisma.signals.findUnique({
       where: { id: signalId },
@@ -337,28 +354,39 @@ async function handleRetryableError(signalId: string, deploymentId: string, erro
 
     const signalAge = Date.now() - (signal?.created_at?.getTime() || 0);
     const MAX_RETRY_AGE = 24 * 60 * 60 * 1000; // 24 hours
+    
+    const existingError = signal?.executor_agreement_error || "";
+    const retryCount = (existingError.match(/RETRY #/g)?.length || 0) + 1;
 
-    if (signalAge > MAX_RETRY_AGE) {
-      await markSignalAsFailed(signalId, deploymentId, `Retry timeout (signal older than 24h): ${errorMessage}`);
-    } else {
-      const existingError = signal?.executor_agreement_error || "";
-      const retryCount = (existingError.match(/RETRY #/g)?.length || 0) + 1;
-      const retryError = existingError.includes("RETRYABLE")
-        ? `${existingError} | RETRY #${retryCount}`
-        : `RETRYABLE: ${errorMessage} | RETRY #${retryCount}`;
-
-      await prisma.signals.update({
-        where: { id: signalId },
-        data: {
-          executor_agreement_error: retryError,
-          skipped_reason: null,
-        },
-      });
-
-      console.log(`[TradeExecutor] ⚠️  Marked for retry (attempt ${retryCount}): ${errorMessage}`);
+    // After MAX retries OR 24h timeout, mark as permanently failed and send notification
+    if (retryCount > MAX_RETRIES_BEFORE_FAIL || signalAge > MAX_RETRY_AGE) {
+      const reason = retryCount > MAX_RETRIES_BEFORE_FAIL
+        ? `Trade execution failed after ${retryCount} attempts: ${errorMessage}`
+        : `Retry timeout (signal older than 24h): ${errorMessage}`;
+      
+      console.log(`[TradeExecutor] ❌ Max retries (${MAX_RETRIES_BEFORE_FAIL}) exceeded - marking as failed and notifying user`);
+      await markSignalAsFailed(signalId, deploymentId, reason);
+      return false; // Stop retrying
     }
+    
+    // Still within retry limit - update retry count
+    const retryError = existingError.includes("RETRYABLE")
+      ? `${existingError} | RETRY #${retryCount}`
+      : `RETRYABLE: ${errorMessage} | RETRY #${retryCount}`;
+
+    await prisma.signals.update({
+      where: { id: signalId },
+      data: {
+        executor_agreement_error: retryError,
+        skipped_reason: null,
+      },
+    });
+
+    console.log(`[TradeExecutor] ⚠️  Marked for retry (attempt ${retryCount}/${MAX_RETRIES_BEFORE_FAIL}): ${errorMessage}`);
+    return true; // Continue retrying
   } catch (updateError) {
     console.error(`[TradeExecutor] ❌ Failed to update signal:`, updateError);
+    return false; // On error, stop retrying to be safe
   }
 }
 
