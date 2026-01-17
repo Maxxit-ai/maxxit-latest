@@ -290,11 +290,10 @@ export async function monitorOstiumPositions() {
 
             // Position closed externally?
             if (!isOpenOnChain) {
-              const entryPrice = Number(position.entry_price?.toString() || 0);
               const positionAge = Date.now() - position.opened_at.getTime();
               const isRecent = positionAge < 5 * 60 * 1000; // 5 minutes
 
-              if (entryPrice === 0 && isRecent) {
+              if (isRecent) {
                 console.log(`   ⏳ Position is pending (waiting for keeper), age: ${Math.round(positionAge / 1000)}s`);
                 continue;
               }
