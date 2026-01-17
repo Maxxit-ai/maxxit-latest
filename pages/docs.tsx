@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, BookOpen, Wallet, Shield, Zap, TrendingUp, AlertTriangle, Lock, Users, Target, BarChart3, MessageSquare, Bot, Brain } from 'lucide-react';
 import { Header } from '@components/Header';
+import FooterSection from '@components/home/FooterSection';
 
 export default function DocsPage() {
   const [activeSection, setActiveSection] = useState('overview');
@@ -904,6 +905,7 @@ export default function DocsPage() {
           </div>
         </div>
       </div>
+      <FooterSection />
     </div>
   );
 }

@@ -25,6 +25,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useToast } from "@/hooks/use-toast";
 import { MultiVenueSelector } from "@components/MultiVenueSelector";
 import { Settings } from "lucide-react";
+import FooterSection from "@components/home/FooterSection";
 
 export default function Creator() {
   const router = useRouter();
@@ -789,6 +790,8 @@ export default function Creator() {
           userAgentAddresses={userAgentAddresses}
         />
       )}
+
+      <FooterSection />
     </div>
   );
 }

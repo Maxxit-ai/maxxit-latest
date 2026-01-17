@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, ArrowRight, Wallet, CreditCard, CheckCircle2, History, Users, MapPin, Settings, Bot, DollarSign, LineChart, ChevronDown, ChevronUp, PlusCircle, Radio } from 'lucide-react';
 import { Header } from '@components/Header';
+import FooterSection from '@components/home/FooterSection';
 
 interface Step {
   id: string;
@@ -578,6 +579,8 @@ export default function UserManualPage() {
           </main>
         </div>
       </div>
+
+      <FooterSection />
     </div>
   );
 }
