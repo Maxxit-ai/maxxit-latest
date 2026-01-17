@@ -18,7 +18,7 @@ flask-cors>=4.0.0
 # Production package (commented out):
 # ostium-python-sdk==3.0.1
 # Test package from test PyPI:
-ostium-python-sdk-test==3.0.1.2
+ostium-python-sdk-test==3.0.1.4
 
 # Database
 psycopg2-binary>=2.9.9
