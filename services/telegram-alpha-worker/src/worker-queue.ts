@@ -268,10 +268,14 @@ async function classifyMessage(messageId: string): Promise<JobResult> {
       );
     }
 
-    // Delete original webhook message after creating token-specific records
-    // This prevents confusing NULL rows - only actual signal records remain
-    await prisma.telegram_posts.delete({
+    // Keeping the original row ensures webhook duplicate detection always works
+    // If we delete, there's a race window where Telegram retries can slip through
+    await prisma.telegram_posts.update({
       where: { id: messageId },
+      data: {
+        is_signal_candidate: false,  // Marks as "not a signal candidate" (prevents re-queuing)
+        processed_for_signals: true, // Double-safety: mark as processed
+      },
     });
 
     if (tokenSignalsCreated === 0) {

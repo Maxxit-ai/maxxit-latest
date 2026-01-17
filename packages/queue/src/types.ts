@@ -309,7 +309,7 @@ export interface JobOptions {
  */
 export const DEFAULT_JOB_OPTIONS: Record<QueueName, JobOptions> = {
   [QueueName.TRADE_EXECUTION]: {
-    attempts: 3,
+    attempts: 4,
     backoff: {
       type: 'fixed',
       delay: 2000,
