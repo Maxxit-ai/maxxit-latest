@@ -470,7 +470,7 @@ export function Header() {
 
   return (
     <header className="sticky py-4 top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-lg">
-      <div className="px-6">
+      <div className="px-6 max-w-7xl mx-auto">
         <div className="flex h-14 items-center justify-between">
           {/* Logo/Brand */}
           <Link href="/" className="flex items-center gap-2">

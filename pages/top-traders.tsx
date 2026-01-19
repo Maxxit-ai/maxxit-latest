@@ -5,6 +5,7 @@ import { Header } from "@components/Header";
 import { TraderTable } from "@components/top-traders/TraderTable";
 import { Trader } from "@components/top-traders/TraderCard";
 import { Trophy, TrendingUp, Users, Zap } from "lucide-react";
+import FooterSection from "@components/home/FooterSection";
 
 function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
     return (
@@ -95,15 +96,7 @@ function TopTradersContent() {
             </main>
 
             {/* Footer */}
-            <footer className="border-t border-[var(--border)] bg-[var(--bg-surface)] py-8">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6">
-                    <div className="text-center">
-                        <p className="text-sm text-[var(--text-muted)]">
-                            © 2024 Maxxit. All rights reserved.
-                        </p>
-                    </div>
-                </div>
-            </footer>
+            <FooterSection />
         </div>
     );
 }

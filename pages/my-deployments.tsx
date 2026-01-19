@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { FaPlus } from "react-icons/fa6";
 import { useRouter } from "next/router";
+import FooterSection from "@components/home/FooterSection";
 
 interface Deployment {
   id: string;
@@ -503,7 +504,7 @@ export default function MyDeployments() {
           </div>
         ) : deploymentsLoading ? (
           <div className="border border-[var(--border)] bg-[var(--bg-surface)]">
-            <div className="flex flex-col items-center justify-center py-16 px-4">
+            <div className="flex flex-col items-center justify-center py-16 px-4 min-h-[40vh]">
               <Activity className="w-8 h-8 animate-pulse text-[var(--accent)]" />
               <p className="text-[var(--text-muted)] mt-4">Loading deployments...</p>
             </div>
@@ -880,6 +881,8 @@ export default function MyDeployments() {
           onClose={() => setHyperliquidModalOpen(false)}
         />
       )}
+
+      <FooterSection />
     </div>
   );
 }

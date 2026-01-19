@@ -17,6 +17,7 @@ import {
   Bell,
   BellOff,
 } from "lucide-react";
+import FooterSection from "@components/home/FooterSection";
 
 interface Trade {
   id: string;
@@ -1577,6 +1578,8 @@ export default function MyTrades() {
           </div>
         </div>
       )}
+
+      <FooterSection />
     </div>
   );
 }

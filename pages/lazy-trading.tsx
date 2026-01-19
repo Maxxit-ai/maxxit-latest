@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { ethers } from "ethers";
 import { getOstiumConfig } from "../lib/ostium-config";
+import FooterSection from "@components/home/FooterSection";
 
 // Ostium configuration
 const {
@@ -1493,6 +1494,8 @@ export default function LazyTrading() {
           )}
         </div>
       </div>
+
+      <FooterSection />
     </div>
   );
 }
