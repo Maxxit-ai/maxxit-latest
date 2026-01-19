@@ -126,8 +126,8 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
       if (isClosedOnChain && dbPosition.status !== 'CLOSED') {
         const closeOrder = closedOrders[0];
         const profitPercentRaw = Number(closeOrder.profitPercent || 0);
-        const profitPercent = profitPercentRaw / 1e6; // Convert from 10^6 scale
-        
+        const profitPercent = profitPercentRaw / 1e6 / 100;
+
         // Get trade details to calculate collateral
         let trade: any = null;
         try {
@@ -210,8 +210,8 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
         if (isClosedOnChain) {
           const closeOrder = closedOrders[0];
           const profitPercentRaw = Number(closeOrder.profitPercent || 0);
-          const profitPercent = profitPercentRaw / 1e6;
-          
+          const profitPercent = profitPercentRaw / 1e6 / 100;
+
           let trade: any = null;
           try {
             trade = await getOstiumTradeById(tradeId);
@@ -272,8 +272,9 @@ async function syncOstiumPnL(deploymentId: string, safeWallet: string): Promise<
       if (dbPosition.status === 'CLOSED' && isClosedOnChain && (!dbPosition.pnl || dbPosition.pnl.toString() === '0')) {
         const closeOrder = closedOrders[0];
         const profitPercentRaw = Number(closeOrder.profitPercent || 0);
-        const profitPercent = profitPercentRaw / 1e6;
-        
+        // profitPercent is in percentage form, divide by 100 to get decimal
+        const profitPercent = profitPercentRaw / 1e6 / 100;
+
         let trade: any = null;
         try {
           trade = await getOstiumTradeById(tradeId);
