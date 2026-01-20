@@ -318,27 +318,53 @@ export default function UserManualPage() {
   };
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
+    const allSteps = [...joinClubSteps, ...createClubSteps];
+
+    const handleScroll = () => {
+      const header = document.querySelector('header');
+      const headerHeight = header ? header.offsetHeight + 40 : 140;
+
+      let currentSection = allSteps[0].id;
+      let minDistance = Infinity;
+
+      for (const { id } of allSteps) {
+        const element = document.getElementById(id);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          const distanceFromTop = rect.top - headerHeight;
+
+          // Find the section that's closest to or just past the top threshold
+          if (distanceFromTop <= 0 && Math.abs(distanceFromTop) < minDistance) {
+            minDistance = Math.abs(distanceFromTop);
+            currentSection = id;
+          } else if (distanceFromTop > 0 && distanceFromTop < 100 && minDistance === Infinity) {
+            // If no section has passed the threshold yet, use the first one approaching
+            currentSection = id;
+            break;
           }
-        });
-      },
-      {
-        threshold: [0, 0.3, 0.5],
-        rootMargin: '-120px 0px -60% 0px',
+        }
       }
-    );
 
-    // Observe both join and create club steps
-    [...joinClubSteps, ...createClubSteps].forEach(({ id }) => {
-      const element = document.getElementById(id);
-      if (element) observer.observe(element);
-    });
+      setActiveSection(currentSection);
+    };
 
-    return () => observer.disconnect();
+    // Initial check
+    handleScroll();
+
+    // Add scroll listener with throttling for performance
+    let ticking = false;
+    const scrollListener = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          handleScroll();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', scrollListener, { passive: true });
+    return () => window.removeEventListener('scroll', scrollListener);
   }, []);
 
   return (

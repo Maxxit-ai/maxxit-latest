@@ -25,26 +25,51 @@ export default function DocsPage() {
   ];
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
+    const handleScroll = () => {
+      const header = document.querySelector('header');
+      const headerHeight = header ? header.offsetHeight + 40 : 140;
+
+      let currentSection = sections[0].id;
+      let minDistance = Infinity;
+
+      for (const { id } of sections) {
+        const element = document.getElementById(id);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          const distanceFromTop = rect.top - headerHeight;
+
+          // Find the section that's closest to or just past the top threshold
+          if (distanceFromTop <= 0 && Math.abs(distanceFromTop) < minDistance) {
+            minDistance = Math.abs(distanceFromTop);
+            currentSection = id;
+          } else if (distanceFromTop > 0 && distanceFromTop < 100 && minDistance === Infinity) {
+            // If no section has passed the threshold yet, use the first one approaching
+            currentSection = id;
+            break;
           }
-        });
-      },
-      {
-        threshold: [0, 0.1, 0.5, 1],
-        rootMargin: '-120px 0px -60% 0px'
+        }
       }
-    );
 
-    sections.forEach(({ id }) => {
-      const element = document.getElementById(id);
-      if (element) observer.observe(element);
-    });
+      setActiveSection(currentSection);
+    };
 
-    return () => observer.disconnect();
+    // Initial check
+    handleScroll();
+
+    // Add scroll listener with throttling for performance
+    let ticking = false;
+    const scrollListener = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          handleScroll();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', scrollListener, { passive: true });
+    return () => window.removeEventListener('scroll', scrollListener);
   }, []);
 
   const scrollToSection = (id: string) => {
@@ -198,14 +223,14 @@ export default function DocsPage() {
                     <li>
                       <strong className="text-[var(--accent)]">Join an Alpha Club</strong>
                       <p className="ml-6 text-sm text-[var(--text-secondary)] mt-1">
-                        When you join a club, you approve the agent to trade on your behalf via Ostium's delegation system. 
+                        When you join a club, you approve the agent to trade on your behalf via Ostium's delegation system.
                         The agent can open/close positions but <strong className="text-[var(--accent)]">CANNOT withdraw funds</strong>.
                       </p>
                     </li>
                     <li>
                       <strong className="text-[var(--accent)]">Configure Your Trading Style</strong>
                       <p className="ml-6 text-sm text-[var(--text-secondary)] mt-1">
-                        Set your risk tolerance, position sizing preferences, and leverage limits. The agent becomes your "trading clone" — 
+                        Set your risk tolerance, position sizing preferences, and leverage limits. The agent becomes your "trading clone" —
                         executing the strategy your way.
                       </p>
                     </li>
@@ -392,7 +417,7 @@ export default function DocsPage() {
                   <div className="bg-[var(--bg-elevated)] p-4 rounded-lg border border-[var(--border)]">
                     <h4 className="font-semibold mb-2 text-[var(--text-primary)]">Why Three Agents?</h4>
                     <p className="text-sm text-[var(--text-secondary)]">
-                      Traditional copy trading fails because it copies <strong>exact trades</strong> and assumes you're the same trader. 
+                      Traditional copy trading fails because it copies <strong>exact trades</strong> and assumes you're the same trader.
                       Maxxit separates the <strong className="text-[var(--accent)]">intelligence</strong> (the idea) from the <strong className="text-[var(--accent)]">execution</strong> (your style).
                       You get the alpha, but trade it your way.
                     </p>
@@ -423,7 +448,7 @@ export default function DocsPage() {
                     <div className="p-4 border border-[var(--border)] rounded bg-[var(--bg-elevated)]">
                       <h4 className="font-semibold text-[var(--accent)] mb-2">1. Benchmark Sources by Performance</h4>
                       <p className="text-sm text-[var(--text-primary)]">
-                        Maxxit tracks outcomes over time and scores sources by their realized impact. So instead of "who's loud," 
+                        Maxxit tracks outcomes over time and scores sources by their realized impact. So instead of "who's loud,"
                         you get <strong className="text-[var(--accent)]">"who's right often enough to matter."</strong>
                       </p>
                     </div>
@@ -555,7 +580,7 @@ export default function DocsPage() {
 
                   <div className="bg-[var(--accent)]/10 p-4 rounded-lg border border-[var(--accent)]/30 shadow-[0_0_15px_var(--accent-glow)]">
                     <p className="text-[var(--text-primary)]">
-                      <strong className="text-[var(--accent)]">Agent WHERE</strong> routes to the best venue available (primarily Ostium) and monitors positions continuously — 
+                      <strong className="text-[var(--accent)]">Agent WHERE</strong> routes to the best venue available (primarily Ostium) and monitors positions continuously —
                       protecting exits and preventing "I forgot to check" liquidations.
                     </p>
                   </div>
@@ -609,7 +634,7 @@ export default function DocsPage() {
                       Agent Delegation Model
                     </h4>
                     <p className="text-sm text-[var(--text-primary)] mb-3">
-                      Unlike traditional copy trading where you transfer funds to a platform, Ostium's delegation allows agents to 
+                      Unlike traditional copy trading where you transfer funds to a platform, Ostium's delegation allows agents to
                       <strong className="text-[var(--accent)]"> trade on your behalf</strong> while funds remain in <strong className="text-[var(--accent)]">your wallet</strong>.
                     </p>
                     <div className="space-y-2 text-sm">
@@ -791,8 +816,8 @@ export default function DocsPage() {
                       </p>
                     </div>
                     <p className="text-sm text-[var(--text-primary)]">
-                      This triggers the full cycle: <strong className="text-[var(--accent)]">Agent WHAT</strong> validates the signal, 
-                      <strong className="text-[var(--accent)]"> Agent HOW</strong> sizes the position, and 
+                      This triggers the full cycle: <strong className="text-[var(--accent)]">Agent WHAT</strong> validates the signal,
+                      <strong className="text-[var(--accent)]"> Agent HOW</strong> sizes the position, and
                       <strong className="text-[var(--accent)]"> Agent WHERE</strong> executes and monitors.
                     </p>
                   </div>
