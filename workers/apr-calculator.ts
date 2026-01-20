@@ -508,11 +508,11 @@ export async function calculateAllAgentAPR() {
   try {
     // Get all public agents
     const agents = await prisma.agents.findMany({
-      where: { status: 'PUBLIC' },
+      where: { status: { in: ['PUBLIC', 'PRIVATE'] } },
       select: { id: true, name: true, venue: true },
     });
 
-    console.log(`📋 Found ${agents.length} public agent(s) to update\n`);
+    console.log(`📋 Found ${agents.length} agent(s) to update\n`);
 
     if (agents.length === 0) {
       console.log('✅ No agents to update\n');
