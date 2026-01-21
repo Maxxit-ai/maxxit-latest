@@ -521,9 +521,39 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                       </div>
 
                       {/* Secondary Metrics */}
-                      <div className="flex gap-1.5 sm:gap-2 md:gap-3">
+                      <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3">
+                        {agent.isCopyTradeClub && (
+                          <>
+                            <div className="flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                              <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
+                                SOURCE VOL
+                              </p>
+                              <p className="font-mono font-bold text-accent text-xs sm:text-sm md:text-base leading-none">
+                                {(agent.cumulativeVolume || 0) >= 1_000_000_000
+                                  ? `$${((agent.cumulativeVolume || 0) / 1_000_000_000).toFixed(1)}B`
+                                  : (agent.cumulativeVolume || 0) >= 1_000_000
+                                    ? `$${((agent.cumulativeVolume || 0) / 1_000_000).toFixed(1)}M`
+                                    : (agent.cumulativeVolume || 0) >= 1_000
+                                      ? `$${((agent.cumulativeVolume || 0) / 1_000).toFixed(0)}K`
+                                      : `$${(agent.cumulativeVolume || 0).toFixed(0)}`}
+                              </p>
+                            </div>
+                            <div className="flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                              <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
+                                SOURCE PNL
+                              </p>
+                              <p className={`font-mono font-bold text-xs sm:text-sm md:text-base leading-none ${(agent.cumulativePnl || 0) > 0 ? 'text-accent' : (agent.cumulativePnl || 0) < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
+                                {(agent.cumulativePnl || 0) >= 1_000_000
+                                  ? `${(agent.cumulativePnl || 0) > 0 ? '+' : ''}$${((agent.cumulativePnl || 0) / 1_000_000).toFixed(1)}M`
+                                  : (agent.cumulativePnl || 0) >= 1_000 || (agent.cumulativePnl || 0) <= -1_000
+                                    ? `${(agent.cumulativePnl || 0) > 0 ? '+' : ''}$${((agent.cumulativePnl || 0) / 1_000).toFixed(0)}K`
+                                    : `${(agent.cumulativePnl || 0) > 0 ? '+' : ''}$${(agent.cumulativePnl || 0).toFixed(0)}`}
+                              </p>
+                            </div>
+                          </>
+                        )}
                         {agent.sharpe30d != null && (
-                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                          <div className="flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
                             <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
                               SHARPE
                             </p>
@@ -533,7 +563,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                           </div>
                         )}
                         {agent.apr90d != null && (
-                          <div className="flex-1 bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
+                          <div className="flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
                             <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
                               90D
                             </p>
