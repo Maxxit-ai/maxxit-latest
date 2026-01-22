@@ -480,7 +480,7 @@ export function Header() {
             <span className="font-display text-xl tracking-wide" data-testid="text-header-brand">
               MAXXIT
             </span> */}
-            <Image src="/logo.png" alt="Maxxit" width={100} height={100} />
+            <Image src="/logo.png" alt="Maxxit" width={100} height={100} className='w-fit h-fit' />
           </Link>
 
           {/* Navigation */}

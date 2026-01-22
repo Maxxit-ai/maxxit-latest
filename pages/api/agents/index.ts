@@ -87,11 +87,22 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
         include: {
           telegram_alpha_users: true
         }
+      },
+      agent_top_traders: {
+        where: { is_active: true },
+        include: {
+          top_traders: {
+            select: {
+              total_volume: true,
+              total_pnl: true,
+            }
+          }
+        }
       }
     }
   });
 
-  // Process agents to calculate total cost
+  // Process agents to calculate total cost and copy trading stats
   const processedAgents = agents.map(agent => {
     let alphaSum = 0;
     if (agent.agent_telegram_users) {
@@ -105,9 +116,23 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
     // Add 10% platform fee and round/ceil as appropriate
     const totalCost = alphaSum > 0 ? alphaSum * 1.1 : 0;
 
+    // Calculate cumulative volume and PnL from linked top traders
+    let cumulativeVolume = 0;
+    let cumulativePnl = 0;
+    if (agent.agent_top_traders) {
+      agent.agent_top_traders.forEach((att: any) => {
+        if (att.top_traders) {
+          cumulativeVolume += Number(att.top_traders.total_volume || 0) / 1e6;
+          cumulativePnl += Number(att.top_traders.total_pnl || 0) / 1e6;
+        }
+      });
+    }
+
     return {
       ...agent,
-      totalCost: totalCost
+      totalCost: totalCost,
+      cumulativeVolume: cumulativeVolume,
+      cumulativePnl: cumulativePnl,
     };
   });
 

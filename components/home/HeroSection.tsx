@@ -112,6 +112,7 @@ const HeroSection = memo(
   ({ onDeployScroll, onLearnMoreScroll }: HeroSectionProps) => {
     const router = useRouter();
     const [tradingPairs, setTradingPairs] = useState<number>(0);
+    const [lazyApr, setLazyApr] = useState<number>(0);
 
     useEffect(() => {
       async function fetchStats() {
@@ -127,8 +128,25 @@ const HeroSection = memo(
           console.error('Failed to fetch stats:', error);
         }
       }
+
+      async function fetchLazyApr() {
+        try {
+          const response = await fetch('/api/lazy-trading/apr-stats');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.avgApr30d !== undefined) {
+              setLazyApr(data.avgApr30d);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch lazy trading APR:', error);
+        }
+      }
+
       fetchStats();
+      fetchLazyApr();
     }, []);
+
 
     const handleDeployClick = useCallback(
       (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -218,6 +236,11 @@ const HeroSection = memo(
               className="group px-4 sm:px-6 md:px-8 py-3 sm:py-4 border-2 border-accent text-accent font-bold text-sm sm:text-base md:text-lg hover:bg-accent hover:text-[var(--bg-deep)] transition-all w-full sm:w-auto text-center"
             >
               LAZY TRADING
+              {lazyApr > 0 && (
+                <span className="ml-2 text-xs sm:text-sm opacity-80">
+                  ({lazyApr.toFixed(0)}% APR)
+                </span>
+              )}
               <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">
                 ⚡
               </span>

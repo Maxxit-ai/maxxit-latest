@@ -14,7 +14,7 @@ export default async function handler(
   }
 
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = parseInt(req.query.limit as string) || 30;
 
     const topTraders = await prisma.top_traders.findMany({
       take: limit,
