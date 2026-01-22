@@ -14,7 +14,9 @@ import {
     CreditCard,
     Plus,
     ChevronRight,
-    Loader2
+    Loader2,
+    Copy,
+    CheckCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -75,6 +77,14 @@ export default function Dashboard() {
     const [balance, setBalance] = useState<{ usdc: string; eth: string; credits: string } | null>(null);
     const [tradeQuota, setTradeQuota] = useState<{ trades_total: number; trades_used: number; trades_remaining: number } | null>(null);
 
+    const [apiKey, setApiKey] = useState<string>("");
+    const [apiKeyPrefix, setApiKeyPrefix] = useState<string>("");
+    const [apiKeyCreatedAt, setApiKeyCreatedAt] = useState<string>("");
+    const [apiKeyLastUsedAt, setApiKeyLastUsedAt] = useState<string>("");
+    const [apiKeyLoading, setApiKeyLoading] = useState(false);
+    const [apiKeyError, setApiKeyError] = useState<string>("");
+    const [apiKeyCopied, setApiKeyCopied] = useState(false);
+
     useEffect(() => {
         if (authenticated && user?.wallet?.address) {
             // Check if we have valid cached data for this specific wallet
@@ -94,6 +104,12 @@ export default function Dashboard() {
             }
         } else {
             setLoading(false);
+        }
+    }, [authenticated, user?.wallet?.address]);
+
+    useEffect(() => {
+        if (authenticated && user?.wallet?.address) {
+            fetchApiKeyStatus();
         }
     }, [authenticated, user?.wallet?.address]);
 
@@ -188,6 +204,64 @@ export default function Dashboard() {
         }
     };
 
+    const fetchApiKeyStatus = async () => {
+        if (!user?.wallet?.address) return;
+
+        setApiKeyLoading(true);
+        setApiKeyError("");
+
+        try {
+            const response = await fetch(
+                `/api/lazy-trading/api-key?userWallet=${user.wallet.address.toLowerCase()}`
+            );
+            const data = await response.json();
+
+            if (data.success && data.apiKey) {
+                setApiKeyPrefix(data.apiKey.prefix || "");
+                setApiKeyCreatedAt(data.apiKey.created_at || "");
+                setApiKeyLastUsedAt(data.apiKey.last_used_at || "");
+            } else {
+                setApiKeyPrefix("");
+                setApiKeyCreatedAt("");
+                setApiKeyLastUsedAt("");
+            }
+        } catch (err: any) {
+            setApiKeyError(err.message || "Failed to load API key status");
+        } finally {
+            setApiKeyLoading(false);
+        }
+    };
+
+    const createApiKey = async () => {
+        if (!user?.wallet?.address) return;
+
+        setApiKeyLoading(true);
+        setApiKeyError("");
+        setApiKey("");
+
+        try {
+            const response = await fetch("/api/lazy-trading/api-key", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userWallet: user.wallet.address.toLowerCase() }),
+            });
+            const data = await response.json();
+
+            if (data.success && data.apiKey?.value) {
+                setApiKey(data.apiKey.value);
+                setApiKeyPrefix(data.apiKey.prefix || "");
+                setApiKeyCreatedAt(data.apiKey.created_at || "");
+                setApiKeyLastUsedAt("");
+            } else {
+                setApiKeyError(data.error || "Failed to create API key");
+            }
+        } catch (err: any) {
+            setApiKeyError(err.message || "Failed to create API key");
+        } finally {
+            setApiKeyLoading(false);
+        }
+    };
+
     const formatDate = (isoDate: string) => {
         const date = new Date(isoDate);
         const now = new Date();
@@ -255,6 +329,7 @@ export default function Dashboard() {
             icon: TrendingUp
         },
     ];
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
     return (
         <div className="min-h-screen bg-[var(--bg-deep)] text-[var(--text-primary)] font-mono">
@@ -405,6 +480,89 @@ export default function Dashboard() {
                                     <span className="md:hidden">BUY TRADES</span>
                                 </button>
                             </Link>
+                        </section>
+
+                        <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-3 sm:p-4 md:p-6">
+                            <div className="mb-3">
+                                <h3 className="data-label text-[8px] sm:text-[10px] md:text-xs">PROGRAMMATIC ACCESS</h3>
+                                <p className="text-[8px] sm:text-[10px] text-[var(--text-secondary)]">
+                                    Generate an API key to fetch Lazy Trader details and send signals from any app.
+                                </p>
+                            </div>
+
+                            {apiKeyError && (
+                                <p className="text-[8px] sm:text-[10px] text-red-500 mb-2">{apiKeyError}</p>
+                            )}
+
+                            {apiKeyPrefix ? (
+                                <div className="space-y-1 mb-3">
+                                    <div className="flex items-center justify-between text-[8px] sm:text-[10px] text-[var(--text-secondary)]">
+                                        <span>Active key</span>
+                                        <span className="font-mono">{apiKeyPrefix}••••</span>
+                                    </div>
+                                    {apiKeyCreatedAt && (
+                                        <div className="flex items-center justify-between text-[8px] sm:text-[10px] text-[var(--text-secondary)]">
+                                            <span>Created</span>
+                                            <span>{new Date(apiKeyCreatedAt).toLocaleString()}</span>
+                                        </div>
+                                    )}
+                                    {apiKeyLastUsedAt && (
+                                        <div className="flex items-center justify-between text-[8px] sm:text-[10px] text-[var(--text-secondary)]">
+                                            <span>Last used</span>
+                                            <span>{new Date(apiKeyLastUsedAt).toLocaleString()}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-[8px] sm:text-[10px] text-[var(--text-secondary)] mb-3">
+                                    No API key yet. Generate one to enable programmatic access.
+                                </p>
+                            )}
+
+                            {apiKey && (
+                                <div className="border border-[var(--accent)] bg-[var(--accent)]/10 p-2 sm:p-3 mb-3">
+                                    <p className="text-[8px] sm:text-[10px] text-[var(--accent)] mb-2">
+                                        Copy this key now. You will not be able to view it again.
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <code className="flex-1 bg-[var(--bg-deep)] px-2 py-1 font-mono text-[8px] sm:text-[10px] text-[var(--accent)] break-all">
+                                            {apiKey}
+                                        </code>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(apiKey);
+                                                setApiKeyCopied(true);
+                                                setTimeout(() => setApiKeyCopied(false), 2000);
+                                            }}
+                                            className="p-1.5 border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+                                        >
+                                            {apiKeyCopied ? (
+                                                <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-[var(--accent)]" />
+                                            ) : (
+                                                <Copy className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={createApiKey}
+                                disabled={apiKeyLoading}
+                                className="w-full py-1.5 sm:py-2 bg-[var(--accent)] text-[var(--bg-deep)] font-bold text-[8px] sm:text-[10px] hover:bg-[var(--accent-dim)] transition-colors disabled:opacity-50"
+                            >
+                                {apiKeyLoading
+                                    ? "GENERATING..."
+                                    : apiKeyPrefix
+                                        ? "ROTATE API KEY"
+                                        : "GENERATE API KEY"}
+                            </button>
+
+                            <div className="mt-3 text-[8px] sm:text-[10px] text-[var(--text-secondary)] space-y-1">
+                                <p>Header: <span className="font-mono">x-api-key: &lt;your-key&gt;</span></p>
+                                <p>Details: <span className="font-mono">{apiBaseUrl}/api/lazy-trading/programmatic/club-details</span></p>
+                                <p>Send: <span className="font-mono">{apiBaseUrl}/api/lazy-trading/programmatic/send-message</span></p>
+                            </div>
                         </section>
 
                         <section className="border border-[var(--border)] bg-[var(--bg-surface)] p-3 sm:p-4 md:p-6 relative overflow-hidden">

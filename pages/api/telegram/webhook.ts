@@ -152,7 +152,7 @@ async function handleTextMessage(update: TelegramUpdate) {
     const isBasicCommand =
       text.startsWith("/") ||
       /^(buy|sell|close|status|help)$/i.test(text.trim()) ||
-      text.length < 15; // Too short to be meaningful alpha
+      text.length < 10; // Too short to be meaningful alpha
 
     if (!isBasicCommand) {
       // This is an alpha message - classify and store it
