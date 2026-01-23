@@ -31,6 +31,13 @@ import {
   Job,
 } from "@maxxit/queue";
 import { createLLMClassifier } from "./lib/llm-classifier";
+import {
+  initializeOstiumMapper,
+  shutdownOstiumMapper,
+  mapToOstiumSymbol,
+  getCacheStats,
+  isCacheReady
+} from "./lib/ostium-symbol-mapper";
 
 // Bull Board imports
 import { createBullBoard } from "@bull-board/api";
@@ -61,6 +68,9 @@ app.get(
       // Queue might not be initialized yet
     }
 
+    // Get Ostium mapper cache stats
+    const ostiumMapperStats = getCacheStats();
+
     return {
       database: dbHealthy ? "connected" : "disconnected",
       redis: redisHealthy ? "connected" : "disconnected",
@@ -68,6 +78,11 @@ app.get(
       workerConcurrency: WORKER_CONCURRENCY,
       triggerInterval: TRIGGER_INTERVAL,
       queue: queueStats,
+      ostiumMapper: {
+        ready: ostiumMapperStats.isReady,
+        pairCount: ostiumMapperStats.pairCount,
+        lastRefresh: ostiumMapperStats.lastRefresh?.toISOString() || null,
+      },
     };
   })
 );
@@ -214,6 +229,20 @@ async function classifyMessage(messageId: string): Promise<JobResult> {
 
       const token = classification.extractedTokens[0]; // Only one token per classification now
 
+      // Map token to Ostium-compatible symbol
+      const ostiumMapping = mapToOstiumSymbol(token);
+
+      if (!ostiumMapping.isSupported) {
+        console.log(`[Classifier] ⚠️  [${username}] Token "${token}" not available on Ostium, skipping signal`);
+        continue;
+      }
+
+      // Use the mapped Ostium symbol for the signal
+      const ostiumSymbol = ostiumMapping.ostiumSymbol!;
+      const ostiumPair = ostiumMapping.ostiumPair!;
+      const ostiumPairId = ostiumMapping.pairId!;
+
+      console.log(`[Classifier] 🔄 [${username}] Mapped "${token}" → "${ostiumPair}" (pairId: ${ostiumPairId})`);
       // Create NEW record for this specific token
       await prisma.telegram_posts.create({
         data: {
@@ -221,8 +250,8 @@ async function classifyMessage(messageId: string): Promise<JobResult> {
           alpha_user_id: message.alpha_user_id,
           source_id: message.source_id,
 
-          // Make message_id unique per token
-          message_id: `${message.message_id}_${token}`,
+          // Make message_id unique per Ostium symbol (use mapped symbol, not original)
+          message_id: `${message.message_id}_${ostiumSymbol}`,
 
           // Original message metadata
           message_text: message.message_text,
@@ -232,7 +261,7 @@ async function classifyMessage(messageId: string): Promise<JobResult> {
 
           // Token-specific classification
           is_signal_candidate: classification.isSignalCandidate,
-          extracted_tokens: [token],
+          extracted_tokens: [ostiumSymbol], // Use Ostium symbol, not original token
           confidence_score: classification.confidence,
           signal_type:
             classification.sentiment === "bullish"
@@ -262,9 +291,9 @@ async function classifyMessage(messageId: string): Promise<JobResult> {
       tokenSignalsCreated++;
 
       console.log(
-        `[Classifier] ✅ [${username}] Signal for ${token}: ${classification.sentiment} (confidence: ${(
+        `[Classifier] ✅ [${username}] Signal for ${ostiumPair}: ${classification.sentiment} (confidence: ${(
           classification.confidence * 100
-        ).toFixed(0)}%)`
+        ).toFixed(0)}%) [original: ${token}]`
       );
     }
 
@@ -416,6 +445,15 @@ async function runWorker() {
     // Setup Bull Board for queue visualization
     setupBullBoard();
 
+    // Initialize Ostium Symbol Mapper (loads pairs from DB into cache)
+    await initializeOstiumMapper();
+    if (isCacheReady()) {
+      const stats = getCacheStats();
+      console.log(`✅ Ostium Mapper: READY (${stats.pairCount} pairs cached)`);
+    } else {
+      console.log("⚠️  Ostium Mapper: Cache not ready (will retry on first use)");
+    }
+
     // Check LLM classifier availability
     const classifier = createLLMClassifier();
     if (classifier) {
@@ -455,6 +493,7 @@ async function runWorker() {
 // Register cleanup handlers
 registerCleanup(async () => {
   console.log("🛑 Stopping Telegram Alpha Worker...");
+  shutdownOstiumMapper(); // Stop cache refresh interval
   await shutdownQueueService();
   await disconnectPrisma();
   console.log("✅ Cleanup complete");
