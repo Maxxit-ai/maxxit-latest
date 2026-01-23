@@ -4,6 +4,7 @@ import Head from 'next/head';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import Lenis from 'lenis';
+import SupportAssistant from '../components/SupportAssistant';
 
 export default function App({ Component, pageProps }: AppProps) {
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -20,6 +21,7 @@ export default function App({ Component, pageProps }: AppProps) {
           <link rel="icon" href="/favicon.ico" />
         </Head>
         <Component {...pageProps} />
+        <SupportAssistant />
       </>
     );
   }
@@ -100,6 +102,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <Component {...pageProps} />
+      <SupportAssistant />
     </PrivyProvider>
   );
 }
