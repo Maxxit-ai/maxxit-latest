@@ -62,6 +62,18 @@ function mapGroupName(ostiumGroup: string): string {
   return groupMap[ostiumGroup.toLowerCase()] || ostiumGroup.toLowerCase();
 }
 
+// Normalize symbols to match LunarCrush format
+function normalizeSymbol(symbol: string): string {
+  const symbolMap: { [key: string]: string } = {
+    "GOOG": "GOOGL",
+  };
+  
+  const [baseSymbol, quoteSymbol] = symbol.split('/');
+  const normalizedBase = symbolMap[baseSymbol] || baseSymbol;
+  
+  return `${normalizedBase}/${quoteSymbol}`;
+}
+
 /**
  * Sync Ostium pairs from the service
  */
@@ -94,12 +106,17 @@ async function syncOstiumPairs() {
     for (const pair of pairs) {
       try {
         const pairId = parseInt(pair.id);
-        const symbol = `${pair.from}/${pair.to}`;
-        const maxLeverage = Math.floor(parseInt(pair.maxLeverage.toString()) / 100); 
+        const rawSymbol = `${pair.from}/${pair.to}`;
+        const symbol = normalizeSymbol(rawSymbol);
+        const maxLeverage = Math.floor(parseInt(pair.maxLeverage.toString()) / 100);
         const makerMaxLeverage = pair.makerMaxLeverage
           ? Math.floor(parseInt(pair.makerMaxLeverage.toString()) / 100)
           : 0;
         const groupName = mapGroupName(pair.group.name);
+
+        if (rawSymbol !== symbol) {
+          console.log(`[OstiumPairsSync] 🔧 Normalized symbol: ${rawSymbol} → ${symbol}`);
+        }
 
         // Upsert to database
         await prisma.ostium_available_pairs.upsert({
