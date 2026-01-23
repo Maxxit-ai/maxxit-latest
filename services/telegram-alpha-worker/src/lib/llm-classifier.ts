@@ -107,10 +107,10 @@ export class LLMTweetClassifier {
       result.marketContext = marketContext;
       result.fullPrompt = fullPrompt;
       result.tokenPrice =
-        typeof marketData?.price === "number" ? marketData.price : null;     
+        typeof marketData?.price === "number" ? marketData.price : null;
       // Override extracted tokens to ensure only this token
       result.extractedTokens = result.isSignalCandidate ? [tokenSymbol] : [];
-      
+
       return result;
     } catch (primaryError: any) {
       // If EigenAI fails, automatically fallback to OpenAI
@@ -173,7 +173,7 @@ export class LLMTweetClassifier {
       console.error("[LLMClassifier] LLM token extraction failed, using regex tokens only:", error.message);
     }
     // LLM has already excluded comparison-only tokens
-    const tokens = llmTokens.length > 0 
+    const tokens = llmTokens.length > 0
       ? llmTokens.slice(0, 5)  // Use LLM-filtered tokens only
       : seedTokens.slice(0, 5); // Fallback to regex tokens if LLM fails
 
@@ -201,7 +201,7 @@ export class LLMTweetClassifier {
           userImpactFactor
         );
         results.push(classification);
-        
+
         console.log(
           `[LLMClassifier] ${token}: ${classification.isSignalCandidate ? 'SIGNAL' : 'NOT SIGNAL'} ` +
           `(${classification.sentiment}, confidence: ${(classification.confidence * 100).toFixed(0)}%)`
@@ -306,30 +306,30 @@ export class LLMTweetClassifier {
   private extractAllTokenSymbols(tweetText: string): string[] {
     const tokens = new Set<string>();
     if (!tweetText) return [];
-  
+
     const text = tweetText.toUpperCase();
-  
+
     // Step 1: $TOKEN mentions (highest priority)
     const dollarMatches = text.matchAll(/\$([A-Z]{2,6})\b/g);
     for (const match of dollarMatches) {
       tokens.add(match[1]);
     }
-  
+
     // Step 2: Known tokens (only if no $TOKEN found)
     if (tokens.size === 0) {
       const knownTokens =
         /\b(BTC|ETH|SOL|USDT|USDC|BNB|XRP|ADA|DOGE|AVAX|MATIC|DOT|LINK|UNI|ATOM|LTC|BCH|XLM|ALGO|VET|FIL|TRX|ETC|AAVE|MKR|THETA|XTZ|RUNE|NEAR|FTM|SAND|MANA|AXS|GALA|ENJ|CHZ|APE|LDO|ARB|OP|INJ|GMX|IMX|WLD|SEI|TIA|PEPE|SHIB|HBAR|EGLD|ICP|XMR|DASH|ZEC|SNX|CRV|COMP|YFI|SUSHI|1INCH|RPL|ENS|BLUR|KAVA|KSM|ROSE|HNT|FLOW|CFX|STX|ORDI|JTO|PYTH|AERO|JUP|WIF|DOGS)\b/g;
-  
+
       for (const match of text.matchAll(knownTokens)) {
         tokens.add(match[1]);
       }
     }
-  
+
     // Step 3: Fallback – uppercase short words (only if still empty)
     if (tokens.size === 0) {
       const stopWords =
         /\b(THE|AND|FOR|NOT|BUT|ARE|WAS|CAN|ALL|HAS|HAD|ITS|ONE|TWO|NEW|NOW|WAY|MAY|DAY|GET|GOT|SEE|SAY|USE|HER|HIS|HOW|MAN|OLD|TOO|ANY|SAME|BEEN|FROM|THEY|KNOW|WANT|MORE|SOME|TIME|VERY|WHEN|YOUR|MAKE|THAN|INTO|YEAR|GOOD|TAKE|COME|WORK|ALSO|BACK|CALL|GIVE|MOST|OVER|THINK|WELL|EVEN|FIND|TELL|FEEL|HELP|HIGH|KEEP|LAST|LIFE|LONG|MEAN|MOVE|MUCH|NAME|NEED|OPEN|PART|PLAY|READ|REAL|SEEM|SHOW|SIDE|SUCH|SURE|TALK|THAT|THIS|TURN|WAIT|WALK|WEEK|WHAT|WITH|WORD|WOULD|WRITE|ABOUT|AFTER|AGAIN|COULD|EVERY|FIRST|FOUND|GREAT|HOUSE|LARGE|LATER|LEARN|LEAVE|MIGHT|NEVER|OTHER|PLACE|POINT|RIGHT|SMALL|SOUND|STILL|STUDY|THEIR|THERE|THESE|THING|THREE|UNDER|UNTIL|WATCH|WHERE|WHICH|WHILE|WORLD|YOUNG|CRYPTO|COINS|TOKEN|MARKET|PRICE|CHART|TRADE|LOOKING|THINKING|BUYING|SELLING)\b/i;
-  
+
       const shortWords = text.match(/\b[A-Z]{2,5}\b/g) || [];
       for (const word of shortWords) {
         if (!stopWords.test(word)) {
@@ -337,7 +337,7 @@ export class LLMTweetClassifier {
         }
       }
     }
-  
+
     // Limit to max 5 tokens per signal
     return Array.from(tokens).slice(0, 5);
   }
@@ -346,32 +346,51 @@ export class LLMTweetClassifier {
    * LLM fallback to extract up to 5 actionable tokens
    * - Captures tokens missed by regex
    * - Filters out comparison-only mentions
+   * - Recognizes all tradable assets: crypto, stocks, commodities, forex
    */
   private async extractTokensWithLLM(
     tweetText: string,
     seedTokens: string[]
   ): Promise<string[]> {
-    const SYSTEM = "You are a precise crypto token extractor. Output ONLY valid JSON.";
+    const SYSTEM = "You are a precise tradable asset symbol extractor. Output ONLY valid JSON.";
     const prompt = `${SYSTEM}
 
-Goal: Return up to 5 TOKEN SYMBOLS (uppercase, no $) that have CLEAR trading insights in the message.
-Rules (must obey all):
-- For EVERY seed token: keep it ONLY if the message gives explicit, actionable trading insight for that token (direction, bias, momentum, setup, TP/SL, or clear strength/weakness). If seed token is only comparison/background, EXCLUDE it.
-- You MAY add new tokens not in seeds if the message provides clear trading insight for them.
-- EXCLUDE tokens that are just comparisons/context (e.g., "$BTC drops but $ETH is strong" => keep ETH, drop BTC).
-- Prefer precision over recall (better to miss than add noise).
-- Output at most 5 symbols.
+TASK: Extract up to 5 TRADABLE ASSET SYMBOLS (uppercase, no $) mentioned in the message that have trading insights.
 
-Message:
+ASSET TYPES TO RECOGNIZE:
+- Cryptocurrencies: BTC, ETH, SOL, DOGE, PEPE, etc.
+- Commodities: GOLD/XAU, SILVER/XAG, OIL/WTI/BRENT, COPPER, PLATINUM, etc.
+- Stocks: AAPL, TSLA, NVDA, etc.
+- Forex pairs: EUR, USD, GBP, JPY (when discussed as tradable)
+- Indices: SPX, NDX, DJI, etc.
+
+CRITICAL RULES:
+1. ONLY return actual tradable asset symbols - NOT common English words
+2. Words like "GOING", "TO", "MOON", "UP", "DOWN", "THE", "AND", "FOR", "BUT", "ARE" are NEVER tokens
+3. Map common names to their trading symbols:
+   - "gold" → "GOLD" or "XAU"
+   - "silver" → "SILVER" or "XAG"  
+   - "oil" / "crude" → "OIL" or "WTI"
+   - "bitcoin" → "BTC"
+   - "ethereum" → "ETH"
+4. EXCLUDE assets only mentioned as comparison/background context
+5. INCLUDE assets with clear trading insight (direction, momentum, buy/sell signal)
+6. If NO valid tradable assets found, return empty array
+
+SEED SYMBOLS (from regex - may contain false positives): ${seedTokens.join(", ") || "NONE"}
+- Review each seed: keep ONLY if it's a real tradable asset with trading insight
+- Discard seeds that are common English words mistakenly extracted
+
+MESSAGE:
 "${tweetText}"
 
-Seed symbols seen: ${seedTokens.join(", ") || "NONE"}
+Return JSON:
+{ "tokens": ["SYMBOL1", "SYMBOL2"] }
 
-Return JSON (example format only, use actual tokens from the message):
-{ "tokens": ["ETH","SOL"] }`;
+If no valid tradable assets found, return: { "tokens": [] }`;
 
     // Helper to call provider and parse tokens
-    const tryProvider = async (provider: LLMProvider): Promise<string[]> => {
+    const tryProvider = async (provider: LLMProvider): Promise<{ tokens: string[], success: boolean }> => {
       const response = provider === "openai"
         ? await this.callOpenAI(prompt)
         : await this.callEigenAI(prompt);
@@ -380,21 +399,22 @@ Return JSON (example format only, use actual tokens from the message):
       try {
         const parsed = JSON.parse(content);
         if (parsed && Array.isArray(parsed.tokens)) {
-          return parsed.tokens
+          const tokens = parsed.tokens
             .map((t: string) => (t || "").toString().toUpperCase().replace(/[^A-Z0-9]/g, ""))
-            .filter((t: string) => t.length >= 2 && t.length <= 6)
+            .filter((t: string) => t.length >= 2 && t.length <= 10) // Allow longer symbols like PLATINUM (8 chars)
             .slice(0, 5);
+          return { tokens, success: true };
         }
       } catch (err) {
         console.error("[LLMClassifier] Failed to parse token JSON:", content);
       }
-      return [];
+      return { tokens: [], success: false };
     };
 
     // Try primary provider
     try {
-      const primaryTokens = await tryProvider(this.provider);
-      if (primaryTokens.length > 0) return primaryTokens;
+      const result = await tryProvider(this.provider);
+      if (result.success) return result.tokens; // Return even if empty - empty is valid!
     } catch (err: any) {
       console.warn("[LLMClassifier] Primary provider token extraction failed:", err.message);
     }
@@ -402,14 +422,15 @@ Return JSON (example format only, use actual tokens from the message):
     // Fallback to OpenAI if primary is EigenAI and OpenAI key is present
     if (this.provider === "eigenai" && process.env.OPENAI_API_KEY) {
       try {
-        const fallbackTokens = await tryProvider("openai");
-        if (fallbackTokens.length > 0) return fallbackTokens;
+        const result = await tryProvider("openai");
+        if (result.success) return result.tokens; // Return even if empty - empty is valid!
       } catch (err: any) {
         console.warn("[LLMClassifier] Fallback OpenAI token extraction failed:", err.message);
       }
     }
 
-    return [];
+    // Only reach here if all providers threw exceptions - return empty to signal failure
+    throw new Error("All LLM providers failed for token extraction");
   }
 
   /**
@@ -477,6 +498,8 @@ Return JSON (example format only, use actual tokens from the message):
       return cachedData;
     }
 
+    console.log(`[LLMClassifier] No cached data for ${symbolHint}, fetching from API...`);
+
     // If no cache or cache expired, call API
     const apiKey = process.env.LUNARCRUSH_API_KEY;
     if (!apiKey) {
@@ -508,30 +531,18 @@ Return JSON (example format only, use actual tokens from the message):
       if (!Array.isArray(data?.data)) return null;
 
       const upperHint = symbolHint.toUpperCase();
-      const singularHint =
-        upperHint.endsWith("S") && upperHint.length > 3
-          ? upperHint.slice(0, -1)
-          : upperHint;
 
       // Find the specific coin by symbol (case-insensitive)
       let asset = data.data.find(
         (coin: any) => coin.symbol && coin.symbol.toUpperCase() === upperHint
       );
 
-      // Fallback: try singular form
-      if (!asset) {
-        asset = data.data.find(
-          (coin: any) =>
-            coin.symbol && coin.symbol.toUpperCase() === singularHint
-        );
-      }
-
       // Fallback: try name/topic contains hint (for words like "bitcoin" -> BTC)
       if (!asset) {
         asset = data.data.find((coin: any) => {
           const name = (coin.name || "").toString().toUpperCase();
           const topic = (coin.topic || "").toString().toUpperCase();
-          return name.includes(singularHint) || topic.includes(singularHint);
+          return name.includes(upperHint) || topic.includes(upperHint);
         });
       }
 
@@ -576,7 +587,7 @@ Return JSON (example format only, use actual tokens from the message):
     let marketContext = 'NO MARKET DATA';
 
     if (marketData) {
-      console.log(`[LLMClassifier] Market data for ${tokenSymbol}:`, JSON.stringify(marketData, null, 2));
+      // console.log(`[LLMClassifier] Market data for ${tokenSymbol}:`, JSON.stringify(marketData, null, 2));
 
       const pct24h = marketData.percent_change_24h ?? 0;
       const pct7d = marketData.percent_change_7d ?? 0;
@@ -588,8 +599,8 @@ Return JSON (example format only, use actual tokens from the message):
   24h=${pct24h.toFixed(2)}% | 7d=${pct7d.toFixed(2)}% | 30d=${pct30d.toFixed(2)}% | Vol=${volM}M
   Galaxy=${marketData.galaxy_score} | Rank=${marketData.alt_rank} | Vol=${marketData.volatility?.toFixed(4)}`;
     }
-  
-  const prompt = `Elite crypto risk analyst. ${tokenSymbol} was PRE-SELECTED as having trading insight.
+
+    const prompt = `Elite crypto risk analyst. ${tokenSymbol} was PRE-SELECTED as having trading insight.
 
   MESSAGE: "${tweetText}"
   TARGET TOKEN: ${tokenSymbol}
@@ -608,7 +619,11 @@ Return JSON (example format only, use actual tokens from the message):
   - Low(20-40): More skeptical, require stronger signal evidence for high confidence
   - Very Poor(<20): Highly skeptical, require extremely strong signal evidence for any confidence
 
-  DATA MEANING:
+  DATA MEANING (if available):
+  ⚠️ CRITICAL: If market data shows "NO MARKET DATA", treat this NEUTRALLY - do NOT penalize or boost confidence.
+  Missing data means "no information" - base your decision ONLY on the message content and impact factor.
+  
+  When data IS available:
   - Price/MCap: Size & liquidity (larger=safer exits)
   - 24h/7d/30d%: Momentum (consistent=stronger, mixed=uncertain)
   - Vol: Liquidity (>50M good, <10M risky, 0=red flag)
@@ -671,7 +686,7 @@ Return JSON (example format only, use actual tokens from the message):
   }
   
   Output ONLY valid JSON. Start { end }. NO text outside JSON.`;
-  
+
     return { prompt, marketContext };
   }
 
@@ -755,14 +770,14 @@ Return JSON (example format only, use actual tokens from the message):
       );
     }
 
-    console.log("[EigenAI] Raw message:", rawOutput);
+    // console.log("[EigenAI] Raw message:", rawOutput);
 
     // Extract content - try multiple patterns:
     // 1. Content after <|end|> tag (for responses with thinking)
     // 2. Content from <|channel|>final<|message|> tag
     // 3. Fall back to raw output
     let extractedContent = rawOutput;
-    
+
     // Try extracting JSON after <|end|> tag first (handles thinking/analysis output)
     const endTagMatch = rawOutput.match(/<\|end\|>\s*(\{[\s\S]*\})\s*$/);
     if (endTagMatch) {

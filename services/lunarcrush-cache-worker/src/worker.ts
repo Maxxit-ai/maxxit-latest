@@ -1,6 +1,7 @@
 /**
  * LunarCrush Market Data Cache Worker (Microservice)
- * Fetches and caches market data for all tokens in venue_markets
+ * Fetches and caches market data for tokens using symbol-specific API endpoint
+ * Uses /public/{type}/{symbol}/v1 endpoint for efficient direct lookup
  * Interval: 24 hours (configurable via WORKER_INTERVAL)
  * 
  */
@@ -80,13 +81,13 @@ async function fetchMetricsFromAPI(
   // Determine endpoint based on asset group
   const groupLower = assetGroup.toLowerCase();
   const endpoint = LUNARCRUSH_ENDPOINTS[groupLower];
-  
+
   if (!endpoint) {
     console.warn(`[LunarCrushCache] ⚠️  Unsupported asset group: ${assetGroup}. Defaulting to crypto.`);
   }
-  
-  const finalEndpoint = endpoint || "coins";
-  const apiEndpoint = `${API_BASE_URL}/public/${finalEndpoint}/list/v1`;
+
+  const finalEndpointType = endpoint || "coins";
+  const apiEndpoint = `${API_BASE_URL}/public/${finalEndpointType}/${symbol.toLowerCase()}/v1`;
 
   console.log(`[LunarCrushCache] 🔗 Fetching from endpoint: ${apiEndpoint} (group: ${assetGroup})`);
 
@@ -98,13 +99,7 @@ async function fetchMetricsFromAPI(
     throw new Error(`No data returned from LunarCrush API for ${symbol} (group: ${assetGroup})`);
   }
 
-  const asset = response.data.data.find(
-    (item: any) => item.symbol && item.symbol.toUpperCase() === symbol.toUpperCase()
-  );
-
-  if (!asset) {
-    throw new Error(`No data found for ${symbol} in LunarCrush API (group: ${assetGroup})`);
-  }
+  const asset = response.data.data;
 
   const data: LunarCrushMetrics = {
     galaxy_score: asset.galaxy_score ?? null,
@@ -171,7 +166,7 @@ async function cacheMarketData() {
     for (let i = 0; i < ostiumPairs.length; i++) {
       const pair = ostiumPairs[i];
       const tokenSymbol = pair.symbol.split('/')[0]; // Extract token from symbol (e.g., "BTC" from "BTC/USD")
-      
+
       // Check if a full minute has passed and reset counter
       const timeSinceWindowStart = Date.now() - minuteWindowStart;
       if (timeSinceWindowStart >= MINUTE_MS) {
@@ -190,8 +185,65 @@ async function cacheMarketData() {
         requestsInCurrentMinute = 0;
         minuteWindowStart = Date.now();
       }
-      
+
       try {
+        // Special symbol mappings to crypto equivalents (fetch from coins API)
+        // These pairs might have non-crypto groups but have crypto equivalents on LunarCrush
+        const SPECIAL_SYMBOL_MAPPINGS: { [key: string]: { symbol: string; endpoint: string } } = {
+          "EUR": { symbol: "EURC", endpoint: "coins" },
+          "XAU": { symbol: "XAUT", endpoint: "coins" },
+          "XAG": { symbol: "KAG", endpoint: "coins" },
+        };
+
+        const specialMapping = SPECIAL_SYMBOL_MAPPINGS[tokenSymbol.toUpperCase()];
+
+        if (specialMapping) {
+          // Handle special mapped symbols - fetch from coins API with mapped symbol
+          console.log(`[LunarCrushCache] 🔄 [${i + 1}/${ostiumPairs.length}] Fetching data for ${pair.symbol} via mapped symbol ${specialMapping.symbol} (coins API)... (${requestsInCurrentMinute + 1}/${REQUESTS_PER_MINUTE} requests this minute)`);
+
+          requestsInCurrentMinute++;
+          const { data } = await fetchMetricsFromAPI(specialMapping.symbol, "crypto");
+
+          // Update ostium_available_pairs with LunarCrush metrics
+          await prisma.ostium_available_pairs.update({
+            where: { id: pair.id },
+            data: {
+              galaxy_score: data.galaxy_score,
+              alt_rank: data.alt_rank,
+              social_volume_24h: data.social_volume_24h,
+              sentiment: data.sentiment,
+              percent_change_24h: data.percent_change_24h,
+              volatility: data.volatility,
+              price: data.price,
+              volume_24h: data.volume_24h,
+              market_cap: data.market_cap,
+              market_cap_rank: data.market_cap_rank,
+              social_dominance: data.social_dominance,
+              market_dominance: data.market_dominance,
+              interactions_24h: data.interactions_24h,
+              galaxy_score_previous: data.galaxy_score_previous,
+              alt_rank_previous: data.alt_rank_previous,
+              updated_at: new Date(),
+            },
+          });
+
+          successCount++;
+          console.log(`[LunarCrushCache] ✅ Updated metrics for ${pair.symbol} (via ${specialMapping.symbol})`);
+
+          if (i < ostiumPairs.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          continue; // Skip to next pair
+        }
+
+        // Skip pairs that aren't crypto or stocks (no LunarCrush API support)
+        const groupLower = (pair.group || "NA").toLowerCase();
+        if (!LUNARCRUSH_ENDPOINTS[groupLower]) {
+          skipCount++;
+          console.log(`[LunarCrushCache] ⏭️ [${i + 1}/${ostiumPairs.length}] Skipping ${pair.symbol} (no LunarCrush support for group: ${pair.group || 'null'})`);
+          continue; // Skip API call - fields will remain null
+        }
+
         console.log(`[LunarCrushCache] 🔄 [${i + 1}/${ostiumPairs.length}] Fetching data for ${pair.symbol} (group: ${pair.group})... (${requestsInCurrentMinute + 1}/${REQUESTS_PER_MINUTE} requests this minute)`);
 
         // Increment counter before API call to track all API attempts
@@ -265,7 +317,7 @@ async function runWorker() {
 
     console.log("📋 Data Caching Flow:");
     console.log("   1. Fetch all pairs from ostium_available_pairs table");
-    console.log("   2. For each pair, call LunarCrush API based on asset group");
+    console.log("   2. For each pair, call LunarCrush symbol-specific API endpoint");
     console.log("   3. Update ostium_available_pairs with LunarCrush metrics");
     console.log("   4. Respect 10 requests/minute rate limit");
     console.log("   5. Cache metrics in single table (no separate cache table)");
@@ -328,4 +380,3 @@ if (require.main === module) {
 }
 
 export { cacheMarketData };
-
