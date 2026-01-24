@@ -204,6 +204,10 @@ SIGNAL:
 ${confidenceInstruction}
 
 ANALYTICS:
+⚠️ IMPORTANT: If analytics shows "Not available", treat this NEUTRALLY in your decision.
+Missing data means "no information" - do NOT penalize or boost the decision based on missing analytics.
+Base your decision on the signal, confidence score, impact factor, and available data ONLY.
+
 ${analyticsSection}
 
 INFLUENCER IMPACT FACTOR: ${input.influencerImpactFactor ?? 50}/100
