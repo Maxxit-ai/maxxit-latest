@@ -983,48 +983,21 @@ export default function LazyTrading() {
                 </div>
               ) : linkCode ? (
                 <div className="space-y-4">
-                  {/* Step 1: Copy Code */}
+                  {/* Step 1: Open Bot */}
                   <div className="border border-[var(--border)] p-4">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-bold">
-                        Step 1: Copy Code
+                        Step 1: Open Telegram Bot
                       </span>
                       <span className="text-xs px-2 py-1 bg-[var(--accent)]/10 text-[var(--accent)]">
-                        1 of 3
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 bg-[var(--bg-deep)] px-4 py-3 font-mono text-xl tracking-wider text-center text-[var(--accent)]">
-                        {linkCode}
-                      </code>
-                      <button
-                        onClick={copyCode}
-                        className="p-3 border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
-                      >
-                        {copied ? (
-                          <CheckCircle className="w-5 h-5 text-[var(--accent)]" />
-                        ) : (
-                          <Copy className="w-5 h-5" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Step 2: Open Bot */}
-                  <div className="border border-[var(--border)] p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-bold">
-                        Step 2: Open Bot
-                      </span>
-                      <span className="text-xs px-2 py-1 bg-[var(--accent)]/10 text-[var(--accent)]">
-                        2 of 3
+                        1 of 2
                       </span>
                     </div>
                     <a
                       href={deepLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full py-3 border border-[var(--accent)] text-[var(--accent)] font-bold hover:bg-[var(--accent)]/10 transition-colors flex items-center justify-center gap-2"
+                      className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold hover:bg-[var(--accent-dim)] transition-colors flex items-center justify-center gap-2"
                     >
                       <Send className="w-4 h-4" />
                       Open @{botUsername}
@@ -1032,19 +1005,18 @@ export default function LazyTrading() {
                     </a>
                   </div>
 
-                  {/* Step 3: Start Bot */}
+                  {/* Step 2: Start Bot */}
                   <div className="border border-[var(--border)] p-4">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-bold">
-                        Step 3: Start Bot
+                        Step 2: Click Start
                       </span>
                       <span className="text-xs px-2 py-1 bg-[var(--accent)]/10 text-[var(--accent)]">
-                        3 of 3
+                        2 of 2
                       </span>
                     </div>
                     <p className="text-sm text-[var(--text-secondary)]">
-                      Click "Start" in Telegram to complete the connection. This
-                      page will update automatically.
+                      Send the "/start" command in Telegram to connect your account.
                     </p>
                   </div>
 

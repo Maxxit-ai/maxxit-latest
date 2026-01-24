@@ -172,7 +172,11 @@ export default async function handler(
     let ostiumAgentAddress: string | null = existingAgentAddress?.ostium_agent_address || null;
     let hyperliquidAgentAddress: string | null = existingAgentAddress?.hyperliquid_agent_address || null;
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.host}`;
+    // Build baseUrl for internal API calls
+    const host = req.headers.host || 'localhost:5000';
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+    const protocol = isLocalhost ? 'http' : 'https';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`;
 
     // Generate Ostium address if wallet doesn't already have one
     if (!ostiumAgentAddress) {
@@ -223,29 +227,48 @@ export default async function handler(
     }
 
     // Create deployment using the standard flow
-    const deploymentResponse = await fetch(
-      `${baseUrl}/api/ostium/create-deployment`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: agent.id,
-          userWallet: normalizedWallet,
-          tradingPreferences: tradingPreferences || {
-            risk_tolerance: 50,
-            trade_frequency: 50,
-            social_sentiment_weight: 50,
-            price_momentum_focus: 50,
-            market_rank_priority: 50,
-          },
-        }),
-      }
-    );
+    const deploymentUrl = `${baseUrl}/api/ostium/create-deployment`;
+    const deploymentBody = {
+      agentId: agent.id,
+      userWallet: normalizedWallet,
+      tradingPreferences: tradingPreferences || {
+        risk_tolerance: 50,
+        trade_frequency: 50,
+        social_sentiment_weight: 50,
+        price_momentum_focus: 50,
+        market_rank_priority: 50,
+      },
+    };
+
+    console.log(`[LazyTrading] 📤 Calling deployment API:`, {
+      url: deploymentUrl,
+      body: deploymentBody,
+    });
+
+    const deploymentResponse = await fetch(deploymentUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(deploymentBody),
+    });
+
+    console.log(`[LazyTrading] 📥 Deployment API response status:`, deploymentResponse.status);
 
     let deployment = null;
     if (deploymentResponse.ok) {
       const deploymentData = await deploymentResponse.json();
+      console.log(`[LazyTrading] ✅ Deployment created successfully:`, {
+        deploymentId: deploymentData.deployment?.id,
+        status: deploymentData.deployment?.status,
+        fullResponse: deploymentData,
+      });
       deployment = deploymentData.deployment;
+    } else {
+      const errorText = await deploymentResponse.text();
+      console.error(`[LazyTrading] ❌ Deployment API failed:`, {
+        status: deploymentResponse.status,
+        statusText: deploymentResponse.statusText,
+        errorBody: errorText,
+      });
     }
 
     return res.status(201).json({
