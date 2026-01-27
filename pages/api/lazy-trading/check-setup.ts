@@ -78,6 +78,7 @@ export default async function handler(
             select: {
                 id: true,
                 status: true,
+                is_testnet: true,
                 risk_tolerance: true,
                 trade_frequency: true,
                 social_sentiment_weight: true,
@@ -117,6 +118,7 @@ export default async function handler(
             deployment: {
                 id: deployment.id,
                 status: deployment.status,
+                isTestnet: deployment.is_testnet,  // Include testnet flag in response
             },
             telegramUser: {
                 id: telegramUser.id,

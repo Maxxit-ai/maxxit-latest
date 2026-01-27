@@ -63,6 +63,7 @@ export interface OpenPositionParams {
   userAddress?: string;
   stopLoss?: number;     // Stop-loss price level (protocol-level)
   takeProfit?: number;   // Take-profit price level (protocol-level)
+  isTestnet?: boolean;   // True for Sepolia testnet trading
 }
 
 export interface ClosePositionParams {
@@ -73,6 +74,7 @@ export interface ClosePositionParams {
   useDelegation?: boolean;
   userAddress?: string;
   actualTradeIndex?: number; // Stored trade index from when position was opened (fixes SDK bug)
+  isTestnet?: boolean;   // True for Sepolia testnet trading
 }
 
 export interface TransferParams {
@@ -86,13 +88,14 @@ export interface TransferParams {
  * Get Ostium balance for an address
  */
 export async function getOstiumBalance(
-  address: string
+  address: string,
+  isTestnet?: boolean
 ): Promise<OstiumBalance> {
   try {
     const response = await fetch(`${OSTIUM_SERVICE_URL}/balance`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address }),
+      body: JSON.stringify({ address, isTestnet }),
     });
 
     const data = await response.json();
@@ -112,13 +115,14 @@ export async function getOstiumBalance(
  * Get open positions for an address
  */
 export async function getOstiumPositions(
-  address: string
+  address: string,
+  isTestnet?: boolean
 ): Promise<OstiumPosition[]> {
   try {
     const response = await fetch(`${OSTIUM_SERVICE_URL}/positions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address }),
+      body: JSON.stringify({ address, isTestnet }),
     });
 
     const data = await response.json();
@@ -310,13 +314,14 @@ export async function checkOstiumHealth() {
  */
 export async function getOstiumClosedPositions(
   address: string,
-  count: number = 50
+  count: number = 50,
+  isTestnet?: boolean
 ): Promise<OstiumClosedPosition[]> {
   try {
     const response = await fetch(`${OSTIUM_SERVICE_URL}/closed-positions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address, count }),
+      body: JSON.stringify({ address, count, isTestnet }),
     });
 
     const data = await response.json();
@@ -335,12 +340,12 @@ export async function getOstiumClosedPositions(
 /**
  * Get a single order by ID (open or close)
  */
-export async function getOstiumOrderById(orderId: string) {
+export async function getOstiumOrderById(orderId: string, isTestnet?: boolean) {
   try {
     const response = await fetch(`${OSTIUM_SERVICE_URL}/order-by-id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId }),
+      body: JSON.stringify({ orderId, isTestnet }),
     });
 
     const data = await response.json();
@@ -360,12 +365,12 @@ export async function getOstiumOrderById(orderId: string) {
  * Get trade details by trade ID
  * Returns trade information including whether the position is still open
  */
-export async function getOstiumTradeById(tradeId: string) {
+export async function getOstiumTradeById(tradeId: string, isTestnet?: boolean) {
   try {
     const response = await fetch(`${OSTIUM_SERVICE_URL}/trade-by-id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tradeId }),
+      body: JSON.stringify({ tradeId, isTestnet }),
     });
 
     const data = await response.json();
@@ -385,12 +390,12 @@ export async function getOstiumTradeById(tradeId: string) {
  * Get closed orders for a specific trade ID
  * Returns closed orders with PnL information (orderAction: "Close" and isCancelled: false)
  */
-export async function getOstiumClosedTradeById(tradeId: string) {
+export async function getOstiumClosedTradeById(tradeId: string, isTestnet?: boolean) {
   try {
     const response = await fetch(`${OSTIUM_SERVICE_URL}/closed-trade-by-id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tradeId }),
+      body: JSON.stringify({ tradeId, isTestnet }),
     });
 
     const data = await response.json();
@@ -410,12 +415,12 @@ export async function getOstiumClosedTradeById(tradeId: string) {
  * Get cancelled orders for a specific trade ID
  * Returns cancelled orders
  */
-export async function getOstiumCancelledOrdersById(tradeId: string) {
+export async function getOstiumCancelledOrdersById(tradeId: string, isTestnet?: boolean) {
   try {
     const response = await fetch(`${OSTIUM_SERVICE_URL}/cancelled-orders-by-id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tradeId }),
+      body: JSON.stringify({ tradeId, isTestnet }),
     });
 
     const data = await response.json();

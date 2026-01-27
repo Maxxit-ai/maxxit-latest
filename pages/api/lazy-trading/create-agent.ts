@@ -15,7 +15,8 @@ interface TradingPreferences {
  * Body: {
  *   userWallet: string,
  *   telegramAlphaUserId: string,
- *   tradingPreferences?: TradingPreferences
+ *   tradingPreferences?: TradingPreferences,
+ *   isTestnet?: boolean  // If true, agent trades on Sepolia testnet
  * }
  */
 export default async function handler(
@@ -27,7 +28,7 @@ export default async function handler(
   }
 
   try {
-    const { userWallet, telegramAlphaUserId, tradingPreferences } = req.body;
+    const { userWallet, telegramAlphaUserId, tradingPreferences, isTestnet } = req.body;
 
     if (!userWallet || typeof userWallet !== "string") {
       return res.status(400).json({ error: "userWallet is required" });
@@ -238,6 +239,7 @@ export default async function handler(
         price_momentum_focus: 50,
         market_rank_priority: 50,
       },
+      isTestnet: isTestnet === true,  // Pass testnet flag to deployment
     };
 
     console.log(`[LazyTrading] 📤 Calling deployment API:`, {

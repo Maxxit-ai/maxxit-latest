@@ -235,11 +235,17 @@ export async function monitorOstiumPositions() {
             let isOpenOnChain = false;
 
             try {
-              onChainTrade = await getOstiumTradeById(tradeId);
-              isOpenOnChain = onChainTrade && onChainTrade.isOpen === true;
+              onChainTrade = await getOstiumTradeById(tradeId, deployment.is_testnet || false);
+              if (!onChainTrade) {
+                console.log(`   ⚠️  Could not fetch trade ${tradeId} from subgraph (returned null) - skipping position`);
+                continue;
+              }
+              
+              isOpenOnChain = onChainTrade.isOpen === true;
+              console.log(`   📊 OnChain Trade: ${JSON.stringify(onChainTrade)}`);
             } catch (err: any) {
-              console.log(`   ⚠️  Could not fetch trade ${tradeId} from subgraph: ${err.message}`);
-              isOpenOnChain = false;
+              console.log(`   ⚠️  Could not fetch trade ${tradeId} from subgraph: ${err.message} - skipping position`);
+              continue;
             }
 
             console.log(`   📊 Position: ${position.token_symbol} ${position.side} (TradeID: ${tradeId})`);
@@ -338,7 +344,8 @@ export async function monitorOstiumPositions() {
             try {
               const tokenSymbol = position.token_symbol.replace('/USD', '').replace('/USDT', '');
               const ostiumServiceUrl = process.env.OSTIUM_SERVICE_URL || 'http://localhost:5002';
-              const priceResponse = await axios.get(`${ostiumServiceUrl}/price/${tokenSymbol}`, { timeout: 5000 });
+              const testnetParam = deployment.is_testnet ? '?isTestnet=true' : '';
+              const priceResponse = await axios.get(`${ostiumServiceUrl}/price/${tokenSymbol}${testnetParam}`, { timeout: 5000 });
 
               if (priceResponse.data.success && priceResponse.data.price) {
                 currentPrice = parseFloat(priceResponse.data.price);
@@ -403,6 +410,7 @@ export async function monitorOstiumPositions() {
                         pairIndex: pairIndex,
                         side: position.side.toLowerCase(),
                         useDelegation: true,
+                        isTestnet: deployment.is_testnet || false,
                       }, { timeout: 60000 });
 
                       if (slResponse.data.success) {
@@ -425,6 +433,7 @@ export async function monitorOstiumPositions() {
                         pairIndex: pairIndex,
                         side: position.side.toLowerCase(),
                         useDelegation: true,
+                        isTestnet: deployment.is_testnet || false,
                       }, { timeout: 60000 });
 
                       if (tpResponse.data.success) {

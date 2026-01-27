@@ -1057,7 +1057,9 @@ export class TradeExecutor {
       // Get current price for SL/TP calculation
       let currentPrice = 0;
       try {
-        const priceResponse = await fetch(`${process.env.OSTIUM_SERVICE_URL || 'http://localhost:5002'}/price/${actualTokenSymbol}`);
+        const isTestnet = ctx.deployment?.is_testnet || false;
+        const testnetParam = isTestnet ? '?isTestnet=true' : '';
+        const priceResponse = await fetch(`${process.env.OSTIUM_SERVICE_URL || 'http://localhost:5002'}/price/${actualTokenSymbol}${testnetParam}`);
         if (priceResponse.ok) {
           const priceData = await priceResponse.json();
           if (priceData.success && priceData.price) {
@@ -1090,6 +1092,7 @@ export class TradeExecutor {
         leverage,
         useDelegation: true,
         userAddress: userArbitrumWallet,
+        isTestnet: ctx.deployment?.is_testnet || false, // Pass testnet flag
         // stopLoss: undefined - Disabled to avoid WrongSL() errors
         // takeProfit: undefined - Let profits run with trailing stops
       });
@@ -1223,8 +1226,16 @@ export class TradeExecutor {
         where: { id: positionId },
         include: {
           agent_deployments: {
-            include: {
-              agents: true,
+            select: {
+              user_wallet: true,
+              safe_wallet: true,
+              moduleAddress: true,
+              is_testnet: true,
+              agents: {
+                select: {
+                  profit_receiver_address: true,
+                },
+              },
             },
           },
         },
@@ -1852,6 +1863,7 @@ export class TradeExecutor {
         useDelegation: true,
         userAddress: userArbitrumAddress,
         actualTradeIndex: storedIndex, // Pass stored index (fixes SDK bug)
+        isTestnet: position.agent_deployments?.is_testnet || false, // Pass testnet flag
       });
 
       if (!result.success) {

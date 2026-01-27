@@ -7,7 +7,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { address } = req.body;
+    const { address, isTestnet } = req.body;
 
     if (!address) {
       return res.status(400).json({ error: 'Address is required' });
@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const balance = await getOstiumBalance(normalizedAddress);
+    const balance = await getOstiumBalance(normalizedAddress, isTestnet);
 
     return res.status(200).json({
       ...balance,

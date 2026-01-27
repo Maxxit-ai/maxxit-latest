@@ -129,6 +129,44 @@ available_markets_cache = {
 }
 
 
+def get_network_config(request_obj=None, is_testnet_override=None):
+    """
+    Helper to determine network configuration from request or override.
+    
+    Args:
+        request_obj: Flask request object (optional, will try to read isTestnet from JSON body or query params)
+        is_testnet_override: Direct boolean override (takes precedence over request)
+    
+    Returns:
+        tuple: (network: str, rpc_url: str) where network is 'testnet' or 'mainnet'
+    """
+    is_testnet = is_testnet_override
+    
+    # If not provided as override, try to read from request
+    if is_testnet is None and request_obj:
+        if request_obj.is_json and request_obj.json:
+            is_testnet = request_obj.json.get('isTestnet')
+        elif request_obj.args:
+            is_testnet = request_obj.args.get('isTestnet')
+        
+        if isinstance(is_testnet, str):
+            is_testnet = is_testnet.lower() == 'true'
+    
+    if is_testnet is not None:
+        network = 'testnet' if is_testnet else 'mainnet'
+    else:
+        # Fall back to global config
+        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+    
+    # Select RPC URL based on network
+    if network == 'testnet':
+        rpc_url = os.getenv('OSTIUM_TESTNET_RPC_URL', 'https://sepolia-rollup.arbitrum.io/rpc')
+    else:
+        rpc_url = os.getenv('OSTIUM_MAINNET_RPC_URL', 'https://arb1.arbitrum.io/rpc')
+        
+    return network, rpc_url
+
+
 def check_rpc_health(rpc_url: str, timeout: int = 3) -> bool:
     """Check if RPC endpoint is healthy (quick check)"""
     try:
@@ -142,12 +180,30 @@ def check_rpc_health(rpc_url: str, timeout: int = 3) -> bool:
         logger.warning(f"❌ RPC unhealthy: {rpc_url} - {str(e)[:100]}")
         return False
 
-def get_sdk(private_key: str, use_delegation: bool = False, force_new: bool = False) -> OstiumSDK:
-    """Get or create SDK instance with caching and optional RPC health checks"""
-    cache_key = f"{private_key[:10]}_{use_delegation}"
+def get_sdk(private_key: str, use_delegation: bool = False, force_new: bool = False, is_testnet: bool = None) -> OstiumSDK:
+    """Get or create SDK instance with caching and optional RPC health checks
     
+    Args:
+        private_key: Agent's private key
+        use_delegation: Enable delegation mode for agent-based trading
+        force_new: Force creation of new SDK instance (bypass cache)
+        is_testnet: Override global OSTIUM_MAINNET setting (None = use global, True = testnet, False = mainnet)
+    """
+    if is_testnet is not None:
+        network = 'testnet' if is_testnet else 'mainnet'
+    else:
+        network = 'mainnet' if OSTIUM_MAINNET else 'testnet'
+
+    cache_key = f"{private_key[:10]}_{use_delegation}_{network}"
+
+    logger.info(f"[SDK] Network: {network} (override={is_testnet is not None})")
+
+    if network == 'testnet':
+        rpc_url = os.getenv('OSTIUM_TESTNET_RPC_URL', 'https://sepolia-rollup.arbitrum.io/rpc')
+    else:
+        rpc_url = os.getenv('OSTIUM_MAINNET_RPC_URL', 'https://arb1.arbitrum.io/rpc')
+
     # Only check RPC health if forcing new SDK (after errors)
-    rpc_url = OSTIUM_RPC_URL
     if force_new:
         logger.info("🔍 Checking RPC health before recreating SDK...")
         if not check_rpc_health(rpc_url, timeout=3):
@@ -163,19 +219,18 @@ def get_sdk(private_key: str, use_delegation: bool = False, force_new: bool = Fa
                 # Still proceed - might be temporary network issue
     
     if cache_key not in sdk_cache or force_new:
-        network = 'mainnet' if OSTIUM_MAINNET else 'testnet'
         sdk_cache[cache_key] = OstiumSDK(
             network=network,
             private_key=private_key,
             rpc_url=rpc_url,
             use_delegation=use_delegation  # CRITICAL: Enable delegation mode!
         )
-        logger.info(f"Created SDK instance (delegation={use_delegation}, rpc={rpc_url})")
+        logger.info(f"Created SDK instance (delegation={use_delegation}, rpc={rpc_url}, network={network})")
     
     return sdk_cache[cache_key]
 
 
-def get_fresh_sdk_for_async(private_key: str, use_delegation: bool = False) -> OstiumSDK:
+def get_fresh_sdk_for_async(private_key: str, use_delegation: bool = False, is_testnet: bool = None) -> OstiumSDK:
     """
     Create a FRESH (non-cached) SDK instance for async operations.
     
@@ -185,14 +240,23 @@ def get_fresh_sdk_for_async(private_key: str, use_delegation: bool = False) -> O
     
     This function should be used for any async SDK operations (subgraph queries, etc.)
     """
-    network = 'mainnet' if OSTIUM_MAINNET else 'testnet'
+    if is_testnet is not None:
+        network = 'testnet' if is_testnet else 'mainnet'
+    else:
+        network = 'mainnet' if OSTIUM_MAINNET else 'testnet'
+
+    if network == 'testnet':
+        rpc_url = os.getenv('OSTIUM_TESTNET_RPC_URL', 'https://sepolia-rollup.arbitrum.io/rpc')
+    else:
+        rpc_url = os.getenv('OSTIUM_MAINNET_RPC_URL', 'https://arb1.arbitrum.io/rpc')
+
     sdk = OstiumSDK(
         network=network,
         private_key=private_key,
-        rpc_url=OSTIUM_RPC_URL,
+        rpc_url=rpc_url,
         use_delegation=use_delegation
     )
-    logger.debug(f"Created fresh SDK instance for async operations (delegation={use_delegation})")
+    logger.debug(f"Created fresh SDK instance for async operations (delegation={use_delegation}, network={network})")
     return sdk
 
 
@@ -483,15 +547,22 @@ def get_balance():
         except Exception as e:
             return jsonify({"success": False, "error": f"Invalid address format: {str(e)}"}), 400
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        
+        logger.info(f"[BALANCE] Network: {network}, RPC: {rpc_url}")
+        logger.info(f"[BALANCE] Request data: {request.json}")
+        
         # Use a dummy key for read-only operations  
         # SDK requires a private key even for read operations
         dummy_key = '0x' + '1' * 64
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
         
         # Get balances
         usdc_balance = sdk.balance.get_usdc_balance(address)
+        print(f"USDC Balance: {usdc_balance}")
         eth_balance = sdk.balance.get_ether_balance(address)
+        print(f"ETH Balance: {eth_balance}")
         
         logger.info(f"Balance check for {address}: {usdc_balance} USDC")
         
@@ -527,10 +598,13 @@ def get_positions():
         except Exception as e:
             return jsonify({"success": False, "error": f"Invalid address format: {str(e)}"}), 400
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        
         # Create SDK instance
         dummy_key = '0x' + '1' * 64
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
         
         import asyncio
         loop = asyncio.new_event_loop()
@@ -590,6 +664,7 @@ def get_positions():
                 continue
         
         logger.info(f"Found {len(positions)} open positions for {address}")
+        print(f"Positions: {positions}")
         
         return jsonify({
             "success": True,
@@ -630,6 +705,10 @@ def open_position():
         data = request.json
         logger.info(f"[OPEN-POSITION] Received request with keys: {list(data.keys()) if data else 'None'}")
         logger.info(f"[OPEN-POSITION] Request data: {data}")
+        
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        is_testnet = network == 'testnet'
         
         # Support both agentAddress and privateKey formats
         agent_address = data.get('agentAddress')
@@ -827,7 +906,7 @@ def open_position():
         for sdk_attempt in range(max_sdk_retries):
             try:
                 # Get SDK instance (may fail if RPC connection is reset)
-                sdk = get_sdk(private_key, use_delegation, force_new=(sdk_attempt > 0))
+                sdk = get_sdk(private_key, use_delegation, force_new=(sdk_attempt > 0), is_testnet=is_testnet)
                 # Test SDK by getting public address (this makes an RPC call)
                 test_address = sdk.ostium.get_public_address()
                 logger.info(f"✅ SDK initialized successfully (attempt {sdk_attempt + 1})")
@@ -876,8 +955,17 @@ def open_position():
         try:
             # Fetch real-time price from Ostium price feed (async method)
             dummy_key = '0x' + '1' * 64
-            network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
-            price_sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+            if is_testnet is not None:
+                price_network = 'testnet' if is_testnet else 'mainnet'
+            else:
+                price_network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+
+            if price_network == 'testnet':
+                price_rpc_url = os.getenv('OSTIUM_TESTNET_RPC_URL', 'https://sepolia-rollup.arbitrum.io/rpc')
+            else:
+                price_rpc_url = os.getenv('OSTIUM_MAINNET_RPC_URL', 'https://arb1.arbitrum.io/rpc')
+
+            price_sdk = OstiumSDK(network=price_network, private_key=dummy_key, rpc_url=price_rpc_url)
             
             try:
                 # get_price is async - need to await it properly
@@ -968,7 +1056,7 @@ def open_position():
                         cache_key = f"{private_key[:10]}_{use_delegation}"
                         if cache_key in sdk_cache:
                             del sdk_cache[cache_key]
-                        sdk = get_sdk(private_key, use_delegation)
+                        sdk = get_sdk(private_key, use_delegation, is_testnet=is_testnet)
                         logger.info("   ✅ New SDK instance created")
                     except Exception as sdk_err:
                         logger.warning(f"   ⚠️  Could not recreate SDK: {sdk_err}")
@@ -1176,6 +1264,10 @@ def close_position():
         data = request.json
         print(f"[CLOSE] Request data: {data}")
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        is_testnet = network == 'testnet'
+        
         # Support both agentAddress and privateKey formats
         agent_address = data.get('agentAddress')
         private_key = data.get('privateKey')
@@ -1274,7 +1366,7 @@ def close_position():
             }), 400
         
         # Get SDK for sync operations (trade execution)
-        sdk = get_sdk(private_key, use_delegation)
+        sdk = get_sdk(private_key, use_delegation, is_testnet=is_testnet)
         
         # Check if position exists
         # CRITICAL: Web3.py requires checksummed addresses
@@ -1292,7 +1384,7 @@ def close_position():
         
         # IMPORTANT: Use fresh SDK for async operations to avoid event loop binding issues
         # The SDK's internal asyncio.Lock gets bound to the first event loop it's used with
-        async_sdk = get_fresh_sdk_for_async(private_key, use_delegation)
+        async_sdk = get_fresh_sdk_for_async(private_key, use_delegation, is_testnet=is_testnet)
         
         # get_open_trades is async, need to run it with a fresh SDK
         import asyncio
@@ -1680,9 +1772,13 @@ def transfer_usdc():
                 "error": "Missing required fields: agentPrivateKey, toAddress, amount"
             }), 400
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        is_testnet = network == 'testnet'
+        
         # Get SDK with delegation if vault_address provided
         use_delegation = vault_address is not None
-        sdk = get_sdk(agent_key, use_delegation)
+        sdk = get_sdk(agent_key, use_delegation, is_testnet=is_testnet)
         
         logger.info(f"Transferring {amount} USDC to {to_address}")
         if vault_address:
@@ -1724,9 +1820,11 @@ def get_order_by_id():
         if not order_id:
             return jsonify({"success": False, "error": "orderId is required"}), 400
 
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+
         dummy_key = '0x' + '0' * 64
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
 
         order = asyncio.run(sdk.subgraph.get_order_by_id(order_id))
 
@@ -1753,9 +1851,11 @@ def get_trade_by_id():
         if not trade_id:
             return jsonify({"success": False, "error": "tradeId is required"}), 400
 
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+
         dummy_key = '0x' + '1' * 64
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
 
         import asyncio
         loop = asyncio.new_event_loop()
@@ -1792,9 +1892,11 @@ def get_closed_trade_by_id():
         if not trade_id:
             return jsonify({"success": False, "error": "tradeId is required"}), 400
 
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+
         dummy_key = '0x' + '1' * 64
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
 
         import asyncio
         loop = asyncio.new_event_loop()
@@ -1829,9 +1931,11 @@ def get_cancelled_orders_by_id():
         if not trade_id:
             return jsonify({"success": False, "error": "tradeId is required"}), 400
 
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+
         dummy_key = '0x' + '1' * 64
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
 
         import asyncio
         loop = asyncio.new_event_loop()
@@ -1873,12 +1977,14 @@ def approve_agent():
                 "error": "Missing required fields: userPrivateKey, agentAddress"
             }), 400
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        
         # User SDK (no delegation)
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
         sdk = OstiumSDK(
             network=network,
             private_key=user_key,
-            rpc_url=OSTIUM_RPC_URL
+            rpc_url=rpc_url
         )
         
         logger.info(f"User approving agent: {agent_address}")
@@ -2111,9 +2217,11 @@ def get_history():
         
         address = address.lower()
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        
         dummy_key = '0x' + '1' * 64
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
         
         import asyncio
         loop = asyncio.new_event_loop()
@@ -2163,9 +2271,11 @@ def get_closed_positions():
         
         address = address.lower()
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        
         dummy_key = '0x' + '1' * 64
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
         
         import asyncio
         loop = asyncio.new_event_loop()
@@ -2293,6 +2403,10 @@ def set_stop_loss():
                 "error": "Missing required fields (entryPrice is required for SL calculation)"
             }), 400
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        is_testnet = network == 'testnet'
+        
         logger.info(f"Setting SL for {market} (trade_index={trade_index}, pair_index={pair_index})")
         logger.info(f"   User: {user_address}, Agent: {agent_address}")
         logger.info(f"   SL%: {stop_loss_percent * 100:.1f}%, Entry Price: ${entry_price:.4f}")
@@ -2341,7 +2455,7 @@ def set_stop_loss():
             logger.error(f"Error fetching agent key: {e}")
             return jsonify({"success": False, "error": f"Failed to fetch agent key: {str(e)}"}), 500
         
-        sdk = get_sdk(private_key, use_delegation)
+        sdk = get_sdk(private_key, use_delegation, is_testnet=is_testnet)
         
         liquidation_price = None
         try:
@@ -2471,6 +2585,10 @@ def set_take_profit():
         pair_index = data.get('pairIndex')
         use_delegation = data.get('useDelegation', True)
         
+        # Get network configuration
+        network, rpc_url = get_network_config(request)
+        is_testnet = network == 'testnet'
+        
         if not all([agent_address, user_address, market, trade_index is not None, entry_price, pair_index is not None]):
             return jsonify({
                 "success": False,
@@ -2525,7 +2643,7 @@ def set_take_profit():
             logger.error(f"Error fetching agent key: {e}")
             return jsonify({"success": False, "error": f"Failed to fetch agent key: {str(e)}"}), 500
         
-        sdk = get_sdk(private_key, use_delegation)
+        sdk = get_sdk(private_key, use_delegation, is_testnet=is_testnet)
         
         is_long = data.get('side', 'long').lower() == 'long'
         # TP should be calculated from entry price to lock in profits from entry point
@@ -2565,15 +2683,17 @@ def set_take_profit():
 def get_price(token):
     """
     Get current market price for a token from Ostium price feed
-    Example: GET /price/BTC
+    Example: GET /price/BTC?isTestnet=true
     """
     try:
-        logger.info(f"Getting price for {token}")
+        # Get network configuration (reads from query params for GET requests)
+        network, rpc_url = get_network_config(request)
+        
+        logger.info(f"Getting price for {token} (network: {network})")
         
         # Create SDK instance for price feed access
         dummy_key = '0x' + '1' * 64
-        network = 'testnet' if OSTIUM_TESTNET else 'mainnet'
-        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=OSTIUM_RPC_URL)
+        sdk = OstiumSDK(network=network, private_key=dummy_key, rpc_url=rpc_url)
         
         # Get price from Ostium SDK
         # Returns tuple: (price, isMarketOpen, isDayTradingClosed)

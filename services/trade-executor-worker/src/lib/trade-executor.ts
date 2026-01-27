@@ -218,6 +218,7 @@ async function executeOstiumTrade(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         address: userArbitrumWallet,
+        isTestnet: deployment.is_testnet || false,
       }),
     });
     

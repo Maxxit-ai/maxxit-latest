@@ -970,6 +970,7 @@ async function generateSignalForAgentAndToken(
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 address: deployment.safe_wallet || deployment.user_wallet,
+                isTestnet: deployment.is_testnet || false,
               }),
             }
           );
@@ -1094,6 +1095,7 @@ async function generateSignalForAgentAndToken(
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 address: deployment.safe_wallet || deployment.user_wallet,
+                isTestnet: deployment.is_testnet || false,
               }),
             }
           );
