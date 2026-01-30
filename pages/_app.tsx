@@ -5,6 +5,7 @@ import { PrivyProvider } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import Lenis from 'lenis';
 import SupportAssistant from '../components/SupportAssistant';
+import { Analytics } from '@vercel/analytics/next';
 
 export default function App({ Component, pageProps }: AppProps) {
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -22,6 +23,7 @@ export default function App({ Component, pageProps }: AppProps) {
         </Head>
         <Component {...pageProps} />
         <SupportAssistant />
+        <Analytics />
       </>
     );
   }
@@ -103,6 +105,7 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       <Component {...pageProps} />
       <SupportAssistant />
+      <Analytics />
     </PrivyProvider>
   );
 }

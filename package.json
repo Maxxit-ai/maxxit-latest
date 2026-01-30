@@ -82,6 +82,7 @@
     "@tanstack/react-query": "^5.60.5",
     "@types/passport-jwt": "^4.0.1",
     "@types/react-joyride": "^2.0.2",
+    "@vercel/analytics": "^1.6.1",
     "@virtuals-protocol/game": "^0.1.14",
     "@virtuals-protocol/game-twitter-node": "^0.1.4",
     "bullmq": "^5.60.0",
