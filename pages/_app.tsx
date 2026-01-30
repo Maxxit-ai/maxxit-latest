@@ -5,6 +5,7 @@ import { PrivyProvider } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import Lenis from 'lenis';
 import SupportAssistant from '../components/SupportAssistant';
+import { LoginBonusProvider } from '../components/LoginBonusProvider';
 
 export default function App({ Component, pageProps }: AppProps) {
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -95,14 +96,16 @@ export default function App({ Component, pageProps }: AppProps) {
         },
       }}
     >
-      <Head>
-        <title>Maxxit - Agentic DeFi Trading Platform</title>
-        <meta name="description" content="Maxxit is a non-custodial AI trading platform that turns benchmarked alpha into automated execution." />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-      <Component {...pageProps} />
-      <SupportAssistant />
+      <LoginBonusProvider>
+        <Head>
+          <title>Maxxit - Agentic DeFi Trading Platform</title>
+          <meta name="description" content="Maxxit is a non-custodial AI trading platform that turns benchmarked alpha into automated execution." />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <link rel="icon" href="/favicon.ico" />
+        </Head>
+        <Component {...pageProps} />
+        <SupportAssistant />
+      </LoginBonusProvider>
     </PrivyProvider>
   );
 }

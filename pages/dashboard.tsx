@@ -1,6 +1,8 @@
 import { Header } from '@components/Header';
 import FooterSection from '@components/home/FooterSection';
 import { usePrivy } from '@privy-io/react-auth';
+import { WelcomeBonusModal } from '@components/WelcomeBonusModal';
+import { useLoginBonus } from '@components/LoginBonusProvider';
 import {
     TrendingUp,
     TrendingDown,
@@ -20,6 +22,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+
 
 interface Trade {
     id: string;
@@ -65,6 +68,7 @@ const CACHE_TTL = 60000; // 60 seconds cache duration
 
 export default function Dashboard() {
     const { authenticated, user, login } = usePrivy();
+    const { showWelcomeModal, dismissWelcomeModal, bonusAmount } = useLoginBonus();
     const [loading, setLoading] = useState(true);
     const [trades, setTrades] = useState<Trade[]>([]);
     const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -612,6 +616,14 @@ export default function Dashboard() {
             </main>
 
             <FooterSection />
+
+            {/* Welcome Bonus Modal for new users */}
+            <WelcomeBonusModal
+                isOpen={showWelcomeModal}
+                onClose={dismissWelcomeModal}
+                credits={bonusAmount?.credits ?? 100}
+                trades={bonusAmount?.trades ?? 10}
+            />
         </div>
     );
 }
