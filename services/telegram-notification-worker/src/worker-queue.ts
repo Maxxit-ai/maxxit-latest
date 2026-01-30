@@ -512,25 +512,26 @@ function formatSignalNotTradedMessage(
   //   message += `• This token is not currently available in the Ostium trading pairs\n`;
   //   message += `• The signal was automatically skipped to prevent from execution\n`;
   //   message += `• Your agent is working correctly - this is expected behavior\n`;
-  // } else if (isFailed) {
-  //   message += `⚠️ *Status:* Trade attempted but execution failed\n\n`;
-  //   if (reason) {
-  //     message += `❌ *Error:*\n${escapeTelegramMarkdown(reason)}\n`;
-  //   }
-  //   if (signal.llm_decision) {
-  //     message += `\n💭 *Agent Decision:*\n${formatDecisionAsBullets(
-  //       signal.llm_decision
-  //     )}\n`;
-  //   }
-  // } else {
-  //   if (signal.llm_decision) {
-  //     message += `💭 *Why Not Traded:*\n${formatDecisionAsBullets(
-  //       signal.llm_decision
-  //     )}\n`;
-  //   } else if (reason) {
-  //     message += `💭 *Why Not Traded:*\n${formatDecisionAsBullets(reason)}\n`;
-  //   }
-  // }
+  // } else 
+  if (isFailed) {
+    message += `⚠️ *Status:* Trade attempted but execution failed\n\n`;
+    if (reason) {
+      message += `❌ *Error:*\n${escapeTelegramMarkdown(reason)}\n`;
+    }
+    if (signal.llm_decision) {
+      message += `\n💭 *Agent Decision:*\n${formatDecisionAsBullets(
+        signal.llm_decision
+      )}\n`;
+    }
+  } else {
+    if (signal.llm_decision) {
+      message += `💭 *Why Not Traded:*\n${formatDecisionAsBullets(
+        signal.llm_decision
+      )}\n`;
+    } else if (reason) {
+      message += `💭 *Why Not Traded:*\n${formatDecisionAsBullets(reason)}\n`;
+    }
+  }
 
   if (isFailed) {
     const hasAllocation =
