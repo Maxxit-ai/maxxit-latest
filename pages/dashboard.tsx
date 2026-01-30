@@ -127,11 +127,13 @@ export default function Dashboard() {
 
         try {
             // Fetch Trades, Deployments, Credits, and Trade Quota in parallel
+            // Normalize wallet address to lowercase for consistent database lookups
+            const walletAddress = user.wallet.address.toLowerCase();
             const [tradesRes, deploymentsRes, creditsRes, quotaRes] = await Promise.all([
-                fetch(`/api/trades/my-trades?userWallet=${user.wallet.address}&page=1&pageSize=5`),
-                fetch(`/api/deployments?userWallet=${user.wallet.address}`),
-                fetch(`/api/user/credits/balance?wallet=${user.wallet.address}`),
-                fetch(`/api/user/trades/quota?wallet=${user.wallet.address}`),
+                fetch(`/api/trades/my-trades?userWallet=${walletAddress}&page=1&pageSize=5`),
+                fetch(`/api/deployments?userWallet=${walletAddress}`),
+                fetch(`/api/user/credits/balance?wallet=${walletAddress}`),
+                fetch(`/api/user/trades/quota?wallet=${walletAddress}`),
             ]);
 
             const [tradesData, deploymentsData, creditsData, quotaData] = await Promise.all([
