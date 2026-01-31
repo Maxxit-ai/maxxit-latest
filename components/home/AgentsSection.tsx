@@ -60,6 +60,20 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
   };
 
+  const sortedAgents = agents
+    .map((agent, index) => ({ agent, index }))
+    .sort((a, b) => {
+      const aHasApy = a.agent.apySi != null && a.agent.apySi !== 0;
+      const bHasApy = b.agent.apySi != null && b.agent.apySi !== 0;
+
+      if (aHasApy === bHasApy) {
+        return a.index - b.index;
+      }
+
+      return aHasApy ? -1 : 1;
+    })
+    .map(({ agent }) => agent);
+
   return (
     <>
       <section id="agents" className={`border-[var(--border)] bg-[var(--bg-deep)] ${fromHome ? 'border-t-2 py-12 sm:py-16 md:py-20 lg:py-24' : 'border-t-0 py-8'}`}>
@@ -433,15 +447,27 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
-              {agents.map((agent, i) => (
-                <div
-                  key={agent.id}
-                  onClick={() => onCardClick(agent)}
-                  onMouseEnter={() => setHoveredCard(agent.id)}
-                  onMouseLeave={() => setHoveredCard(null)}
-                  className="border-scan flex h-full flex-col justify-between border-2 border-[var(--border)] p-3 sm:p-4 md:p-5 lg:p-6 cursor-pointer bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-all group card-enter relative overflow-hidden"
-                  style={{ animationDelay: `${i * 0.1}s` }}
-                >
+              {sortedAgents.map((agent, i) => {
+                const hideApySi = agent.apySi === 0;
+                const metricCardClass = hideApySi
+                  ? 'flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors'
+                  : 'flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors';
+                const metricLabelClass = hideApySi
+                  ? 'text-[9px] sm:text-[11px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70'
+                  : 'text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70';
+                const metricValueClass = hideApySi
+                  ? 'font-mono font-bold text-sm sm:text-base md:text-lg leading-none'
+                  : 'font-mono font-bold text-xs sm:text-sm md:text-base leading-none';
+
+                return (
+                  <div
+                    key={agent.id}
+                    onClick={() => onCardClick(agent)}
+                    onMouseEnter={() => setHoveredCard(agent.id)}
+                    onMouseLeave={() => setHoveredCard(null)}
+                    className="border-scan flex h-full flex-col justify-between border-2 border-[var(--border)] p-3 sm:p-4 md:p-5 lg:p-6 cursor-pointer bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-all group card-enter relative overflow-hidden"
+                    style={{ animationDelay: `${i * 0.1}s` }}
+                  >
                   {/* Decorative gradient overlay on hover */}
                   <div className="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
@@ -501,7 +527,8 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                           </p>
                         </div>
                       </div>
-                      {/* Primary Metric - APY Since Inception */}
+                    {/* Primary Metric - APY Since Inception */}
+                    {!hideApySi && (
                       <div className="mb-2 sm:mb-3 md:mb-4">
                         <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 sm:mb-1.5 opacity-70">
                           APY (SI)
@@ -519,16 +546,17 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                             : '—'}
                         </p>
                       </div>
+                    )}
 
                       {/* Secondary Metrics */}
                       <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3">
                         {agent.isCopyTradeClub && (
                           <>
-                            <div className="flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
-                              <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
+                            <div className={metricCardClass}>
+                              <p className={metricLabelClass}>
                                 SOURCE VOL
                               </p>
-                              <p className="font-mono font-bold text-accent text-xs sm:text-sm md:text-base leading-none">
+                              <p className={`${metricValueClass} text-accent`}>
                                 {(agent.cumulativeVolume || 0) >= 1_000_000_000
                                   ? `$${((agent.cumulativeVolume || 0) / 1_000_000_000).toFixed(1)}B`
                                   : (agent.cumulativeVolume || 0) >= 1_000_000
@@ -538,11 +566,11 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                                       : `$${(agent.cumulativeVolume || 0).toFixed(0)}`}
                               </p>
                             </div>
-                            <div className="flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
-                              <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
+                            <div className={metricCardClass}>
+                              <p className={metricLabelClass}>
                                 SOURCE PNL
                               </p>
-                              <p className={`font-mono font-bold text-xs sm:text-sm md:text-base leading-none ${(agent.cumulativePnl || 0) > 0 ? 'text-accent' : (agent.cumulativePnl || 0) < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
+                              <p className={`${metricValueClass} ${(agent.cumulativePnl || 0) > 0 ? 'text-accent' : (agent.cumulativePnl || 0) < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
                                 {(agent.cumulativePnl || 0) >= 1_000_000
                                   ? `${(agent.cumulativePnl || 0) > 0 ? '+' : ''}$${((agent.cumulativePnl || 0) / 1_000_000).toFixed(1)}M`
                                   : (agent.cumulativePnl || 0) >= 1_000 || (agent.cumulativePnl || 0) <= -1_000
@@ -553,21 +581,21 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                           </>
                         )}
                         {agent.sharpe30d != null && (
-                          <div className="flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
-                            <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
+                          <div className={metricCardClass}>
+                            <p className={metricLabelClass}>
                               SHARPE
                             </p>
-                            <p className="font-mono font-bold text-accent text-xs sm:text-sm md:text-base leading-none">
+                            <p className={`${metricValueClass} text-accent`}>
                               {agent.sharpe30d.toFixed(2)}
                             </p>
                           </div>
                         )}
                         {agent.apr90d != null && (
-                          <div className="flex-1 min-w-[45%] bg-[var(--bg-deep)]/60 px-1.5 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 rounded-sm border border-[var(--border)]/20 group-hover:border-[var(--accent)]/20 transition-colors">
-                            <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-0.5 sm:mb-1 opacity-70">
+                          <div className={metricCardClass}>
+                            <p className={metricLabelClass}>
                               90D
                             </p>
-                            <p className={`font-mono font-bold text-xs sm:text-sm md:text-base leading-none ${agent.apr90d > 0 ? 'text-accent' : agent.apr90d < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
+                            <p className={`${metricValueClass} ${agent.apr90d > 0 ? 'text-accent' : agent.apr90d < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
                               {agent.apr90d > 0 ? '+' : ''}{agent.apr90d.toFixed(1)}%
                             </p>
                           </div>
@@ -638,8 +666,9 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                       })()}
                     </div>
                   </div>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -666,5 +695,3 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
 };
 
 export default AgentsSection;
-
-
