@@ -501,21 +501,21 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
                           </p>
                         </div>
                       </div>
-                      {/* Primary Metric - 30D Return */}
+                      {/* Primary Metric - APY Since Inception */}
                       <div className="mb-2 sm:mb-3 md:mb-4">
                         <p className="text-[8px] sm:text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1 sm:mb-1.5 opacity-70">
-                          30D RETURN
+                          APY (SI)
                         </p>
                         <p
-                          className={`text-lg sm:text-2xl md:text-3xl font-display leading-none font-bold ${agent.apr30d && agent.apr30d > 0
+                          className={`text-lg sm:text-2xl md:text-3xl font-display leading-none font-bold ${agent.apySi && agent.apySi > 0
                             ? 'text-accent'
-                            : agent.apr30d && agent.apr30d < 0
+                            : agent.apySi && agent.apySi < 0
                               ? 'text-[var(--danger)]'
                               : 'text-[var(--text-muted)]'
                             }`}
                         >
-                          {agent.apr30d != null
-                            ? `${agent.apr30d > 0 ? '+' : ''}${agent.apr30d.toFixed(1)}%`
+                          {agent.apySi != null
+                            ? `${agent.apySi > 0 ? '+' : ''}${agent.apySi.toFixed(1)}%`
                             : '—'}
                         </p>
                       </div>

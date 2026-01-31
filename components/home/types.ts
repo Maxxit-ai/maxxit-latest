@@ -6,6 +6,7 @@ export interface AgentSummary {
   apr30d: number | null;
   apr90d: number | null;
   aprSi: number | null;
+  apySi: number | null;
   sharpe30d: number | null;
   totalCost?: number;
   creatorWallet?: string; // For creator-free-join check

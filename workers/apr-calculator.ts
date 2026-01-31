@@ -433,6 +433,25 @@ async function calculateAgentMetrics(agentId: string, agentName: string, venue: 
     const aprSi = capitalDeployedSi > 0
       ? (totalPnlSi / capitalDeployedSi) * (365 / daysSinceInception) * 100
       : 0;
+    
+    // Calculate APY SI
+    let apySi = 0;
+    if (capitalDeployedSi > 0) {
+      if (daysSinceInception < 365) {
+        // Project for agents < 1 year
+        const returnRatio = totalPnlSi / capitalDeployedSi;
+        const compoundingPeriods = 365 / daysSinceInception;
+        apySi = (Math.pow(1 + returnRatio, compoundingPeriods) - 1) * 100;
+      } else {
+        // Use trailing 12-month APY
+        const trailing12mPositions = positions.filter(p => 
+          p.closed_at && p.closed_at >= new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+        );
+        const trailing12mPnl = trailing12mPositions.reduce((sum, p) => sum + parseFloat(p.pnl?.toString() || '0'), 0);
+        const capital12m = await calculateCapitalDeployed(trailing12mPositions);
+        apySi = capital12m > 0 ? (trailing12mPnl / capital12m) * 100 : 0;
+      }
+    }
 
     // Calculate Sharpe ratio for 30d
     // Sharpe = (Mean Return - Risk Free Rate) / Standard Deviation of Returns
@@ -459,6 +478,7 @@ async function calculateAgentMetrics(agentId: string, agentName: string, venue: 
         apr_30d: apr30d,
         apr_90d: apr90d,
         apr_si: aprSi,
+        apy_si: apySi,
         sharpe_30d: sharpe30d,
       },
     });
@@ -467,6 +487,7 @@ async function calculateAgentMetrics(agentId: string, agentName: string, venue: 
     console.log(`      APR 30d: ${apr30d.toFixed(2)}%`);
     console.log(`      APR 90d: ${apr90d.toFixed(2)}%`);
     console.log(`      APR SI:  ${aprSi.toFixed(2)}%`);
+    console.log(`      APY SI:  ${apySi.toFixed(2)}%`);
     console.log(`      Sharpe:  ${sharpe30d.toFixed(2)}`);
     console.log(`      Positions: ${positions30d.length} (30d), ${positions.length} (total)`);
     console.log(`      Capital Deployed: $${capitalDeployed30d.toFixed(2)} (30d)`);
@@ -477,6 +498,7 @@ async function calculateAgentMetrics(agentId: string, agentName: string, venue: 
       apr30d,
       apr90d,
       aprSi,
+      apySi,
       sharpe30d,
     };
   } catch (error: any) {
