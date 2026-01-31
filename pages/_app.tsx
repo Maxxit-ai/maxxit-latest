@@ -128,14 +128,14 @@ export default function App({ Component, pageProps }: AppProps) {
           <meta property="og:title" content="Maxxit - Agentic DeFi Trading Platform" />
           <meta property="og:description" content="Discover and join AI-powered trading agents with proven alpha. Non-custodial, automated, transparent." />
           <meta property="og:url" content="https://maxxit.ai" />
-          <meta property="og:image" content="https://maxxit.ai/og-image.png" />
+          <meta property="og:image" content="https://maxxit.ai/logo.png" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="Maxxit - Agentic DeFi Trading Platform" />
           <meta name="twitter:description" content="Discover and join AI-powered trading agents with proven alpha. Non-custodial, automated, transparent." />
-          <meta name="twitter:image" content="https://maxxit.ai/og-image.png" />
+          <meta name="twitter:image" content="https://maxxit.ai/logo.png" />
           <meta name="twitter:site" content="@MaxxitAI" />
           <meta name="twitter:creator" content="@MaxxitAI" />
         </Head>
