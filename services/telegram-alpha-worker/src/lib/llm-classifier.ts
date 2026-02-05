@@ -164,18 +164,21 @@ export class LLMTweetClassifier {
     const seedTokens = this.extractAllTokenSymbols(tweetText);
     console.log(`[LLMClassifier] Extracted ${seedTokens.length} token(s) via regex:`, seedTokens);
 
-    // Step 2: LLM fallback to catch missed tokens and filter out comparison-only mentions
+    // Step 2: LLM extracts/filters tokens - ONLY fall back to regex when LLM throws
+    let llmSucceeded = false;
     let llmTokens: string[] = [];
     try {
       llmTokens = await this.extractTokensWithLLM(tweetText, seedTokens);
-      console.log(`[LLMClassifier] Extracted ${llmTokens.length} token(s) via LLM filter:`, llmTokens);
+      llmSucceeded = true;
+      console.log(`[LLMClassifier] Extracted ${llmTokens.length} token(s) via LLM:`, llmTokens);
     } catch (error: any) {
       console.error("[LLMClassifier] LLM token extraction failed, using regex tokens only:", error.message);
     }
-    // LLM has already excluded comparison-only tokens
-    const tokens = llmTokens.length > 0
-      ? llmTokens.slice(0, 5)  // Use LLM-filtered tokens only
-      : seedTokens.slice(0, 5); // Fallback to regex tokens if LLM fails
+    // CRITICAL: When LLM succeeds and returns [], that means "no valid tradable assets" - use [].
+    // Only fall back to regex seeds when LLM THROWS (API failure), not when it returns empty.
+    const tokens = llmSucceeded
+      ? llmTokens.slice(0, 5)  // Use LLM result (empty = no valid tokens)
+      : seedTokens.slice(0, 5); // Fallback only on LLM exception
 
     console.log(`[LLMClassifier] Final tokens to classify:`, tokens);
 
@@ -355,31 +358,33 @@ export class LLMTweetClassifier {
     const SYSTEM = "You are a precise tradable asset symbol extractor. Output ONLY valid JSON.";
     const prompt = `${SYSTEM}
 
-TASK: Extract up to 5 TRADABLE ASSET SYMBOLS (uppercase, no $) mentioned in the message that have trading insights.
+TASK: Extract up to 5 TRADABLE ASSET SYMBOLS (uppercase, no $) that are the SUBJECT of trading sentiment in the message.
+
+⚠️ CRITICAL - SUBJECT vs FILLER WORDS:
+- Identify WHO/WHAT the message is about (the asset with trading insight)
+- "Google is going to moooonnnnn" → subject is GOOGE (GOOG), NOT "is", "going", "to"
+- "Bitcoin will pump" → subject is BTC
+- Common English words (IS, GOING, TO, MOON, UP, DOWN, THE, AND, etc.) are NEVER tradable assets
+- If seeds contain ONLY common words, IGNORE seeds and extract the real asset from context
 
 ASSET TYPES TO RECOGNIZE:
 - Cryptocurrencies: BTC, ETH, SOL, DOGE, PEPE, etc.
-- Commodities: GOLD/XAU, SILVER/XAG, OIL/WTI/BRENT, COPPER, PLATINUM, etc.
-- Stocks: AAPL, TSLA, NVDA, etc.
-- Forex pairs: EUR, USD, GBP, JPY (when discussed as tradable)
-- Indices: SPX, NDX, DJI, etc.
+- Stocks/Companies: map names → symbols: Google→GOOG, Apple→AAPL, Tesla→TSLA, Nvidia→NVDA, Amazon→AMZN, Meta→META, Microsoft→MSFT
+- Commodities: GOLD/XAU, SILVER/XAG, OIL/WTI/BRENT, COPPER, PLATINUM
+- Forex: EUR, USD, GBP, JPY (when tradable)
+- Indices: SPX, NDX, DJI
 
 CRITICAL RULES:
-1. ONLY return actual tradable asset symbols - NOT common English words
-2. Words like "GOING", "TO", "MOON", "UP", "DOWN", "THE", "AND", "FOR", "BUT", "ARE" are NEVER tokens
-3. Map common names to their trading symbols:
-   - "gold" → "GOLD" or "XAU"
-   - "silver" → "SILVER" or "XAG"  
-   - "oil" / "crude" → "OIL" or "WTI"
-   - "bitcoin" → "BTC"
-   - "ethereum" → "ETH"
-4. EXCLUDE assets only mentioned as comparison/background context
-5. INCLUDE assets with clear trading insight (direction, momentum, buy/sell signal)
-6. If NO valid tradable assets found, return empty array
+1. ONLY return actual tradable asset symbols - NEVER common English words
+2. NEVER return: IS, GOING, TO, MOON, UP, DOWN, IN, ON, THE, AND, FOR, BUT, ARE, etc.
+3. Map company/asset names to symbols: "Google"→GOOG, "bitcoin"→BTC, "gold"→GOLD, etc.
+4. When message says "X is going to moon" → X is the subject, return X's symbol
+5. EXCLUDE assets only mentioned as comparison/background
+6. If NO valid tradable asset found, return empty array []
 
-SEED SYMBOLS (from regex - may contain false positives): ${seedTokens.join(", ") || "NONE"}
-- Review each seed: keep ONLY if it's a real tradable asset with trading insight
-- Discard seeds that are common English words mistakenly extracted
+SEED SYMBOLS (from regex - often false positives like IS/GOING/TO): ${seedTokens.join(", ") || "NONE"}
+- If ALL seeds are common words → IGNORE them, extract the REAL subject from message
+- Keep seeds ONLY if they are real tradable assets
 
 MESSAGE:
 "${tweetText}"
@@ -493,8 +498,10 @@ If no valid tradable assets found, return: { "tokens": [] }`;
    */
   private async fetchLunarCrushData(symbolHint: string): Promise<any | null> {
     // First, try to get cached data from database
+    console.log("fetchLunarCrushData: ", symbolHint);
     const cachedData = await this.getCachedLunarCrushData(symbolHint);
     if (cachedData) {
+      console.log("cachedData: ", cachedData);
       return cachedData;
     }
 

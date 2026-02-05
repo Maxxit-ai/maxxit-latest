@@ -220,9 +220,11 @@ export function shutdownOstiumMapper(): void {
  */
 export function mapToOstiumSymbol(extractedSymbol: string): SymbolMappingResult {
     const upperSymbol = extractedSymbol.toUpperCase().trim();
+    console.log("upperSymbol: ", upperSymbol);
 
     // Step 1: Check if it's an alias that needs translation
     const translatedSymbol = SYMBOL_ALIASES[upperSymbol] || upperSymbol;
+    console.log("translatedSymbol: ", translatedSymbol);
 
     // Step 2: Look up base symbol in baseSymbolMap to get full symbol(s)
     const fullSymbols = baseSymbolMap.get(translatedSymbol);
