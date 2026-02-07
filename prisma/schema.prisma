@@ -867,3 +867,74 @@ model trader_trades {
   @@index([processed_for_signals])
   @@index([trade_timestamp])
 }
+
+/// OpenClaw hosted instances
+model openclaw_instances {
+  id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_wallet                String    @unique
+  
+  plan                       String    @default("free")
+  plan_started_at            DateTime? @db.Timestamptz(6)
+  stripe_subscription_id     String?
+  stripe_customer_id         String?
+  
+  default_model              String    @default("claude-haiku")
+  monthly_llm_budget_cents   Int       @default(200)
+  llm_spent_this_month_cents Int       @default(0)
+  budget_reset_at            DateTime? @db.Timestamptz(6)
+  
+  telegram_user_id           String?
+  telegram_username          String?
+  telegram_bot_username      String?
+  telegram_chat_id           String?
+  telegram_linked_at         DateTime? @db.Timestamptz(6)
+  
+  container_id               String?
+  container_status           String    @default("stopped")
+  last_active_at             DateTime? @db.Timestamptz(6)
+  
+  installed_skills           Json      @default("[]")
+  
+  status                     String    @default("pending")
+  
+  created_at                 DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime  @updatedAt @db.Timestamptz(6)
+  
+  usage                      openclaw_usage[]
+  
+  @@index([user_wallet])
+  @@index([telegram_user_id])
+  @@index([status])
+}
+
+/// OpenClaw daily usage tracking
+model openclaw_usage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  instance_id     String   @db.Uuid
+  date            DateTime @db.Date
+  
+  tokens_input    Int      @default(0)
+  tokens_output   Int      @default(0)
+  cost_cents      Int      @default(0)
+  model_usage     Json     @default("{}")
+  messages_sent   Int      @default(0)
+  tool_calls      Int      @default(0)
+  
+  instance        openclaw_instances @relation(fields: [instance_id], references: [id], onDelete: Cascade)
+  
+  @@unique([instance_id, date])
+  @@index([instance_id])
+}
+
+/// OpenClaw Telegram link codes
+model openclaw_telegram_links {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code         String    @unique
+  user_wallet  String
+  expires_at   DateTime  @db.Timestamptz(6)
+  used_at      DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  
+  @@index([code])
+  @@index([user_wallet])
+}
