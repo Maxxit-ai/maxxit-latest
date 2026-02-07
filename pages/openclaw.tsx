@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { usePrivy } from "@privy-io/react-auth";
 import { Header } from "@components/Header";
 import FooterSection from "@components/home/FooterSection";
+import { PaymentSelectorModal } from "@components/PaymentSelectorModal";
+import { Web3CheckoutModal } from "@components/Web3CheckoutModal";
 import {
   ArrowLeft,
   Bot,
@@ -10,6 +13,7 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  Orbit,
   Shield,
   Sparkles,
   Zap,
@@ -79,18 +83,18 @@ const PLAN_OPTIONS: PlanOption[] = [
 
 const MODEL_OPTIONS: ModelOption[] = [
   {
-    id: "zai-glm-4.7",
-    name: "ZAI GLM 4.7",
-    minPlan: "free",
-    costLabel: "Free",
-    speedLabel: "Fast & capable",
-  },
-  {
     id: "gpt-4o-mini",
     name: "GPT-4o Mini",
     minPlan: "free",
-    costLabel: "~$0.15/1M tokens",
-    speedLabel: "Fast",
+    costLabel: "$0.15 in / $0.60 out per 1M tokens",
+    speedLabel: "Fast & efficient",
+  },
+  {
+    id: "gpt-5-nano",
+    name: "GPT-5 Nano",
+    minPlan: "free",
+    costLabel: "$0.05 in / $0.40 out per 1M tokens",
+    speedLabel: "Ultra-fast",
   },
   {
     id: "gpt-4o",
@@ -171,6 +175,7 @@ function StepIndicator({
 }
 
 export default function OpenClawSetupPage() {
+  const router = useRouter();
   const { authenticated, user, login } = usePrivy();
   const walletAddress = user?.wallet?.address;
 
@@ -186,13 +191,18 @@ export default function OpenClawSetupPage() {
   const [instanceData, setInstanceData] = useState<InstanceData | null>(null);
 
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("starter");
-  const [selectedModel, setSelectedModel] = useState("zai-glm-4.7");
+  const [selectedModel, setSelectedModel] = useState("gpt-4o-mini");
   const [telegramLinked, setTelegramLinked] = useState(false);
   const [telegramVerified, setTelegramVerified] = useState(false);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
   const [activated, setActivated] = useState(false);
   const [botToken, setBotToken] = useState("");
   const [botUsername, setBotUsername] = useState<string | null>(null);
+
+  // Payment modal states
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isWeb3ModalOpen, setIsWeb3ModalOpen] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [isValidatingBot, setIsValidatingBot] = useState(false);
 
   // Skills state - simplified: just track if API key exists
@@ -337,6 +347,63 @@ export default function OpenClawSetupPage() {
     }
   }, [authenticated, walletAddress, loadExistingProgress]);
 
+  // Handle return from Stripe payment
+  const [pendingPaymentPlan, setPendingPaymentPlan] = useState<PlanId | null>(null);
+
+  useEffect(() => {
+    const { payment, tier } = router.query;
+    if (payment === 'success' && tier && walletAddress && authenticated) {
+      const planId = (tier as string).toLowerCase() as PlanId;
+      if (PLAN_OPTIONS.some(p => p.id === planId)) {
+        setSelectedPlan(planId);
+        setShowLanding(false);
+        setPendingPaymentPlan(planId);
+        router.replace('/openclaw', undefined, { shallow: true });
+      }
+    } else if (payment === 'cancelled') {
+      router.replace('/openclaw', undefined, { shallow: true });
+    }
+  }, [router.query, walletAddress, authenticated]);
+
+  useEffect(() => {
+    if (pendingPaymentPlan && walletAddress && !isLoading) {
+      setPendingPaymentPlan(null);
+      (async () => {
+        setIsLoading(true);
+        try {
+          const response = await fetch('/api/openclaw/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userWallet: walletAddress,
+              plan: pendingPaymentPlan,
+            }),
+          });
+          const data = await response.json();
+          if (response.ok) {
+            setInstanceData({
+              id: data.instance.id,
+              plan: data.instance.plan,
+              model: data.instance.model,
+              status: data.instance.status,
+              telegramLinked: data.instance.telegramLinked ?? false,
+              telegramVerified: false,
+              telegramUsername: data.instance.telegramUsername ?? null,
+            });
+            markComplete('plan');
+            setCurrentStepIndex(1); // Go to model step
+          } else {
+            setErrorMessage(data.error || 'Failed to create instance');
+          }
+        } catch (error) {
+          setErrorMessage((error as Error).message);
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+    }
+  }, [pendingPaymentPlan, walletAddress, isLoading, markComplete]);
+
   // Poll for Telegram verification when user is on Telegram step with bot connected but not verified
   useEffect(() => {
     if (!walletAddress || currentStepKey !== "telegram" || !telegramLinked || telegramVerified) {
@@ -407,6 +474,63 @@ export default function OpenClawSetupPage() {
       return;
     }
     setShowLanding(false);
+  };
+
+  // Get pricing tier info for modals
+  const getCurrentPlanTier = () => {
+    const plan = PLAN_OPTIONS.find((p) => p.id === selectedPlan);
+    if (!plan) return null;
+    return {
+      name: plan.name,
+      price: plan.priceLabel.replace("/mo", ""),
+      credits: plan.budgetLabel,
+    };
+  };
+
+  const handlePaymentSelection = async (method: 'stripe' | 'web3') => {
+    if (method === 'stripe') {
+      setIsRedirecting(true);
+      try {
+        const tier = getCurrentPlanTier();
+        const response = await fetch('/api/payments/stripe/create-checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tierName: tier?.name.toUpperCase(),
+            userWallet: walletAddress,
+            returnUrl: `${window.location.origin}/openclaw`,
+            source: 'openclaw',
+          }),
+        });
+
+        const data = await response.json();
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          console.error('Failed to create checkout session:', data.error);
+          setErrorMessage('Failed to start Stripe checkout. Please try again.');
+        }
+      } catch (error) {
+        console.error('Stripe error:', error);
+        setErrorMessage('An error occurred. Please try again.');
+      } finally {
+        setIsRedirecting(false);
+        setIsPaymentModalOpen(false);
+      }
+    } else {
+      setIsPaymentModalOpen(false);
+      setIsWeb3ModalOpen(true);
+    }
+  };
+
+  const handlePlanContinue = () => {
+    // For free plan, just proceed
+    if (selectedPlan === "free") {
+      handleSelectPlan();
+      return;
+    }
+    // For paid plans, show payment modal
+    setIsPaymentModalOpen(true);
   };
 
   const handleSelectPlan = async () => {
@@ -709,7 +833,7 @@ export default function OpenClawSetupPage() {
                       ))}
                     </div>
                     <button
-                      onClick={handleSelectPlan}
+                      onClick={handlePlanContinue}
                       disabled={isLoading}
                       className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
@@ -717,7 +841,7 @@ export default function OpenClawSetupPage() {
                         <Loader2 className="w-5 h-5 animate-spin" />
                       ) : (
                         <>
-                          Continue
+                          {selectedPlan === "free" ? "Continue" : "Subscribe & Continue"}
                           <ChevronRight className="w-4 h-4" />
                         </>
                       )}
@@ -1401,6 +1525,40 @@ export default function OpenClawSetupPage() {
           </>
         )}
       </div>
+
+      {/* Redirecting Overlay */}
+      {isRedirecting && (
+        <div className="fixed inset-0 z-[110] bg-[var(--bg-deep)]/90 backdrop-blur-xl flex items-center justify-center flex-col gap-6 animate-in fade-in duration-500 px-4">
+          <div className="relative">
+            <Orbit className="h-16 w-16 text-[var(--accent)] animate-spin" style={{ animation: 'spin 3s linear infinite' }} />
+            <Zap className="h-6 w-6 text-[var(--accent)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
+          </div>
+          <div className="text-center">
+            <h2 className="text-xl font-display uppercase tracking-widest text-[var(--accent)] mb-2">INITIALIZING SECURE GATEWAY</h2>
+            <p className="text-[var(--text-muted)] text-xs tracking-[0.2em] font-bold">PREPARING ENCRYPTED SESSION · STACK: STRIPE</p>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modals */}
+      <PaymentSelectorModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        tier={getCurrentPlanTier()}
+        onSelectPayment={handlePaymentSelection}
+      />
+
+      <Web3CheckoutModal
+        isOpen={isWeb3ModalOpen}
+        onClose={() => setIsWeb3ModalOpen(false)}
+        tier={getCurrentPlanTier()}
+        userWallet={walletAddress}
+        onSuccess={(txHash) => {
+          console.log('Web3 Payment Success:', txHash);
+          setIsWeb3ModalOpen(false);
+          handleSelectPlan();
+        }}
+      />
 
       <FooterSection />
     </div>

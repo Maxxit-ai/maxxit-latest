@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-        const { tierName, userWallet } = req.body;
+        const { tierName, userWallet, returnUrl, source } = req.body;
 
         if (!tierName || !userWallet) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -25,6 +25,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         const origin = req.headers.origin || 'http://localhost:3000';
+
+        const successUrl = returnUrl
+            ? `${returnUrl}?payment=success&tier=${tierName}`
+            : `${origin}/payment/success?session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = returnUrl
+            ? `${returnUrl}?payment=cancelled`
+            : `${origin}/payment/cancel`;
 
         // Create Stripe Checkout Session
         const session = await stripe.checkout.sessions.create({
@@ -43,13 +50,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 },
             ],
             mode: 'payment',
-            success_url: `${origin}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}/payment/cancel`,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
             metadata: {
                 userWallet,
                 tierName,
                 credits: tier.credits.toString(),
                 trades: tier.trades.toString(),
+                source: source || 'pricing',
             },
         });
 

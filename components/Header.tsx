@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen, ChevronDown, Activity, Coins, Trophy } from 'lucide-react';
+import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen, ChevronDown, Activity, Coins, Trophy, Terminal } from 'lucide-react';
 import { Bot, BarChart3, FileText, Copy, Check, LogOut, X, AlertCircle, Sparkles, BookMarked } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import Image from 'next/image';
@@ -197,6 +197,7 @@ export function Header() {
   ];
 
   const tradingItems = [
+    { href: '/openclaw', label: 'OpenClaw', icon: Terminal, testId: 'nav-openclaw' },
     { href: '/lazy-trading', label: 'Lazy Trading', icon: Bot, testId: 'nav-lazy-trading' },
     { href: '/creator', label: 'Create Club', icon: User, testId: 'nav-my-agents' },
     { href: '/top-traders', label: 'Top Traders', icon: Trophy, testId: 'nav-top-traders' }
@@ -210,7 +211,7 @@ export function Header() {
   ];
 
   const isPortfolioActive = router.pathname === '/dashboard' || router.pathname === '/my-deployments' || router.pathname === '/my-trades';
-  const isTradingActive = router.pathname === '/lazy-trading' || router.pathname === '/creator';
+  const isTradingActive = router.pathname === '/openclaw' || router.pathname === '/lazy-trading' || router.pathname === '/creator';
   const isResourcesActive = router.pathname === '/blog' || router.pathname === '/docs' || router.pathname === '/user-manual' || router.pathname === '/pricing';
 
   // Close popup when clicking outside
