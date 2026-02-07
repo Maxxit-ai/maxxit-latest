@@ -199,21 +199,17 @@ export default function OpenClawSetupPage() {
   const [botToken, setBotToken] = useState("");
   const [botUsername, setBotUsername] = useState<string | null>(null);
 
-  // Payment modal states
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isWeb3ModalOpen, setIsWeb3ModalOpen] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [isValidatingBot, setIsValidatingBot] = useState(false);
 
-  // Skills state - simplified: just track if API key exists
   const [lazyTradingEnabled, setLazyTradingEnabled] = useState(false);
   const [lazyTradingSetupComplete, setLazyTradingSetupComplete] = useState(false);
   const [isCheckingLazyTradingSetup, setIsCheckingLazyTradingSetup] = useState(false);
   const [maxxitApiKey, setMaxxitApiKey] = useState<string | null>(null);
-  const [existingApiKeyPrefix, setExistingApiKeyPrefix] = useState<string | null>(null);
   const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
 
-  // EC2 instance status for monitoring launch progress
   const [instanceStatusPhase, setInstanceStatusPhase] = useState<
     "launching" | "starting" | "checking" | "ready" | "error" | null
   >(null);
@@ -275,7 +271,7 @@ export default function OpenClawSetupPage() {
         model: inst.model,
         status: inst.status,
         telegramLinked: !!inst.telegram.botUsername,
-        telegramVerified: inst.telegram.linked, // linked means telegram_user_id is set
+        telegramVerified: inst.telegram.linked,
         telegramUsername: inst.telegram.botUsername,
       });
 
@@ -287,55 +283,41 @@ export default function OpenClawSetupPage() {
         markComplete("model");
       }
 
-      // Restore telegram state - use botUsername for the bot link
       if (inst.telegram.botUsername) {
         setTelegramLinked(true);
         setTelegramUsername(inst.telegram.botUsername);
         setBotUsername(inst.telegram.botUsername);
       }
 
-      // If telegram is verified (has userId), mark telegram step complete
       if (inst.telegram.linked && inst.telegram.userId) {
         setTelegramVerified(true);
         markComplete("telegram");
       }
 
-      // If instance is active, mark skills and activate steps as complete
       if (inst.status === "active") {
-        markComplete("skills"); // Skills step was passed (even if skipped)
-        markComplete("telegram"); // Must have completed telegram to activate
+        markComplete("skills");
+        markComplete("telegram");
         markComplete("activate");
         setActivated(true);
-        setTelegramVerified(true); // Must be verified if active
-
-        // Check containerStatus to determine if instance is actually running
-        // If container is running, it's ready. Otherwise start polling to check.
-        if (inst.containerStatus === "running") {
-          setInstanceStatusPhase("ready");
-          setInstanceStatusMessage("Instance is running");
-        } else {
-          // Instance is active but container may still be launching
-          setInstanceStatusPhase("checking");
-          setInstanceStatusMessage("Checking instance status...");
-        }
+        setTelegramVerified(true);
+        setInstanceStatusPhase("checking");
+        setInstanceStatusMessage("Checking instance status...");
       }
 
-      // Determine which step to show
       if (inst.status === "active") {
-        setCurrentStepIndex(4); // Show activated/running step
+        setCurrentStepIndex(4);
       } else if (inst.telegram.linked && inst.telegram.userId) {
-        setCurrentStepIndex(3); // Skills step
+        setCurrentStepIndex(3);
       } else if (inst.telegram.username) {
-        setCurrentStepIndex(2); // Telegram step (connected but not verified)
+        setCurrentStepIndex(2);
       } else if (inst.model) {
-        setCurrentStepIndex(2); // Telegram step
+        setCurrentStepIndex(2);
       } else {
-        setCurrentStepIndex(1); // Model step
+        setCurrentStepIndex(1);
       }
 
       setShowLanding(false);
     } catch {
-      // No existing instance, start fresh
     } finally {
       setInitialLoading(false);
     }
@@ -346,8 +328,6 @@ export default function OpenClawSetupPage() {
       loadExistingProgress();
     }
   }, [authenticated, walletAddress, loadExistingProgress]);
-
-  // Handle return from Stripe payment
   const [pendingPaymentPlan, setPendingPaymentPlan] = useState<PlanId | null>(null);
 
   useEffect(() => {
@@ -391,7 +371,7 @@ export default function OpenClawSetupPage() {
               telegramUsername: data.instance.telegramUsername ?? null,
             });
             markComplete('plan');
-            setCurrentStepIndex(1); // Go to model step
+            setCurrentStepIndex(1);
           } else {
             setErrorMessage(data.error || 'Failed to create instance');
           }
@@ -404,7 +384,6 @@ export default function OpenClawSetupPage() {
     }
   }, [pendingPaymentPlan, walletAddress, isLoading, markComplete]);
 
-  // Poll for Telegram verification when user is on Telegram step with bot connected but not verified
   useEffect(() => {
     if (!walletAddress || currentStepKey !== "telegram" || !telegramLinked || telegramVerified) {
       return;
@@ -421,17 +400,14 @@ export default function OpenClawSetupPage() {
           }
         }
       } catch {
-        // Ignore errors during polling
       }
     };
 
-    const interval = setInterval(checkVerification, 3000); // Poll every 3 seconds
+    const interval = setInterval(checkVerification, 3000);
     return () => clearInterval(interval);
   }, [walletAddress, currentStepKey, telegramLinked, telegramVerified, markComplete]);
 
-  // Poll for EC2 instance status when launching/checking
   useEffect(() => {
-    // Only poll when activated and not yet ready
     if (!walletAddress || !activated || instanceStatusPhase === "ready" || instanceStatusPhase === null) {
       return;
     }
@@ -441,24 +417,21 @@ export default function OpenClawSetupPage() {
         const res = await fetch(`/api/openclaw/instance-status?userWallet=${walletAddress}`);
         if (res.ok) {
           const data = await res.json();
-          const { statusPhase, statusMessage, instance } = data;
+          const { instance } = data;
 
-          if (statusPhase) {
-            setInstanceStatusPhase(statusPhase);
+          if (instance?.statusPhase) {
+            setInstanceStatusPhase(instance.statusPhase);
           }
-          if (statusMessage) {
-            setInstanceStatusMessage(statusMessage);
+          if (instance?.statusMessage) {
+            setInstanceStatusMessage(instance.statusMessage);
           }
         }
       } catch {
-        // Ignore errors during polling
       }
     };
 
-    // Check immediately on mount
     checkInstanceStatus();
 
-    // Then poll every 5 seconds
     const interval = setInterval(checkInstanceStatus, 5000);
     return () => clearInterval(interval);
   }, [walletAddress, activated, instanceStatusPhase]);
@@ -476,7 +449,6 @@ export default function OpenClawSetupPage() {
     setShowLanding(false);
   };
 
-  // Get pricing tier info for modals
   const getCurrentPlanTier = () => {
     const plan = PLAN_OPTIONS.find((p) => p.id === selectedPlan);
     if (!plan) return null;
@@ -524,12 +496,10 @@ export default function OpenClawSetupPage() {
   };
 
   const handlePlanContinue = () => {
-    // For free plan, just proceed
     if (selectedPlan === "free") {
       handleSelectPlan();
       return;
     }
-    // For paid plans, show payment modal
     setIsPaymentModalOpen(true);
   };
 
@@ -561,7 +531,7 @@ export default function OpenClawSetupPage() {
         model: response.instance.model,
         status: response.instance.status,
         telegramLinked: response.instance.telegramLinked ?? false,
-        telegramVerified: false, // Not verified yet when just created
+        telegramVerified: false,
         telegramUsername: response.instance.telegramUsername ?? null,
       });
 
@@ -638,10 +608,10 @@ export default function OpenClawSetupPage() {
     try {
       await postJson<{ success: boolean }>("/api/openclaw/activate", {
         userWallet: walletAddress,
+        ...(maxxitApiKey && { maxxitApiKey }),
       });
       markComplete("activate");
       setActivated(true);
-      // Set initial status - will be updated by polling
       setInstanceStatusPhase("launching");
       setInstanceStatusMessage("Launching instance...");
     } catch (error) {
@@ -651,28 +621,10 @@ export default function OpenClawSetupPage() {
     }
   };
 
-  // Check for existing API key when user enters skills step
-  useEffect(() => {
-    if (currentStepKey === "skills" && walletAddress && lazyTradingEnabled && !maxxitApiKey && !existingApiKeyPrefix) {
-      (async () => {
-        try {
-          const res = await fetch(`/api/lazy-trading/api-key?userWallet=${walletAddress}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.apiKey?.prefix) {
-              setExistingApiKeyPrefix(data.apiKey.prefix);
-            }
-          }
-        } catch { }
-      })();
-    }
-  }, [currentStepKey, walletAddress, lazyTradingEnabled, maxxitApiKey, existingApiKeyPrefix]);
 
-  // Check lazy trading setup status when user enables the skill
   useEffect(() => {
     if (!lazyTradingEnabled || !walletAddress) return;
-    // Don't re-check if already known to be complete or if we have an API key
-    if (lazyTradingSetupComplete || existingApiKeyPrefix || maxxitApiKey) return;
+    if (lazyTradingSetupComplete || maxxitApiKey) return;
 
     (async () => {
       setIsCheckingLazyTradingSetup(true);
@@ -680,7 +632,6 @@ export default function OpenClawSetupPage() {
         const res = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
         if (res.ok) {
           const data = await res.json();
-          // User has completed setup if step is "complete" or hasSetup is true with an agent
           if (data.success && data.hasSetup && data.step === "complete") {
             setLazyTradingSetupComplete(true);
           }
@@ -691,7 +642,7 @@ export default function OpenClawSetupPage() {
         setIsCheckingLazyTradingSetup(false);
       }
     })();
-  }, [lazyTradingEnabled, walletAddress, lazyTradingSetupComplete, existingApiKeyPrefix, maxxitApiKey]);
+  }, [lazyTradingEnabled, walletAddress, lazyTradingSetupComplete, maxxitApiKey]);
 
   if (initialLoading) {
     return (
@@ -973,7 +924,6 @@ export default function OpenClawSetupPage() {
                       </p>
                     </div>
 
-                    {/* Verification Step */}
                     {!telegramVerified && (
                       <div className="border border-yellow-500/50 bg-yellow-500/10 rounded-lg p-5 space-y-3">
                         <div className="flex items-center gap-2">
@@ -1117,7 +1067,7 @@ export default function OpenClawSetupPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-bold">Maxxit Lazy Trading</h3>
-                        {lazyTradingEnabled && (maxxitApiKey || existingApiKeyPrefix) && (
+                        {lazyTradingEnabled && maxxitApiKey && (
                           <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
                             Ready
                           </span>
@@ -1134,29 +1084,6 @@ export default function OpenClawSetupPage() {
                         >
                           Enable Skill
                         </button>
-                      ) : existingApiKeyPrefix && !maxxitApiKey ? (
-                        <div className="space-y-3">
-                          <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
-                            <p className="text-sm text-green-400 mb-2">
-                              <strong>API Key Active</strong>
-                            </p>
-                            <code className="text-xs bg-[var(--bg-card)] px-2 py-1 rounded font-mono">
-                              {existingApiKeyPrefix}••••••••
-                            </code>
-                            <p className="text-xs text-[var(--text-muted)] mt-2">
-                              Your existing API key will be used for this OpenClaw instance.
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setLazyTradingEnabled(false);
-                              setExistingApiKeyPrefix(null);
-                            }}
-                            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                          >
-                            Remove Skill
-                          </button>
-                        </div>
                       ) : maxxitApiKey ? (
                         <div className="space-y-3">
                           <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
@@ -1312,7 +1239,7 @@ export default function OpenClawSetupPage() {
                     }}
                     className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                   >
-                    {lazyTradingEnabled && (maxxitApiKey || existingApiKeyPrefix) ? "Continue with Skill" : "Skip & Continue"}
+                    {lazyTradingEnabled && maxxitApiKey ? "Continue with Skill" : "Skip & Continue"}
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -1329,7 +1256,6 @@ export default function OpenClawSetupPage() {
               <div className="space-y-6">
                 {activated ? (
                   <div className="text-center space-y-6">
-                    {/* Status icon - changes based on phase */}
                     <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center ${instanceStatusPhase === "ready"
                       ? "bg-[var(--accent)]"
                       : instanceStatusPhase === "error"
@@ -1345,7 +1271,6 @@ export default function OpenClawSetupPage() {
                       )}
                     </div>
 
-                    {/* Status message - dynamic based on phase */}
                     <div>
                       <h1 className="font-display text-2xl mb-2">
                         {instanceStatusPhase === "ready"
@@ -1367,7 +1292,6 @@ export default function OpenClawSetupPage() {
                       </p>
                     </div>
 
-                    {/* Status progress indicator when not ready */}
                     {instanceStatusPhase && instanceStatusPhase !== "ready" && instanceStatusPhase !== "error" && (
                       <div className="border border-[var(--border)] rounded-lg p-4 space-y-3">
                         <div className="flex items-center gap-3">
@@ -1400,7 +1324,6 @@ export default function OpenClawSetupPage() {
                       </div>
                     )}
 
-                    {/* Instance details when ready or always show */}
                     <div className="border border-[var(--border)] rounded-lg p-4 text-left space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-[var(--text-muted)]">Plan</span>
@@ -1427,7 +1350,6 @@ export default function OpenClawSetupPage() {
                       </div>
                     </div>
 
-                    {/* Telegram button - only enabled when ready */}
                     <a
                       href={
                         botUsername ? `https://t.me/${botUsername}` : "#"
@@ -1526,7 +1448,6 @@ export default function OpenClawSetupPage() {
         )}
       </div>
 
-      {/* Redirecting Overlay */}
       {isRedirecting && (
         <div className="fixed inset-0 z-[110] bg-[var(--bg-deep)]/90 backdrop-blur-xl flex items-center justify-center flex-col gap-6 animate-in fade-in duration-500 px-4">
           <div className="relative">
@@ -1540,7 +1461,6 @@ export default function OpenClawSetupPage() {
         </div>
       )}
 
-      {/* Payment Modals */}
       <PaymentSelectorModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}

@@ -21,7 +21,7 @@ export default async function handler(
   }
 
   try {
-    const { userWallet } = req.body;
+    const { userWallet, maxxitApiKey: providedMaxxitApiKey } = req.body;
 
     if (!userWallet) {
       return res.status(400).json({
@@ -82,8 +82,8 @@ export default async function handler(
         console.log("[OpenClaw Activate] Deleted verification webhook for polling mode");
       }
 
-      // Fetch Maxxit API key if lazy trading skill is enabled
-      const maxxitApiKey = await getUserMaxxitApiKey(userWallet);
+      // Use provided API key or fetch from SSM
+      const maxxitApiKey = providedMaxxitApiKey || await getUserMaxxitApiKey(userWallet);
 
       try {
         const result = await createInstance({
@@ -130,9 +130,9 @@ export default async function handler(
       } else {
         // Instance is in an error/terminated state, create new one
         try {
-          // Fetch Maxxit API key for recreated instance
+          // Use provided API key or fetch from SSM for recreated instance
           const { getUserMaxxitApiKey } = await import("../../../lib/ssm");
-          const maxxitApiKey = await getUserMaxxitApiKey(userWallet);
+          const maxxitApiKey = providedMaxxitApiKey || await getUserMaxxitApiKey(userWallet);
 
           const result = await createInstance({
             userId: instance.id,

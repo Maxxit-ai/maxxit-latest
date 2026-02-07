@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { randomBytes } from "crypto";
 import { prisma } from "../../../lib/prisma";
 import { hashLazyTradingApiKey } from "../../../lib/lazy-trading-api";
+import { storeUserMaxxitApiKey } from "../../../lib/ssm";
 
 const API_KEY_PREFIX = "lt_";
 const API_KEY_PREFIX_LENGTH = 12;
@@ -41,12 +42,12 @@ export default async function handler(
         success: true,
         apiKey: activeKey
           ? {
-              prefix: activeKey.key_prefix,
-              created_at: activeKey.created_at.toISOString(),
-              last_used_at: activeKey.last_used_at
-                ? activeKey.last_used_at.toISOString()
-                : null,
-            }
+            prefix: activeKey.key_prefix,
+            created_at: activeKey.created_at.toISOString(),
+            last_used_at: activeKey.last_used_at
+              ? activeKey.last_used_at.toISOString()
+              : null,
+          }
           : null,
       });
     }
@@ -82,6 +83,9 @@ export default async function handler(
         key_prefix: apiKeyPrefix,
       },
     });
+
+    // Store the API key in SSM for OpenClaw EC2 instances to retrieve
+    await storeUserMaxxitApiKey(normalizedWallet, apiKeyValue);
 
     return res.status(201).json({
       success: true,
