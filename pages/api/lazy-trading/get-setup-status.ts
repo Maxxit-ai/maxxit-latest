@@ -1,14 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../lib/prisma";
 
-/**
- * Get the current lazy trading setup status for a user
- * Used to restore state when user refreshes the page
- * Also checks user_agent_addresses for existing agent assignment and
- * verifies on-chain delegation/allowance status (similar to normal club flow)
- * 
- * GET /api/lazy-trading/get-setup-status?userWallet=0x...
- */
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -26,8 +18,6 @@ export default async function handler(
 
     const normalizedWallet = userWallet.toLowerCase();
 
-    // Check user_agent_addresses first (same as normal club flow)
-    // This is per-wallet, not per-agent
     const userAgentAddress = await prisma.user_agent_addresses.findUnique({
       where: { user_wallet: normalizedWallet },
       select: {
@@ -44,7 +34,10 @@ export default async function handler(
 
     if (hasExistingOstiumAddress && userAgentAddress?.ostium_agent_address) {
       // Check delegation status via API
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${req.headers.host}`;
+      // Use HTTP for localhost, HTTPS for production
+      const host = req.headers.host || 'localhost:5000';
+      const protocol = host.includes('localhost') || host.includes('127.0.0.1') ? 'http' : 'https';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`;
 
       try {
         const delegationResponse = await fetch(
@@ -98,13 +91,11 @@ export default async function handler(
       },
     });
 
-    // Get telegram user if linked via agent
     let telegramUser =
       existingAgent && existingAgent.agent_telegram_users.length > 0
         ? existingAgent.agent_telegram_users[0].telegram_alpha_users
         : null;
 
-    // If no agent exists, check for lazy trader telegram user directly (before agent creation)
     if (!existingAgent) {
       const lazyTraderForWallet = await prisma.telegram_alpha_users.findFirst({
         where: {
@@ -188,11 +179,6 @@ export default async function handler(
       },
     });
 
-    // Note: userAgentAddress is already fetched at the top of the function
-    // Don't re-declare it here
-
-    // Determine which step the user should be on
-    // Now considers delegation and approval status (like normal club flow)
     let currentStep: string;
 
     if (!telegramUser) {
@@ -200,15 +186,11 @@ export default async function handler(
     } else if (!deployment) {
       currentStep = "preferences";
     } else if (isDelegatedToAgent && hasUsdcApproval) {
-      // Both delegation and approval are complete - skip to complete step!
-      // This matches the normal club flow behavior in OstiumConnect.tsx
       currentStep = "complete";
     } else {
-      // Need to complete delegation/allowance on ostium step
       currentStep = "ostium";
     }
 
-    // Build trading preferences from deployment if exists
     const tradingPreferences = deployment
       ? {
         risk_tolerance: deployment.risk_tolerance,
@@ -248,7 +230,6 @@ export default async function handler(
       tradingPreferences,
       ostiumAgentAddress: userAgentAddress?.ostium_agent_address || null,
       hyperliquidAgentAddress: userAgentAddress?.hyperliquid_agent_address || null,
-      // NEW: Include delegation and approval status so frontend can pre-fill states
       hasExistingOstiumAddress,
       isDelegatedToAgent,
       hasUsdcApproval,
