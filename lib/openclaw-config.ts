@@ -35,7 +35,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     monthlyPriceCents: 2900,
     llmBudgetCents: 200,
     stripePriceId: process.env.STRIPE_PRICE_ID_OPENCLAW_STARTER || null,
-    allowedModels: ["zai-glm-4.7", "gpt-4o-mini", "gpt-4o"],
+    allowedModels: ["gpt-4o-mini", "gpt-5-nano", "gpt-4o"],
     features: [
       "$2 LLM usage/month",
       "All models",
@@ -49,7 +49,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     monthlyPriceCents: 4900,
     llmBudgetCents: 2000,
     stripePriceId: process.env.STRIPE_PRICE_ID_OPENCLAW_PRO || null,
-    allowedModels: ["zai-glm-4.7", "gpt-4o-mini", "gpt-4o"],
+    allowedModels: ["gpt-4o-mini", "gpt-5-nano", "gpt-4o"],
     features: [
       "$20 LLM usage/month",
       "All models",
@@ -77,6 +77,14 @@ export const MODELS: Record<string, ModelConfig> = {
     minPlan: "starter",
     estimatedCostPer1MTokens: 0.15,
     description: "Fast and cost-effective",
+  },
+  "gpt-5-nano": {
+    id: "gpt-5-nano",
+    name: "GPT-5 Nano",
+    provider: "openai",
+    minPlan: "starter",
+    estimatedCostPer1MTokens: 0.05,
+    description: "Ultra-fast",
   },
   "gpt-4o": {
     id: "gpt-4o",
@@ -108,5 +116,5 @@ export function canPlanUseModel(planId: string, modelId: string): boolean {
 }
 
 export function getDefaultModel(planId: string): string {
-  return "zai-glm-4.7";
+  return "gpt-4o-mini";
 }

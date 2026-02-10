@@ -15,7 +15,7 @@ interface SyncResult {
 /**
  * Sync OpenAI usage costs from the OpenAI API to the LLM credit system
  */
-async function syncOpenAIUsage(): Promise<SyncResult> {
+export async function syncOpenAIUsage(): Promise<SyncResult> {
   const result: SyncResult = {
     processed: 0,
     costsDeducted: 0,
@@ -190,13 +190,10 @@ async function syncOpenAIUsage(): Promise<SyncResult> {
   }
 }
 
-/**
- * Run sync once and exit
- */
-async function runOnce() {
-  try {
-    const result = await syncOpenAIUsage();
+if (require.main === module) {
+  console.log('Starting OpenAI Usage Sync Worker...\n');
 
+  syncOpenAIUsage().then(result => {
     console.log('\n=== OpenAI Usage Sync Summary ===');
     console.log(`Processed: ${result.processed} instances`);
     console.log(`Costs deducted: $${(result.costsDeducted / 100).toFixed(2)}`);
@@ -210,11 +207,32 @@ async function runOnce() {
       });
     }
 
-    process.exit(0);
-  } catch (error: any) {
-    console.error('Sync failed:', error);
-    process.exit(1);
-  }
+    console.log('\n✅ Sync completed successfully');
+  }).catch(error => {
+    console.error('❌ Sync failed:', error);
+  });
+
+  const SYNC_INTERVAL_MS = parseInt(process.env.OPENAI_USAGE_SYNC_INTERVAL_MS || '60000', 10);
+  setInterval(() => {
+    syncOpenAIUsage().then(result => {
+      console.log('\n=== OpenAI Usage Sync Summary ===');
+      console.log(`Processed: ${result.processed} instances`);
+      console.log(`Costs deducted: $${(result.costsDeducted / 100).toFixed(2)}`);
+      console.log(`Limits reached: ${result.limitsReached}`);
+      console.log(`Errors: ${result.errors.length}`);
+
+      if (result.errors.length > 0) {
+        console.log('\nErrors:');
+        result.errors.forEach(({ userWallet, error }) => {
+          console.log(`  - ${userWallet}: ${error}`);
+        });
+      }
+
+      console.log('\n✅ Sync completed successfully');
+    }).catch(error => {
+      console.error('❌ Sync error:', error);
+    });
+  }, SYNC_INTERVAL_MS);
 }
 
-runOnce();
+export default syncOpenAIUsage;
