@@ -67,6 +67,11 @@ export default async function handler(
           chatId: instance.telegram_chat_id,
           linkedAt: instance.telegram_linked_at,
         },
+        openai: {
+          projectId: instance.openai_project_id,
+          serviceAccountId: instance.openai_service_account_id,
+          keyCreatedAt: instance.openai_api_key_created_at,
+        },
         budget: {
           monthlyCents: instance.monthly_llm_budget_cents,
           spentCents: instance.llm_spent_this_month_cents,

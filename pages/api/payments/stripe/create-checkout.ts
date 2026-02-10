@@ -1,10 +1,15 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { stripe } from '@lib/stripe';
 
-const pricingTiers: Record<string, { price: number; credits: number; trades: number }> = {
-    "STARTER": { price: 19, credits: 1000, trades: 100 },
-    "PRO": { price: 49, credits: 5000, trades: 200 },
-    "WHALE": { price: 99, credits: 15000, trades: 400 }
+const pricingTiers: Record<string, { price: number; credits: number; trades: number; llmCreditsCents: number }> = {
+    "STARTER": { price: 29, credits: 1000, trades: 100, llmCreditsCents: 200 },
+    "PRO": { price: 49, credits: 5000, trades: 200, llmCreditsCents: 2000 },
+    "WHALE": { price: 99, credits: 15000, trades: 400, llmCreditsCents: 0 }
+};
+
+const openclawTradeQuota: Record<string, number> = {
+    "STARTER": 20,
+    "PRO": 50,
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -33,7 +38,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             ? `${returnUrl}?payment=cancelled`
             : `${origin}/payment/cancel`;
 
-        // Create Stripe Checkout Session
+        const isOpenClawPlan = source === 'openclaw';
+        const creditsForPlan = isOpenClawPlan ? 0 : tier.credits;
+        const tradesForPlan = isOpenClawPlan ? openclawTradeQuota[tierName] || 0 : tier.trades;
+
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: [
@@ -41,8 +49,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     price_data: {
                         currency: 'usd',
                         product_data: {
-                            name: `Maxxit Credits: ${tierName} Plan`,
-                            description: `${tier.credits.toLocaleString()} Trading Credits for Maxxit Agents`,
+                            name: isOpenClawPlan ? `OpenClaw ${tierName.charAt(0) + tierName.slice(1).toLowerCase()} Plan` : `Maxxit Credits: ${tierName} Plan`,
+                            description: isOpenClawPlan
+                                ? `${tierName === 'PRO' ? '$20' : '$2'} LLM credits + ${tradesForPlan} trades for OpenClaw AI assistant`
+                                : `${tier.credits.toLocaleString()} Trading Credits for Maxxit Agents`,
                         },
                         unit_amount: tier.price * 100, // Amount in cents
                     },
@@ -55,8 +65,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             metadata: {
                 userWallet,
                 tierName,
-                credits: tier.credits.toString(),
-                trades: tier.trades.toString(),
+                credits: creditsForPlan.toString(),
+                trades: tradesForPlan.toString(),
+                llmCreditsCents: tier.llmCreditsCents.toString(),
+                type: 'plan_purchase',
                 source: source || 'pricing',
             },
         });

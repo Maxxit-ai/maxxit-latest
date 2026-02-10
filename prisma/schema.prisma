@@ -896,12 +896,26 @@ model openclaw_instances {
   installed_skills           Json      @default("[]")
   
   status                     String    @default("pending")
-  
+
+  // OpenAI Project & Key Management
+  openai_project_id           String?
+  openai_service_account_id   String?
+  openai_api_key_created_at   DateTime? @db.Timestamptz(6)
+
+  // Usage Tracking (from OpenAI API)
+  openai_tokens_used          Int       @default(0)
+  openai_cost_cents           Int       @default(0)
+  openai_last_usage_sync      DateTime? @db.Timestamptz(6)
+
+  // LLM Limit Tracking
+  llm_limit_reached           Boolean   @default(false)
+  llm_last_cost_sync_at       DateTime? @db.Timestamptz(6)
+
   created_at                 DateTime  @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime  @updatedAt @db.Timestamptz(6)
-  
+
   usage                      openclaw_usage[]
-  
+
   @@index([user_wallet])
   @@index([telegram_user_id])
   @@index([status])
@@ -937,4 +951,37 @@ model openclaw_telegram_links {
   
   @@index([code])
   @@index([user_wallet])
+}
+
+/// LLM Credit System - per-user OpenAI API key management
+model llm_credit_balance {
+  user_wallet      String   @id
+  balance_cents    Int      @default(0)  // Available LLM credit in cents
+  total_purchased  Int      @default(0)  // Total LLM credits ever purchased
+  total_used       Int      @default(0)  // Total LLM credits ever used
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([user_wallet])
+}
+
+model llm_credit_ledger {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_wallet  String
+  amount_cents Int                  // Positive = credit, Negative = debit
+  entry_type   llm_credit_entry_t   // PURCHASE, USAGE, PLAN_GRANT, ADJUSTMENT
+  purpose      String
+  reference_id String?              @unique  // Stripe Session ID or sync job ID
+  metadata     Json?
+  created_at   DateTime             @default(now()) @db.Timestamptz(6)
+
+  @@index([user_wallet])
+  @@index([reference_id])
+  @@index([created_at])
+}
+
+enum llm_credit_entry_t {
+  PURCHASE      // Stripe top-up
+  USAGE         // Deducted from OpenAI Costs API
+  PLAN_GRANT    // Monthly grant from subscription
+  ADJUSTMENT    // Manual adjustment
 }

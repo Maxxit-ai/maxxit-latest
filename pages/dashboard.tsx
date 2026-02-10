@@ -58,6 +58,7 @@ interface DashboardCache {
         totalUnrealizedPnlPercent: number;
     };
     balance: { usdc: string; eth: string; credits: string } | null;
+    llmCreditsBalance: number | null;
     timestamp: number;
     wallet: string;
 }
@@ -80,6 +81,7 @@ export default function Dashboard() {
     });
     const [balance, setBalance] = useState<{ usdc: string; eth: string; credits: string } | null>(null);
     const [tradeQuota, setTradeQuota] = useState<{ trades_total: number; trades_used: number; trades_remaining: number } | null>(null);
+    const [llmCreditsBalance, setLLMCreditsBalance] = useState<number | null>(null);
 
     const [apiKey, setApiKey] = useState<string>("");
     const [apiKeyPrefix, setApiKeyPrefix] = useState<string>("");
@@ -102,6 +104,7 @@ export default function Dashboard() {
                 setDeployments(globalDashboardCache.deployments);
                 setSummary(globalDashboardCache.summary);
                 setBalance(globalDashboardCache.balance);
+                setLLMCreditsBalance(globalDashboardCache.llmCreditsBalance);
                 setLoading(false);
             } else {
                 fetchDashboardData();
@@ -126,21 +129,23 @@ export default function Dashboard() {
         }
 
         try {
-            // Fetch Trades, Deployments, Credits, and Trade Quota in parallel
+            // Fetch Trades, Deployments, Credits, Trade Quota, and LLM Credits in parallel
             // Normalize wallet address to lowercase for consistent database lookups
             const walletAddress = user.wallet.address.toLowerCase();
-            const [tradesRes, deploymentsRes, creditsRes, quotaRes] = await Promise.all([
+            const [tradesRes, deploymentsRes, creditsRes, quotaRes, llmCreditsRes] = await Promise.all([
                 fetch(`/api/trades/my-trades?userWallet=${walletAddress}&page=1&pageSize=5`),
                 fetch(`/api/deployments?userWallet=${walletAddress}`),
                 fetch(`/api/user/credits/balance?wallet=${walletAddress}`),
                 fetch(`/api/user/trades/quota?wallet=${walletAddress}`),
+                fetch(`/api/openclaw/llm-credits/balance?userWallet=${walletAddress}`),
             ]);
 
-            const [tradesData, deploymentsData, creditsData, quotaData] = await Promise.all([
+            const [tradesData, deploymentsData, creditsData, quotaData, llmCreditsData] = await Promise.all([
                 tradesRes.json(),
                 deploymentsRes.json(),
                 creditsRes.json(),
                 quotaRes.json(),
+                llmCreditsRes.json(),
             ]);
 
             // Fetch Portfolio Balance
@@ -193,12 +198,20 @@ export default function Dashboard() {
             setBalance(finalBalance);
             setTradeQuota(quotaData);
 
+            // Set LLM credits balance
+            if (llmCreditsData.success && llmCreditsData.balance !== undefined) {
+                setLLMCreditsBalance(llmCreditsData.balance);
+            } else {
+                setLLMCreditsBalance(null);
+            }
+
             // Update cache
             globalDashboardCache = {
                 trades: tradesData.trades || [],
                 deployments: Array.isArray(deploymentsData) ? deploymentsData : (deploymentsData.deployments || []),
                 summary: currentSummary, // Use the calculated currentSummary
                 balance: finalBalance,
+                llmCreditsBalance: llmCreditsData.success && llmCreditsData.balance !== undefined ? llmCreditsData.balance : null,
                 timestamp: Date.now(),
                 wallet: user.wallet.address
             };
@@ -326,6 +339,13 @@ export default function Dashboard() {
             icon: CreditCard
         },
         {
+            label: "LLM CREDITS",
+            value: llmCreditsBalance !== null ? `$${llmCreditsBalance.toFixed(2)}` : "$ --",
+            change: llmCreditsBalance !== null && llmCreditsBalance < 5 ? "Top up" : "Available",
+            positive: llmCreditsBalance === null || llmCreditsBalance >= 5,
+            icon: Zap
+        },
+        {
             label: "24H PNL",
             value: summary.totalUnrealizedPnl !== 0
                 ? `${summary.totalUnrealizedPnl >= 0 ? '+$' : '-$'}${Math.abs(summary.totalUnrealizedPnl).toFixed(2)}`
@@ -368,7 +388,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 lg:gap-6 mb-3 sm:mb-6 md:mb-12">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-6 mb-3 sm:mb-6 md:mb-12">
                     {stats.map((stat, i) => (
                         <div key={i} className="border-box p-2 sm:p-3 md:p-4 lg:p-6 bg-[var(--bg-surface)] hover:border-[var(--accent)]/50 transition-colors group relative overflow-hidden">
                             <div className="flex justify-between items-start mb-1.5 sm:mb-2 md:mb-3 lg:mb-4">

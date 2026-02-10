@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { usePrivy } from "@privy-io/react-auth";
 import { Header } from "@components/Header";
@@ -19,7 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 
-type PlanId = "free" | "starter" | "pro";
+type PlanId = "starter" | "pro";
 
 type PlanOption = {
   id: PlanId;
@@ -45,12 +46,16 @@ type InstanceData = {
   telegramLinked: boolean;
   telegramVerified: boolean;
   telegramUsername?: string | null;
+  openaiProjectId?: string | null;
+  openaiServiceAccountId?: string | null;
+  openaiApiKeyCreatedAt?: string | null;
 };
 
 const STEPS = [
   { key: "plan", label: "Plan" },
   { key: "model", label: "Model" },
   { key: "telegram", label: "Telegram" },
+  { key: "openai", label: "OpenAI" },
   { key: "skills", label: "Skills" },
   { key: "activate", label: "Launch" },
 ] as const;
@@ -59,24 +64,17 @@ type StepKey = (typeof STEPS)[number]["key"];
 
 const PLAN_OPTIONS: PlanOption[] = [
   {
-    id: "free",
-    name: "Free",
-    priceLabel: "$0/mo",
-    budgetLabel: "$2 LLM usage",
-    modelsLabel: "Basic models",
-  },
-  {
     id: "starter",
     name: "Starter",
-    priceLabel: "$19/mo",
-    budgetLabel: "$10 LLM usage",
+    priceLabel: "$29/mo",
+    budgetLabel: "$2 LLM usage",
     modelsLabel: "All models",
   },
   {
     id: "pro",
     name: "Pro",
     priceLabel: "$49/mo",
-    budgetLabel: "$30 LLM usage",
+    budgetLabel: "$20 LLM usage",
     modelsLabel: "All models + custom skills",
   },
 ];
@@ -85,14 +83,14 @@ const MODEL_OPTIONS: ModelOption[] = [
   {
     id: "gpt-4o-mini",
     name: "GPT-4o Mini",
-    minPlan: "free",
+    minPlan: "starter",
     costLabel: "$0.15 in / $0.60 out per 1M tokens",
     speedLabel: "Fast & efficient",
   },
   {
     id: "gpt-5-nano",
     name: "GPT-5 Nano",
-    minPlan: "free",
+    minPlan: "starter",
     costLabel: "$0.05 in / $0.40 out per 1M tokens",
     speedLabel: "Ultra-fast",
   },
@@ -105,7 +103,7 @@ const MODEL_OPTIONS: ModelOption[] = [
   },
 ];
 
-const PLAN_RANKS: Record<PlanId, number> = { free: 0, starter: 1, pro: 2 };
+const PLAN_RANKS: Record<PlanId, number> = { starter: 0, pro: 1 };
 
 async function postJson<T>(url: string, payload: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -210,11 +208,23 @@ export default function OpenClawSetupPage() {
   const [maxxitApiKey, setMaxxitApiKey] = useState<string | null>(null);
   const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
 
+  const [openaiKeyStatus, setOpenaiKeyStatus] = useState<'not_created' | 'creating' | 'created'>('not_created');
+  const [openaiKeyPrefix, setOpenaiKeyPrefix] = useState<string | null>(null);
+  const [openaiKeyCreatedAt, setOpenaiKeyCreatedAt] = useState<string | null>(null);
+  const [isCreatingOpenAIKey, setIsCreatingOpenAIKey] = useState(false);
+
   const [instanceStatusPhase, setInstanceStatusPhase] = useState<
     "launching" | "starting" | "checking" | "ready" | "error" | null
   >(null);
   const [instanceStatusMessage, setInstanceStatusMessage] = useState<string | null>(null);
 
+
+  const [llmBalance, setLlmBalance] = useState<{ balanceCents: number; totalPurchased: number; totalUsed: number; limitReached: boolean } | null>(null);
+  const [isLoadingLlmBalance, setIsLoadingLlmBalance] = useState(false);
+  const [llmBalanceError, setLlmBalanceError] = useState<string | null>(null);
+  const [selectedTopUpAmount, setSelectedTopUpAmount] = useState<number>(1000); // Default to $10.00 in cents
+  const [llmTopUpSuccess, setLlmTopUpSuccess] = useState(false);
+  const [llmBalanceRefreshKey, setLlmBalanceRefreshKey] = useState(0); // Used to trigger balance re-fetch
   const currentStepKey = STEPS[currentStepIndex]?.key;
 
   const markComplete = useCallback((key: StepKey) => {
@@ -261,6 +271,11 @@ export default function OpenClawSetupPage() {
             username: string | null;
             botUsername: string | null;
           };
+          openai?: {
+            projectId: string | null;
+            serviceAccountId: string | null;
+            keyCreatedAt: string | null;
+          };
         };
       };
 
@@ -273,6 +288,9 @@ export default function OpenClawSetupPage() {
         telegramLinked: !!inst.telegram.botUsername,
         telegramVerified: inst.telegram.linked,
         telegramUsername: inst.telegram.botUsername,
+        openaiProjectId: inst.openai?.projectId ?? null,
+        openaiServiceAccountId: inst.openai?.serviceAccountId ?? null,
+        openaiApiKeyCreatedAt: inst.openai?.keyCreatedAt ?? null,
       });
 
       setSelectedPlan(inst.plan as PlanId);
@@ -296,6 +314,7 @@ export default function OpenClawSetupPage() {
 
       if (inst.status === "active") {
         markComplete("skills");
+        markComplete("openai");
         markComplete("telegram");
         markComplete("activate");
         setActivated(true);
@@ -304,7 +323,16 @@ export default function OpenClawSetupPage() {
         setInstanceStatusMessage("Checking instance status...");
       }
 
+      if (inst.openai?.projectId) {
+        markComplete("openai");
+        setOpenaiKeyStatus("created");
+        setOpenaiKeyPrefix(inst.openai.serviceAccountId ? `sk-svcacct-${inst.openai.serviceAccountId.substring(0, 8)}...` : null);
+        setOpenaiKeyCreatedAt(inst.openai.keyCreatedAt || null);
+      }
+
       if (inst.status === "active") {
+        setCurrentStepIndex(5);
+      } else if (inst.telegram.linked && inst.telegram.userId && inst.openai?.projectId) {
         setCurrentStepIndex(4);
       } else if (inst.telegram.linked && inst.telegram.userId) {
         setCurrentStepIndex(3);
@@ -344,6 +372,49 @@ export default function OpenClawSetupPage() {
       router.replace('/openclaw', undefined, { shallow: true });
     }
   }, [router.query, walletAddress, authenticated]);
+
+  // Handle LLM top-up success redirect from Stripe
+  useEffect(() => {
+    const { payment, llm_topup } = router.query;
+    if (payment === 'success' && llm_topup === 'true' && walletAddress && authenticated) {
+      router.replace('/openclaw', undefined, { shallow: true });
+
+      (async () => {
+        try {
+          console.log('[OpenClaw] Calling verify-topup API for wallet:', walletAddress);
+          const verifyRes = await fetch('/api/openclaw/llm-credits/verify-topup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userWallet: walletAddress }),
+          });
+
+          const data = await verifyRes.json();
+          console.log('[OpenClaw] verify-topup response:', data);
+
+          if (verifyRes.ok && data.success) {
+            setLlmBalance({
+              balanceCents: data.balance || 0,
+              totalPurchased: data.totalPurchased || 0,
+              totalUsed: data.totalUsed || 0,
+              limitReached: data.limitReached || false,
+            });
+            setLlmTopUpSuccess(true);
+            setTimeout(() => setLlmTopUpSuccess(false), 5000);
+          } else {
+            console.error('[OpenClaw] verify-topup failed:', data.error);
+            setLlmBalanceRefreshKey((prev) => prev + 1);
+            setLlmTopUpSuccess(true);
+            setTimeout(() => setLlmTopUpSuccess(false), 5000);
+          }
+        } catch (error) {
+          console.error('[OpenClaw] Error calling verify-topup:', error);
+          setLlmBalanceRefreshKey((prev) => prev + 1);
+          setLlmTopUpSuccess(true);
+          setTimeout(() => setLlmTopUpSuccess(false), 5000);
+        }
+      })();
+    }
+  }, [router.query, walletAddress, authenticated, router]);
 
   useEffect(() => {
     if (pendingPaymentPlan && walletAddress && !isLoading) {
@@ -436,6 +507,38 @@ export default function OpenClawSetupPage() {
     return () => clearInterval(interval);
   }, [walletAddress, activated, instanceStatusPhase]);
 
+  useEffect(() => {
+    if (!walletAddress || !authenticated) {
+      return;
+    }
+
+    const fetchLlmBalance = async () => {
+      setIsLoadingLlmBalance(true);
+      setLlmBalanceError(null);
+      try {
+        const res = await fetch(`/api/openclaw/llm-credits/balance?userWallet=${walletAddress}`);
+        if (res.ok) {
+          const data = await res.json();
+          setLlmBalance({
+            balanceCents: data.balanceCents || 0,
+            totalPurchased: data.totalPurchased || 0,
+            totalUsed: data.totalUsed || 0,
+            limitReached: data.limitReached || false,
+          });
+        } else {
+          console.error('Failed to fetch LLM balance');
+        }
+      } catch (error) {
+        console.error('Error fetching LLM balance:', error);
+        setLlmBalanceError('Failed to load credit balance');
+      } finally {
+        setIsLoadingLlmBalance(false);
+      }
+    };
+
+    fetchLlmBalance();
+  }, [walletAddress, authenticated, llmBalanceRefreshKey]);
+
   const handleGetStarted = () => {
     setErrorMessage("");
     if (!authenticated) {
@@ -496,10 +599,6 @@ export default function OpenClawSetupPage() {
   };
 
   const handlePlanContinue = () => {
-    if (selectedPlan === "free") {
-      handleSelectPlan();
-      return;
-    }
     setIsPaymentModalOpen(true);
   };
 
@@ -621,6 +720,79 @@ export default function OpenClawSetupPage() {
     }
   };
 
+  const handleCreateOpenAIKey = async () => {
+    setErrorMessage("");
+    if (!walletAddress) return;
+    setIsCreatingOpenAIKey(true);
+    setOpenaiKeyStatus("creating");
+
+    try {
+      const response = await postJson<{
+        success: boolean;
+        projectId?: string;
+        keyPrefix?: string;
+        createdAt?: string;
+      }>("/api/openclaw/create-openai-key", {
+        userWallet: walletAddress,
+      });
+
+      if (response.success) {
+        setOpenaiKeyStatus("created");
+        setOpenaiKeyPrefix(response.keyPrefix || null);
+        setOpenaiKeyCreatedAt(response.createdAt || null);
+        markComplete("openai");
+
+        if (instanceData) {
+          setInstanceData({
+            ...instanceData,
+            openaiProjectId: response.projectId || null,
+            openaiServiceAccountId: response.keyPrefix?.replace('sk-svcacct-', '') || null,
+            openaiApiKeyCreatedAt: response.createdAt || null,
+          });
+        }
+      }
+    } catch (error: any) {
+      if (error.message.includes('already exists') || error.message.includes('409')) {
+        setOpenaiKeyStatus("created");
+        markComplete("openai");
+      } else {
+        setOpenaiKeyStatus("not_created");
+        setErrorMessage((error as Error).message);
+      }
+    } finally {
+      setIsCreatingOpenAIKey(false);
+    }
+  };
+
+
+  const handleTopUpLlmCredits = async () => {
+    if (!walletAddress) return;
+    setIsRedirecting(true);
+    try {
+      const response = await fetch('/api/openclaw/llm-credits/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userWallet: walletAddress,
+          amountCents: selectedTopUpAmount,
+          returnUrl: `${window.location.origin}/openclaw`,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        console.error('Failed to create checkout session:', data.error);
+        setErrorMessage('Failed to start checkout. Please try again.');
+      }
+    } catch (error) {
+      console.error('Checkout error:', error);
+      setErrorMessage('An error occurred. Please try again.');
+    } finally {
+      setIsRedirecting(false);
+    }
+  };
 
   useEffect(() => {
     if (!lazyTradingEnabled || !walletAddress) return;
@@ -656,10 +828,10 @@ export default function OpenClawSetupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-deep)]">
+    <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col">
       <Header />
 
-      <div className="container mx-auto px-4 py-12 max-w-2xl">
+      <div className="container mx-auto px-4 py-12 max-w-2xl flex-1">
         {showLanding ? (
           <div className="text-center space-y-8">
             <div className="w-20 h-20 mx-auto bg-[var(--accent)] rounded-2xl flex items-center justify-center">
@@ -792,7 +964,7 @@ export default function OpenClawSetupPage() {
                         <Loader2 className="w-5 h-5 animate-spin" />
                       ) : (
                         <>
-                          {selectedPlan === "free" ? "Continue" : "Subscribe & Continue"}
+                          Subscribe & Continue
                           <ChevronRight className="w-4 h-4" />
                         </>
                       )}
@@ -1046,7 +1218,162 @@ export default function OpenClawSetupPage() {
               </div>
             )}
 
-            {/* Step 4: Skills */}
+            {/* Step 4: OpenAI Key */}
+            {currentStepKey === "openai" && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <h1 className="font-display text-2xl mb-2">
+                    Create OpenAI API Key
+                  </h1>
+                  <p className="text-[var(--text-secondary)]">
+                    Generate a personal OpenAI API key for usage tracking and budget management.
+                  </p>
+                </div>
+
+                {openaiKeyStatus === "created" && openaiKeyPrefix ? (
+                  <div className="space-y-4">
+                    {/* Success State */}
+                    <div className="border border-[var(--accent)] bg-[var(--accent)]/5 rounded-lg p-6 text-center space-y-3">
+                      <Check className="w-10 h-10 mx-auto text-[var(--accent)]" />
+                      <p className="font-bold text-lg">
+                        OpenAI API Key Created
+                      </p>
+                      <div className="bg-[var(--bg-card)] rounded-lg p-4 space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-[var(--text-muted)]">Key Prefix</span>
+                          <span className="font-mono font-semibold">{openaiKeyPrefix}</span>
+                        </div>
+                        {openaiKeyCreatedAt && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-[var(--text-muted)]">Created</span>
+                            <span className="font-semibold">
+                              {new Date(openaiKeyCreatedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="border border-[var(--border)] rounded-lg p-4 space-y-2">
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        <strong>What's next?</strong>
+                      </p>
+                      <ul className="text-sm text-[var(--text-secondary)] space-y-1">
+                        <li className="flex items-start gap-2">
+                          <span className="text-[var(--accent)]">•</span>
+                          <span>Your personal API key enables usage tracking</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-[var(--accent)]">•</span>
+                          <span>LLM costs are deducted from your plan's monthly budget</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-[var(--accent)]">•</span>
+                          <span>You can top up credits anytime if you need more</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                ) : openaiKeyStatus === "creating" || isCreatingOpenAIKey ? (
+                  <div className="space-y-4">
+                    {/* Creating State */}
+                    <div className="border border-[var(--accent)] bg-[var(--accent)]/5 rounded-lg p-6 text-center space-y-3">
+                      <Loader2 className="w-10 h-10 mx-auto text-[var(--accent)] animate-spin" />
+                      <p className="font-bold text-lg">
+                        Creating OpenAI Project
+                      </p>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Setting up your personal project and generating API key...
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Not Created State */}
+                    <div className="border border-[var(--border)] rounded-lg p-5 space-y-4">
+                      <div className="flex items-start gap-3">
+                        <Shield className="w-5 h-5 text-[var(--accent)] mt-0.5" />
+                        <div className="flex-1">
+                          <p className="font-semibold mb-1">Personal OpenAI Key</p>
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            We'll create a dedicated OpenAI project and service account for your instance.
+                            This allows us to track usage and enforce plan-based limits.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-[var(--border)] pt-4">
+                        <p className="text-sm font-semibold mb-2 text-[var(--text-secondary)]">Benefits</p>
+                        <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
+                          <li className="flex items-start gap-2">
+                            <Check className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
+                            <span>Accurate usage tracking per model</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Check className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
+                            <span>Monthly LLM budget included in your plan</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Check className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
+                            <span>Easy top-up options when you need more</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Check className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
+                            <span>Isolated from other users (fair usage)</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleCreateOpenAIKey}
+                      disabled={isCreatingOpenAIKey}
+                      className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      {isCreatingOpenAIKey ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Creating Key...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-5 h-5" />
+                          Create OpenAI API Key
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={goBack}
+                    className="px-6 py-4 border border-[var(--border)] rounded-lg font-bold flex items-center gap-2 hover:border-[var(--text-muted)] transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </button>
+                  <button
+                    onClick={() => {
+                      markComplete("openai");
+                      goNext();
+                    }}
+                    disabled={openaiKeyStatus !== "created"}
+                    className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    Continue
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                {errorMessage && (
+                  <p className="text-red-500 text-sm text-center">
+                    {errorMessage}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Step 5: Skills */}
             {currentStepKey === "skills" && (
               <div className="space-y-6">
                 <div className="text-center">
@@ -1251,7 +1578,7 @@ export default function OpenClawSetupPage() {
               </div>
             )}
 
-            {/* Step 5: Activate / Complete */}
+            {/* Step 6: Activate / Complete */}
             {currentStepKey === "activate" && (
               <div className="space-y-6">
                 {activated ? (
@@ -1348,6 +1675,172 @@ export default function OpenClawSetupPage() {
                             : "Connected"}
                         </span>
                       </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-muted)]">
+                          OpenAI Key
+                        </span>
+                        <span className="font-semibold text-[var(--accent)]">
+                          {openaiKeyStatus === "created" ? "Created" : "Not Created"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-muted)]">LLM Credits</span>
+                        <Link href="/llm-credit-history" className="font-semibold text-[var(--accent)] hover:underline">
+                          View History
+                        </Link>
+                      </div>
+                    </div>
+                    {/* LLM Credits Section */}
+                    <div className="border border-[var(--border)] rounded-lg p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-5 h-5 text-[var(--accent)]" />
+                          <h3 className="font-bold text-lg">LLM Credits</h3>
+                        </div>
+                        {llmBalance?.limitReached && (
+                          <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs font-bold rounded-full">
+                            LIMIT REACHED
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Top-up Success Message */}
+                      {llmTopUpSuccess && (
+                        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 flex items-center gap-2">
+                          <Check className="w-5 h-5 text-green-400" />
+                          <p className="text-sm text-green-400 font-medium">
+                            Credits added successfully! Your balance has been updated.
+                          </p>
+                        </div>
+                      )}
+
+                      {isLoadingLlmBalance ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="w-5 h-5 animate-spin text-[var(--text-muted)]" />
+                        </div>
+                      ) : llmBalanceError ? (
+                        <p className="text-sm text-red-400 text-center">{llmBalanceError}</p>
+                      ) : llmBalance ? (
+                        <>
+                          <div className="flex items-end justify-between">
+                            <div>
+                              <p className="text-3xl font-bold text-[var(--accent)]">
+                                ${(llmBalance.balanceCents / 100).toFixed(2)}
+                              </p>
+                              <p className="text-sm text-[var(--text-secondary)]">remaining balance</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-[var(--text-muted)]">
+                                ${(llmBalance.totalUsed / 100).toFixed(2)} used
+                              </p>
+                              <p className="text-xs text-[var(--text-muted)]">
+                                of ${(llmBalance.totalPurchased / 100).toFixed(2)} total
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div className="space-y-2">
+                            <div className="w-full bg-[var(--bg-card)] rounded-full h-2 overflow-hidden">
+                              <div
+                                className="h-full bg-[var(--accent)] transition-all duration-300"
+                                style={{
+                                  width: `${Math.min(
+                                    (llmBalance.totalUsed / Math.max(llmBalance.totalPurchased, 1)) * 100,
+                                    100
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                            <p className="text-xs text-[var(--text-muted)] text-right">
+                              {((llmBalance.totalUsed / Math.max(llmBalance.totalPurchased, 1)) * 100).toFixed(1)}% used
+                            </p>
+                          </div>
+
+                          {/* Warning if limit reached */}
+                          {llmBalance.limitReached && (
+                            <div className="border border-red-500/50 bg-red-500/10 rounded-lg p-3 flex items-start gap-2">
+                              <span className="text-red-400 text-lg">⚠️</span>
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-red-400">Credit limit reached</p>
+                                <p className="text-xs text-[var(--text-secondary)] mt-1">
+                                  Your OpenClaw instance has been paused. Top up to continue using AI features.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Low balance warning */}
+                          {!llmBalance.limitReached && llmBalance.balanceCents < 500 && (
+                            <div className="border border-yellow-500/50 bg-yellow-500/10 rounded-lg p-3 flex items-start gap-2">
+                              <span className="text-yellow-400 text-lg">⚠️</span>
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-yellow-400">Low balance</p>
+                                <p className="text-xs text-[var(--text-secondary)] mt-1">
+                                  Consider topping up to avoid interruption.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Top Up Amount Selector */}
+                          <div className="space-y-2">
+                            <p className="text-xs text-[var(--text-muted)] text-center">Select top-up amount:</p>
+                            <div className="grid grid-cols-4 gap-2">
+                              {[
+                                { cents: 500, label: '$5' },
+                                { cents: 1000, label: '$10' },
+                                { cents: 2500, label: '$25' },
+                                { cents: 5000, label: '$50' },
+                              ].map((option) => (
+                                <button
+                                  key={option.cents}
+                                  onClick={() => setSelectedTopUpAmount(option.cents)}
+                                  disabled={isRedirecting}
+                                  className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${selectedTopUpAmount === option.cents
+                                    ? 'bg-[var(--accent)] text-[var(--bg-deep)]'
+                                    : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card)] hover:opacity-80'
+                                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Top Up Button */}
+                          <button
+                            onClick={handleTopUpLlmCredits}
+                            disabled={isRedirecting}
+                            className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                          >
+                            {isRedirecting ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Redirecting to Stripe...
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="w-4 h-4" />
+                                Top Up ${(selectedTopUpAmount / 100).toFixed(2)}
+                              </>
+                            )}
+                          </button>
+
+                          {/* View History Link */}
+                          <div className="text-center">
+                            <Link
+                              href="/llm-credit-history"
+                              className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors inline-flex items-center gap-1"
+                            >
+                              View full history
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-[var(--text-muted)] text-center">No credit data available</p>
+                      )}
                     </div>
 
                     <a
@@ -1411,6 +1904,15 @@ export default function OpenClawSetupPage() {
                             : "Connected"}
                         </span>
                       </div>
+                      <div className="h-px bg-[var(--border)]" />
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-muted)]">
+                          OpenAI Key
+                        </span>
+                        <span className="font-semibold text-[var(--accent)]">
+                          {openaiKeyStatus === "created" ? "Created" : "Not Created"}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex gap-3">
                       <button
@@ -1422,7 +1924,7 @@ export default function OpenClawSetupPage() {
                       </button>
                       <button
                         onClick={handleActivate}
-                        disabled={isLoading}
+                        disabled={isLoading || openaiKeyStatus !== "created"}
                         className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
                       >
                         {isLoading ? (

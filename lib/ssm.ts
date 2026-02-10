@@ -19,6 +19,8 @@ const SSM_PATHS = {
     `/openclaw/users/${sanitizeWallet(wallet)}/telegram-bot-token`,
   userMaxxitApiKey: (wallet: string) =>
     `/openclaw/users/${sanitizeWallet(wallet)}/maxxit-api-key`,
+  userOpenAIApiKey: (wallet: string) =>
+    `/openclaw/users/${sanitizeWallet(wallet)}/openai-api-key`,
   zaiApiKey: "/openclaw/global/zai-api-key",
   openaiApiKey: "/openclaw/global/openai-api-key",
 } as const;
@@ -151,6 +153,75 @@ export async function storeGlobalLLMKey(
     );
   } catch (error) {
     console.error("[SSM] Failed to store global LLM key for", provider, error);
+    throw error;
+  }
+}
+
+export async function storeUserOpenAIApiKey(
+  userWallet: string,
+  apiKey: string
+): Promise<void> {
+  try {
+    await ssmClient.send(
+      new PutParameterCommand({
+        Name: SSM_PATHS.userOpenAIApiKey(userWallet),
+        Value: apiKey,
+        Type: "SecureString",
+        Overwrite: true,
+      })
+    );
+  } catch (error) {
+    console.error(
+      "[SSM] Failed to store OpenAI API key for wallet",
+      userWallet,
+      error
+    );
+    throw error;
+  }
+}
+
+export async function getUserOpenAIApiKey(
+  userWallet: string
+): Promise<string | null> {
+  try {
+    const result = await ssmClient.send(
+      new GetParameterCommand({
+        Name: SSM_PATHS.userOpenAIApiKey(userWallet),
+        WithDecryption: true,
+      })
+    );
+    return result.Parameter?.Value ?? null;
+  } catch (error) {
+    if (error instanceof ParameterNotFound) {
+      return null;
+    }
+    console.error(
+      "[SSM] Failed to get OpenAI API key for wallet",
+      userWallet,
+      error
+    );
+    throw error;
+  }
+}
+
+export async function deleteUserOpenAIApiKey(
+  userWallet: string
+): Promise<void> {
+  try {
+    await ssmClient.send(
+      new DeleteParameterCommand({
+        Name: SSM_PATHS.userOpenAIApiKey(userWallet),
+      })
+    );
+  } catch (error) {
+    if (error instanceof ParameterNotFound) {
+      return;
+    }
+    console.error(
+      "[SSM] Failed to delete OpenAI API key for wallet",
+      userWallet,
+      error
+    );
     throw error;
   }
 }

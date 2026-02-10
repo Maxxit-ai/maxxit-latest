@@ -20,6 +20,7 @@
     "postinstall": "npx prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "worker:telegram-ingest": "tsx workers/telegram-feed-ingestion.ts",
+    "worker:openai-sync": "tsx workers/openai-usage-sync-worker.ts",
     "verify:telegram": "tsx scripts/verify-telegram-token.ts",
     "test:contract": "hardhat test",
     "test:contract:watch": "hardhat test --watch",

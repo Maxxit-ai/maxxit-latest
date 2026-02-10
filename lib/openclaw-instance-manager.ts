@@ -116,7 +116,16 @@ echo "$(date): Bot token fetched successfully"
 # Fetch LLM API keys from SSM
 echo "$(date): Fetching LLM API keys from SSM..."
 ZAI_KEY=$(aws ssm get-parameter --name "/openclaw/global/zai-api-key" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
-OPENAI_KEY=$(aws ssm get-parameter --name "/openclaw/global/openai-api-key" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+
+# Fetch OpenAI API key - try user-specific key first, then fallback to global key
+echo "$(date): Fetching OpenAI API key (per-user with fallback to global)..."
+OPENAI_KEY=$(aws ssm get-parameter --name "/openclaw/users/${config.ssmWalletPath}/openai-api-key" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+
+# If user-specific key is not available, fallback to global key
+if [ -z "$OPENAI_KEY" ]; then
+  echo "$(date): Per-user OpenAI key not found, using global key..."
+  OPENAI_KEY=$(aws ssm get-parameter --name "/openclaw/global/openai-api-key" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+fi
 
 echo "$(date): API keys fetched (ZAI: \${ZAI_KEY:+set}, OpenAI: \${OPENAI_KEY:+set})"
 
@@ -235,6 +244,45 @@ echo "$(date): Verifying OpenClaw setup..."
 su - ubuntu -c "eval $NVM_INIT && openclaw status" || true
 
 echo "$(date): OpenClaw configuration complete!"
+
+# Send welcome message to user
+${config.telegramChatId ? `
+echo "$(date): Sending welcome message to user..."
+# Write message to a file
+cat > /tmp/welcome_msg.txt << 'MSGEOF'
+🎉 Your OpenClaw is Ready!
+
+Hello! I'm your personal AI assistant, powered by OpenClaw on Maxxit.
+
+I'm ready to help you with:
+
+• Answering questions
+• Managing tasks
+• Analyzing information
+• And much more!
+
+Just send me a message and let's get started. 🚀
+MSGEOF
+
+# Create sender script
+cat > /tmp/welcome_msg.sh << 'EOF'
+#!/bin/bash
+source /home/ubuntu/.nvm/nvm.sh
+MESSAGE=\$(cat /tmp/welcome_msg.txt)
+openclaw message send --channel telegram --target TARGET_PLACEHOLDER --message "\$MESSAGE"
+EOF
+
+# Replace the target placeholder
+sed -i "s/TARGET_PLACEHOLDER/${config.telegramChatId}/g" /tmp/welcome_msg.sh
+
+chmod +x /tmp/welcome_msg.sh
+su - ubuntu -c "bash /tmp/welcome_msg.sh" || {
+  echo "$(date): WARNING - Failed to send welcome message"
+}
+rm -f /tmp/welcome_msg.sh /tmp/welcome_msg.txt
+` : `
+echo "$(date): No chat ID provided, skipping welcome message"
+`}
 `;
 }
 

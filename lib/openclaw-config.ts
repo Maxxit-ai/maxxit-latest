@@ -2,7 +2,7 @@
  * OpenClaw configuration: plans, models, and business rules
  */
 
-export type PlanId = "free" | "starter" | "pro";
+export type PlanId = "starter" | "pro";
 
 export interface PlanConfig {
   id: PlanId;
@@ -24,35 +24,20 @@ export interface ModelConfig {
 }
 
 const PLAN_RANKS: Record<PlanId, number> = {
-  free: 0,
-  starter: 1,
-  pro: 2,
+  starter: 0,
+  pro: 1,
 };
 
 export const PLANS: Record<PlanId, PlanConfig> = {
-  free: {
-    id: "free",
-    name: "Free",
-    monthlyPriceCents: 0,
-    llmBudgetCents: 200,
-    stripePriceId: null,
-    allowedModels: ["zai-glm-4.7", "gpt-4o-mini"],
-    features: [
-      "$2 LLM usage/month",
-      "Basic models",
-      "Telegram bot",
-      "Usage tracking",
-    ],
-  },
   starter: {
     id: "starter",
     name: "Starter",
-    monthlyPriceCents: 1900,
-    llmBudgetCents: 1000,
+    monthlyPriceCents: 2900,
+    llmBudgetCents: 200,
     stripePriceId: process.env.STRIPE_PRICE_ID_OPENCLAW_STARTER || null,
     allowedModels: ["zai-glm-4.7", "gpt-4o-mini", "gpt-4o"],
     features: [
-      "$10 LLM usage/month",
+      "$2 LLM usage/month",
       "All models",
       "Telegram bot",
       "Priority support",
@@ -62,11 +47,11 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     id: "pro",
     name: "Pro",
     monthlyPriceCents: 4900,
-    llmBudgetCents: 3000,
+    llmBudgetCents: 2000,
     stripePriceId: process.env.STRIPE_PRICE_ID_OPENCLAW_PRO || null,
     allowedModels: ["zai-glm-4.7", "gpt-4o-mini", "gpt-4o"],
     features: [
-      "$30 LLM usage/month",
+      "$20 LLM usage/month",
       "All models",
       "Custom skills",
       "Telegram bot",
@@ -81,7 +66,7 @@ export const MODELS: Record<string, ModelConfig> = {
     id: "zai-glm-4.7",
     name: "ZAI GLM 4.7",
     provider: "zai",
-    minPlan: "free",
+    minPlan: "starter",
     estimatedCostPer1MTokens: 0,
     description: "Fast and capable",
   },
@@ -89,7 +74,7 @@ export const MODELS: Record<string, ModelConfig> = {
     id: "gpt-4o-mini",
     name: "GPT-4o Mini",
     provider: "openai",
-    minPlan: "free",
+    minPlan: "starter",
     estimatedCostPer1MTokens: 0.15,
     description: "Fast and cost-effective",
   },
