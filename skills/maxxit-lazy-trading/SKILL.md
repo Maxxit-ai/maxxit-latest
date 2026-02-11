@@ -6,10 +6,19 @@ author: Maxxit
 description: Execute perpetual trades on Ostium via Maxxit's Lazy Trading API
 homepage: https://maxxit.ai
 repository: https://github.com/Maxxit-ai/maxxit-latest
+disableModelInvocation: true
 requires:
   env:
     - MAXXIT_API_KEY
     - MAXXIT_API_URL
+metadata:
+  openclaw:
+    requiredEnv:
+      - MAXXIT_API_KEY
+      - MAXXIT_API_URL
+    bins:
+      - curl
+    primaryCredential: MAXXIT_API_KEY
 ---
 
 # Maxxit Lazy Trading
@@ -21,6 +30,9 @@ Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Tradin
 - User wants to execute trades on Ostium
 - User wants to send trading signals programmatically
 - User asks about their lazy trading account details
+- User wants to check their USDC/ETH balance
+- User wants to view their open positions or portfolio
+- User wants to see their closed position history or PnL
 - User mentions "lazy trade", "perps", "perpetuals", or "futures trading"
 - User wants to automate their trading workflow
 
@@ -94,6 +106,118 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/send-message" \
   "success": true,
   "message_id": "api_0x..._1234567890_abc123",
   "post_id": 456
+}
+```
+
+### Get Account Balance
+
+Retrieve USDC and ETH balance for the user's Ostium wallet address.
+
+**Note:** The user's Ostium wallet address (`user_wallet`) can be fetched from the `/api/lazy-trading/programmatic/club-details` endpoint first.
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/balance" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{"address": "0x..."}"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "address": "0x...",
+  "usdcBalance": "1000.50",
+  "ethBalance": "0.045"
+}
+```
+
+### Get Portfolio Positions
+
+Get all open positions for the user's Ostium trading account.
+
+**Note:** The user's Ostium wallet address can be fetched from the `/api/lazy-trading/programmatic/club-details` endpoint.
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/positions" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{"address": "0x..."}"
+```
+
+**Request Body:**
+```json
+{
+  "address": "0x..."  // User's Ostium wallet address (required)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "positions": [
+    {
+      "market": "BTC",
+      "marketFull": "BTC/USD",
+      "side": "long",
+      "collateral": 100.0,
+      "entryPrice": 95000.0,
+      "leverage": 10.0,
+      "tradeId": "12345",
+      "notionalUsd": 1000.0,
+      "totalFees": 2.50,
+      "stopLossPrice": 85500.0,
+      "takeProfitPrice": 0.0
+    }
+  ],
+  "totalPositions": 1
+}
+```
+
+### Get Position History
+
+Get closed positions with PnL information.
+
+**Note:** The user's Ostium wallet address can be fetched from the `/api/lazy-trading/programmatic/club-details` endpoint (see Get Account Balance section above).
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/closed-positions" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0x...", "count": 50}'
+```
+
+**Request Body:**
+```json
+{
+  "address": "0x...",  // User's Ostium wallet address (required)
+  "count": 50           // Number of recent positions to retrieve (default: 50)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "positions": [
+    {
+      "market": "ETH",
+      "side": "long",
+      "collateral": 50.0,
+      "leverage": 5,
+      "price": 3200.0,
+      "pnlUsdc": 15.50,
+      "profitPercent": 31.0,
+      "totalProfitPercent": 31.0,
+      "rolloverFee": 0.05,
+      "fundingFee": 0.10,
+      "executedAt": "2025-02-10T15:30:00Z",
+      "tradeId": "trade_123"
+    }
+  ],
+  "count": 1,
+  "totalOrders": 25
 }
 ```
 

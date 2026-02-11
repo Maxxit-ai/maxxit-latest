@@ -19,6 +19,7 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
+import welcomeImage from "../public/openclaw_welcome.png";
 
 type PlanId = "starter" | "pro";
 
@@ -1612,11 +1613,22 @@ export default function OpenClawSetupPage() {
                       </h1>
                       <p className="text-[var(--text-secondary)]">
                         {instanceStatusPhase === "ready"
-                          ? "Your instance is live. Open Telegram and say hi."
+                          ? "Your instance is live. You should receive a welcome message from your assistant soon as shown below : "
                           : instanceStatusPhase === "error"
                             ? instanceStatusMessage || "Please try again or contact support."
                             : instanceStatusMessage || "This may take 1-2 minutes..."}
                       </p>
+                      {instanceStatusPhase === "ready" && (
+                        <div className="mt-6 border border-[var(--border)] rounded-lg p-6 bg-[var(--bg-card)]">
+                          <div className="flex items-center justify-center">
+                            <img
+                              src={welcomeImage.src}
+                              alt="Welcome to OpenClaw"
+                              className="w-full max-w-md rounded-lg shadow-lg"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {instanceStatusPhase && instanceStatusPhase !== "ready" && instanceStatusPhase !== "error" && (
@@ -1844,9 +1856,7 @@ export default function OpenClawSetupPage() {
                     </div>
 
                     <a
-                      href={
-                        botUsername ? `https://t.me/${botUsername}` : "#"
-                      }
+                      href={`tg://resolve?domain=${botUsername}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`w-full py-4 font-bold rounded-lg flex items-center justify-center gap-2 transition-opacity ${instanceStatusPhase === "ready"

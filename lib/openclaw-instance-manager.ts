@@ -73,13 +73,13 @@ export interface DetailedInstanceStatus {
 }
 
 const MODEL_TO_OPENCLAW_ID: Record<string, { primary: string; provider: string }> = {
-  "zai-glm-4.7": { primary: "zai/glm-4.7", provider: "zai" },
+  "gpt-5-nano": { primary: "openai/gpt-5-nano", provider: "openai" },
   "gpt-4o-mini": { primary: "openai/gpt-4o-mini", provider: "openai" },
   "gpt-4o": { primary: "openai/gpt-4o", provider: "openai" },
 };
 
 function getOpenClawModelId(model: string): string {
-  return MODEL_TO_OPENCLAW_ID[model]?.primary || `zai/${model}`;
+  return MODEL_TO_OPENCLAW_ID[model]?.primary || "";
 }
 
 
@@ -220,7 +220,7 @@ if [ -n "$MAXXIT_API_KEY" ]; then
   
   # Install the skill using clawhub
   echo "$(date): Installing maxxit-lazy-trading skill..."
-  su - ubuntu -c "eval $NVM_INIT && npx clawhub@latest install maxxit-lazy-trading" || {
+  su - ubuntu -c "eval $NVM_INIT && npx clawhub@latest install maxxit-lazy-trading --force" || {
     echo "$(date): WARNING - Failed to install maxxit-lazy-trading skill"
   }
   
