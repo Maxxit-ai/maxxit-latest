@@ -177,12 +177,12 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/positions" \
 
 ### Get Position History
 
-Get closed positions with PnL information.
+Get raw trading history for an address (includes open, close, cancelled orders, etc.).
 
 **Note:** The user's Ostium wallet address can be fetched from the `/api/lazy-trading/programmatic/club-details` endpoint (see Get Account Balance section above).
 
 ```bash
-curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/closed-positions" \
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"address": "0x...", "count": 50}'
@@ -192,7 +192,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/closed-position
 ```json
 {
   "address": "0x...",  // User's Ostium wallet address (required)
-  "count": 50           // Number of recent positions to retrieve (default: 50)
+  "count": 50           // Number of recent orders to retrieve (default: 50)
 }
 ```
 
@@ -200,7 +200,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/closed-position
 ```json
 {
   "success": true,
-  "positions": [
+  "history": [
     {
       "market": "ETH",
       "side": "long",
@@ -216,8 +216,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/closed-position
       "tradeId": "trade_123"
     }
   ],
-  "count": 1,
-  "totalOrders": 25
+  "count": 25
 }
 ```
 
