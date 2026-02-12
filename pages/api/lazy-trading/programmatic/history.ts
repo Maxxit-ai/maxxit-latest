@@ -10,6 +10,12 @@ interface HistoryResponse {
   history?: any[];
   count?: number;
   error?: string;
+  details?: {
+    url: string;
+    status: number;
+    statusText: string;
+    errorBody: string;
+  };
 }
 
 /**
@@ -39,8 +45,11 @@ export default async function handler(
 
     // Call Ostium service to get trading history
     const ostiumServiceUrl = process.env.OSTIUM_SERVICE_URL || "http://localhost:5002";
+    const historyUrl = `${ostiumServiceUrl}/history`;
 
-    const historyResponse = await fetch(`${ostiumServiceUrl}/history`, {
+    console.log("[Ostium] Fetching history from:", historyUrl);
+
+    const historyResponse = await fetch(historyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ address, count }),
@@ -48,10 +57,21 @@ export default async function handler(
 
     if (!historyResponse.ok) {
       const errorText = await historyResponse.text();
-      console.error("[Ostium] History fetch error:", errorText);
+      console.error("[Ostium] History fetch error:", {
+        url: historyUrl,
+        status: historyResponse.status,
+        statusText: historyResponse.statusText,
+        errorBody: errorText,
+      });
       return res.status(500).json({
         success: false,
         error: "Failed to fetch history from Ostium service",
+        details: {
+          url: historyUrl,
+          status: historyResponse.status,
+          statusText: historyResponse.statusText,
+          errorBody: errorText,
+        },
       });
     }
 
