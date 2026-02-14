@@ -34,6 +34,10 @@ Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Tradin
 - User wants to see their closed position history or PnL
 - User wants to discover available trading symbols
 - User wants to get market data or LunarCrush metrics for analysis
+- User wants a whole market snapshot for the trading purpose
+- User wants to compare altcoin rankings (AltRank) across different tokens
+- User wants to identify high-sentiment trading opportunities
+- User wants to know social volume trends for crypto assets
 - User wants to open a new trading position (long/short)
 - User wants to close an existing position
 - User wants to set or modify take profit levels
@@ -516,6 +520,50 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-stop-loss" 
   "slPrice": 81000.0,
   "liquidationPrice": 85500.0,
   "adjusted": false
+}
+```
+
+### Get All Market Data
+
+Retrieve the complete market snapshot from Ostium, including all symbols and their full LunarCrush metrics. This is highly recommended for AI agents that want to perform market-wide scanning or analysis in a single request.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/market-data" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 0,
+      "symbol": "BTC/USD",
+      "group": "crypto",
+      "maxLeverage": 150,
+      "metrics": {
+        "galaxy_score": 72.5,
+        "alt_rank": 1,
+        "social_volume_24h": 15234,
+        "sentiment": 68.3,
+        "percent_change_24h": 2.45,
+        "volatility": 0.032,
+        "price": "95000.12345678",
+        "volume_24h": "45000000000.00000000",
+        "market_cap": "1850000000000.00000000",
+        "market_cap_rank": 1,
+        "social_dominance": 45.2,
+        "market_dominance": 52.1,
+        "interactions_24h": 890000,
+        "galaxy_score_previous": 70.1,
+        "alt_rank_previous": 1
+      },
+      "updated_at": "2026-02-14T08:30:00.000Z"
+    },
+    ...
+  ],
+  "count": 45
 }
 ```
 
