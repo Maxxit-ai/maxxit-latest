@@ -57,6 +57,7 @@ export default async function handler(
 
     // Get wallet from query parameter (set when webhook was registered)
     const walletFromUrl = req.query.wallet as string | undefined;
+    console.log(`[Telegram Webhook] walletFromUrl: ${walletFromUrl}, telegramUserId: ${telegramUserId}, chatId: ${telegramChatId}`);
 
     // Find instance - prioritize wallet from URL, fallback to telegram_user_id lookup
     let instance = walletFromUrl
@@ -66,6 +67,8 @@ export default async function handler(
       : await prisma.openclaw_instances.findFirst({
         where: { telegram_user_id: telegramUserId },
       });
+
+    console.log(`[Telegram Webhook] Instance found: ${!!instance}, id: ${instance?.id}, telegram_user_id: ${instance?.telegram_user_id}, telegram_chat_id: ${instance?.telegram_chat_id}`);
 
     if (!instance) {
       // User not linked yet
@@ -78,6 +81,7 @@ export default async function handler(
 
     // Auto-link telegram_user_id and telegram_chat_id if not already set
     if (!instance.telegram_user_id || !instance.telegram_chat_id) {
+      console.log(`[Telegram Webhook] Auto-linking telegram user. Updating instance ${instance.id}...`);
       await prisma.openclaw_instances.update({
         where: { id: instance.id },
         data: {
@@ -92,6 +96,7 @@ export default async function handler(
       // Send verification confirmation using user's bot token
       const { getUserBotToken } = await import("../../../lib/ssm");
       const botToken = await getUserBotToken(instance.user_wallet);
+      console.log(`[Telegram Webhook] Bot token from SSM: ${botToken ? 'found' : 'NOT FOUND'} for wallet ${instance.user_wallet}`);
       if (botToken) {
         await sendTelegramMessageWithToken(
           botToken,
@@ -100,6 +105,9 @@ export default async function handler(
           "Your Telegram account has been linked to OpenClaw.\n\n" +
           "You can now activate your instance on the Maxxit platform."
         );
+        console.log(`[Telegram Webhook] Verification message sent successfully`);
+      } else {
+        console.error(`[Telegram Webhook] No bot token found in SSM for wallet ${instance.user_wallet}`);
       }
 
       // Refresh instance data
@@ -169,6 +177,7 @@ async function handleLinkCommand(
     });
 
     if (!linkRecord) {
+      // No link record — we don't know which bot token to use, try global fallback
       await sendTelegramMessage(
         telegramChatId,
         "❌ Invalid link code. Please generate a new link on the Maxxit platform."

@@ -20,6 +20,22 @@ import {
   Zap,
 } from "lucide-react";
 import welcomeImage from "../public/openclaw_welcome.png";
+import { ethers } from "ethers";
+import { getOstiumConfig } from "../lib/ostium-config";
+
+// Ostium contract configuration
+const {
+  tradingContract: OSTIUM_TRADING_CONTRACT,
+  usdcContract: USDC_TOKEN,
+  storageContract: OSTIUM_STORAGE,
+} = getOstiumConfig();
+const OSTIUM_TRADING_ABI = ["function setDelegate(address delegate) external"];
+const USDC_ABI = [
+  "function approve(address spender, uint256 amount) public returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+];
+
+type SkillSubStep = 'idle' | 'creating-agent' | 'agent-created' | 'delegating' | 'approving' | 'creating-deployment' | 'complete';
 
 type PlanId = "starter" | "pro";
 
@@ -208,6 +224,16 @@ export default function OpenClawSetupPage() {
   const [isCheckingLazyTradingSetup, setIsCheckingLazyTradingSetup] = useState(false);
   const [maxxitApiKey, setMaxxitApiKey] = useState<string | null>(null);
   const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
+
+  const [skillSubStep, setSkillSubStep] = useState<SkillSubStep>('idle');
+  const [tradingAgentId, setTradingAgentId] = useState<string | null>(null);
+  const [ostiumAgentAddress, setOstiumAgentAddress] = useState<string | null>(null);
+  const [delegationComplete, setDelegationComplete] = useState(false);
+  const [allowanceComplete, setAllowanceComplete] = useState(false);
+  const [skillTxHash, setSkillTxHash] = useState<string | null>(null);
+  const [skillCurrentAction, setSkillCurrentAction] = useState("");
+  const [enablingTrading, setEnablingTrading] = useState(false);
+  const [hasDeployment, setHasDeployment] = useState(false);
 
   const [openaiKeyStatus, setOpenaiKeyStatus] = useState<'not_created' | 'creating' | 'created'>('not_created');
   const [openaiKeyPrefix, setOpenaiKeyPrefix] = useState<string | null>(null);
@@ -1413,6 +1439,7 @@ export default function OpenClawSetupPage() {
                           Enable Skill
                         </button>
                       ) : maxxitApiKey ? (
+                        /* Final state — API key generated, skill ready */
                         <div className="space-y-3">
                           <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
                             <p className="text-sm text-green-400 mb-2">
@@ -1429,22 +1456,291 @@ export default function OpenClawSetupPage() {
                             onClick={() => {
                               setLazyTradingEnabled(false);
                               setMaxxitApiKey(null);
+                              setSkillSubStep('idle');
+                              setTradingAgentId(null);
+                              setOstiumAgentAddress(null);
+                              setDelegationComplete(false);
+                              setAllowanceComplete(false);
+                              setHasDeployment(false);
                             }}
                             className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                           >
                             Remove Skill
                           </button>
                         </div>
-                      ) : isCheckingLazyTradingSetup ? (
-                        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Checking setup status...
+                      ) : skillSubStep === 'idle' || skillSubStep === 'creating-agent' ? (
+                        /* Sub-step 1: Create trading agent */
+                        <div className="space-y-4">
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            We&apos;ll create a dedicated trading agent and set up on-chain permissions.
+                          </p>
+                          <button
+                            onClick={async () => {
+                              setSkillSubStep('creating-agent');
+                              setErrorMessage("");
+                              try {
+                                // First check if setup is already done
+                                const statusRes = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
+                                if (statusRes.ok) {
+                                  const statusData = await statusRes.json();
+                                  if (statusData.success && statusData.hasSetup && statusData.step === "complete") {
+                                    setLazyTradingSetupComplete(true);
+                                    setSkillSubStep('complete');
+                                    return;
+                                  }
+                                }
+
+                                const res = await fetch("/api/openclaw/create-trading-agent", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ userWallet: walletAddress }),
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  setTradingAgentId(data.agent.id);
+                                  setOstiumAgentAddress(data.ostiumAgentAddress);
+                                  if (data.hasDeployment) {
+                                    setHasDeployment(true);
+                                  }
+                                  setSkillSubStep('agent-created');
+                                  // Check existing delegation/approval status
+                                  try {
+                                    const [delegRes, approvalRes] = await Promise.all([
+                                      fetch(`/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${data.ostiumAgentAddress}`),
+                                      fetch(`/api/ostium/check-approval-status?userWallet=${walletAddress}`),
+                                    ]);
+                                    if (delegRes.ok) {
+                                      const d = await delegRes.json();
+                                      if (d.isDelegatedToAgent) setDelegationComplete(true);
+                                    }
+                                    if (approvalRes.ok) {
+                                      const a = await approvalRes.json();
+                                      if (a.hasApproval) setAllowanceComplete(true);
+                                    }
+                                  } catch { }
+                                } else {
+                                  setErrorMessage(data.error || "Failed to create trading agent");
+                                  setSkillSubStep('idle');
+                                }
+                              } catch {
+                                setErrorMessage("Failed to create trading agent");
+                                setSkillSubStep('idle');
+                              }
+                            }}
+                            disabled={skillSubStep === 'creating-agent'}
+                            className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                          >
+                            {skillSubStep === 'creating-agent' ? (
+                              <><Loader2 className="w-5 h-5 animate-spin" /> Creating Agent...</>
+                            ) : (
+                              <><Zap className="w-4 h-4" /> Set Up Trading Agent</>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setLazyTradingEnabled(false)}
+                            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                          >
+                            Cancel
+                          </button>
                         </div>
-                      ) : lazyTradingSetupComplete ? (
+                      ) : skillSubStep === 'agent-created' ? (
+                        /* Sub-step 2: Show agent address + delegation + approval */
+                        <div className="space-y-4">
+                          {/* Agent address display */}
+                          <div className="border border-[var(--border)] rounded-lg p-4">
+                            <p className="text-xs text-[var(--text-muted)] mb-1">Your Trading Agent Address</p>
+                            <code className="text-sm font-mono break-all text-[var(--accent)]">
+                              {ostiumAgentAddress}
+                            </code>
+                          </div>
+
+                          {/* Progress indicators */}
+                          <div className="space-y-3">
+                            <div className={`flex items-center gap-3 p-3 rounded-lg border ${delegationComplete
+                                ? "border-green-500/50 bg-green-500/5"
+                                : "border-[var(--border)]"
+                              }`}>
+                              {delegationComplete ? (
+                                <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full border-2 border-[var(--text-muted)] flex-shrink-0" />
+                              )}
+                              <div>
+                                <p className="text-sm font-bold">
+                                  {delegationComplete ? "Delegation Complete" : "Delegate Trading"}
+                                </p>
+                                <p className="text-xs text-[var(--text-muted)]">
+                                  Allow your agent to trade on Ostium on your behalf
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className={`flex items-center gap-3 p-3 rounded-lg border ${allowanceComplete
+                                ? "border-green-500/50 bg-green-500/5"
+                                : "border-[var(--border)]"
+                              }`}>
+                              {allowanceComplete ? (
+                                <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full border-2 border-[var(--text-muted)] flex-shrink-0" />
+                              )}
+                              <div>
+                                <p className="text-sm font-bold">
+                                  {allowanceComplete ? "USDC Approved" : "Approve USDC"}
+                                </p>
+                                <p className="text-xs text-[var(--text-muted)]">
+                                  Allow Ostium to use your USDC for trading
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Transaction status */}
+                          {skillTxHash && (
+                            <div className="text-center text-xs text-[var(--text-muted)]">
+                              <Loader2 className="w-3 h-3 animate-spin inline mr-1" />
+                              Confirming transaction...
+                            </div>
+                          )}
+
+                          {/* Action button */}
+                          {!delegationComplete || !allowanceComplete ? (
+                            <button
+                              onClick={async () => {
+                                if (!walletAddress || !ostiumAgentAddress) return;
+                                setEnablingTrading(true);
+                                setErrorMessage("");
+                                try {
+                                  // Delegation
+                                  if (!delegationComplete) {
+                                    setSkillCurrentAction("Setting delegation...");
+                                    const provider = (window as any).ethereum;
+                                    if (!provider) throw new Error("No wallet provider found. Please install MetaMask.");
+                                    await provider.request({ method: "eth_requestAccounts" });
+                                    const ethersProvider = new ethers.providers.Web3Provider(provider);
+                                    const network = await ethersProvider.getNetwork();
+                                    if (network.chainId !== 42161) {
+                                      try {
+                                        await provider.request({
+                                          method: "wallet_switchEthereumChain",
+                                          params: [{ chainId: "0xa4b1" }],
+                                        });
+                                        await new Promise((r) => setTimeout(r, 500));
+                                      } catch (switchErr: any) {
+                                        throw new Error(switchErr.code === 4902 ? "Please add Arbitrum to your wallet" : "Please switch to Arbitrum network");
+                                      }
+                                    }
+                                    const freshProvider = new ethers.providers.Web3Provider((window as any).ethereum);
+                                    const signer = freshProvider.getSigner();
+                                    const contract = new ethers.Contract(OSTIUM_TRADING_CONTRACT, OSTIUM_TRADING_ABI, signer);
+                                    const gasEstimate = await contract.estimateGas.setDelegate(ostiumAgentAddress);
+                                    const tx = await contract.setDelegate(ostiumAgentAddress, { gasLimit: gasEstimate.mul(150).div(100) });
+                                    setSkillTxHash(tx.hash);
+                                    await tx.wait();
+                                    setDelegationComplete(true);
+                                    setSkillTxHash(null);
+                                    await new Promise((r) => setTimeout(r, 500));
+                                  }
+
+                                  // USDC Approval
+                                  if (!allowanceComplete) {
+                                    setSkillCurrentAction("Approving USDC allowance...");
+                                    const provider = (window as any).ethereum;
+                                    if (!provider) throw new Error("No wallet provider found.");
+                                    const ethersProvider = new ethers.providers.Web3Provider(provider);
+                                    await ethersProvider.send("eth_requestAccounts", []);
+                                    const signer = ethersProvider.getSigner();
+                                    const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
+                                    const allowanceAmount = ethers.utils.parseUnits("1000000", 6);
+                                    const approveData = usdcContract.interface.encodeFunctionData("approve", [OSTIUM_STORAGE, allowanceAmount]);
+                                    const gasEstimate = await ethersProvider.estimateGas({ to: USDC_TOKEN, from: walletAddress, data: approveData });
+                                    const txHash = await provider.request({
+                                      method: "eth_sendTransaction",
+                                      params: [{ from: walletAddress, to: USDC_TOKEN, data: approveData, gas: gasEstimate.mul(150).div(100).toHexString() }],
+                                    });
+                                    setSkillTxHash(txHash);
+                                    await ethersProvider.waitForTransaction(txHash);
+                                    setAllowanceComplete(true);
+                                    setSkillTxHash(null);
+                                  }
+                                } catch (err: any) {
+                                  if (err.code === 4001 || err.message?.includes("rejected")) {
+                                    setErrorMessage("Transaction rejected");
+                                  } else {
+                                    setErrorMessage(err.message || "Failed to enable trading");
+                                  }
+                                } finally {
+                                  setEnablingTrading(false);
+                                  setSkillCurrentAction("");
+                                }
+                              }}
+                              disabled={enablingTrading}
+                              className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                            >
+                              {enablingTrading ? (
+                                <><Loader2 className="w-5 h-5 animate-spin" /> {skillCurrentAction || "Processing..."}</>
+                              ) : (
+                                <><Shield className="w-4 h-4" /> Enable 1-Click Trading</>
+                              )}
+                            </button>
+                          ) : (
+                            /* Both complete — auto-create deployment */
+                            <button
+                              onClick={async () => {
+                                if (!tradingAgentId || !walletAddress) return;
+                                setSkillSubStep('creating-deployment');
+                                setErrorMessage("");
+                                try {
+                                  const res = await fetch("/api/openclaw/create-trading-deployment", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ agentId: tradingAgentId, userWallet: walletAddress }),
+                                  });
+                                  const data = await res.json();
+                                  if (data.success) {
+                                    setHasDeployment(true);
+                                    setSkillSubStep('complete');
+                                  } else {
+                                    setErrorMessage(data.error || "Failed to create deployment");
+                                    setSkillSubStep('agent-created');
+                                  }
+                                } catch {
+                                  setErrorMessage("Failed to create deployment");
+                                  setSkillSubStep('agent-created');
+                                }
+                              }}
+                              className="w-full py-3 bg-green-600 text-white font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-green-500 transition-colors"
+                            >
+                              <Check className="w-4 h-4" /> Create Deployment & Continue
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setLazyTradingEnabled(false);
+                              setSkillSubStep('idle');
+                              setTradingAgentId(null);
+                              setOstiumAgentAddress(null);
+                              setDelegationComplete(false);
+                              setAllowanceComplete(false);
+                            }}
+                            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : skillSubStep === 'creating-deployment' ? (
+                        /* Sub-step 3: Creating deployment */
+                        <div className="flex items-center justify-center gap-2 py-4 text-[var(--text-secondary)]">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span>Creating deployment...</span>
+                        </div>
+                      ) : skillSubStep === 'complete' || lazyTradingSetupComplete ? (
+                        /* Sub-step 4: Complete — generate API key */
                         <div className="space-y-3">
                           <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4 text-center">
                             <Check className="w-6 h-6 text-green-400 mx-auto mb-1" />
-                            <p className="font-bold text-green-400">Lazy Trading Setup Complete</p>
+                            <p className="font-bold text-green-400">Trading Setup Complete</p>
                             <p className="text-xs text-[var(--text-secondary)] mt-1">Generate an API key to connect this skill to your OpenClaw instance.</p>
                           </div>
                           <button
@@ -1489,6 +1785,7 @@ export default function OpenClawSetupPage() {
                           <button
                             onClick={() => {
                               setLazyTradingEnabled(false);
+                              setSkillSubStep('idle');
                               setLazyTradingSetupComplete(false);
                             }}
                             className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
@@ -1496,58 +1793,7 @@ export default function OpenClawSetupPage() {
                             Cancel
                           </button>
                         </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <p className="text-sm text-[var(--text-secondary)]">
-                            To enable this skill, you need to first complete the Lazy Trading setup.
-                          </p>
-                          <a
-                            href="/lazy-trading"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-                          >
-                            <Zap className="w-4 h-4" />
-                            Set Up Lazy Trading
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                          <p className="text-xs text-[var(--text-muted)]">
-                            After completing setup, click the button below to check your status.
-                          </p>
-                          <button
-                            onClick={() => {
-                              setLazyTradingSetupComplete(false);
-                              // Force re-check by triggering the useEffect
-                              setIsCheckingLazyTradingSetup(true);
-                              (async () => {
-                                try {
-                                  const res = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
-                                  if (res.ok) {
-                                    const data = await res.json();
-                                    if (data.success && data.hasSetup && data.step === "complete") {
-                                      setLazyTradingSetupComplete(true);
-                                    }
-                                  }
-                                } catch (err) {
-                                  console.error("Error checking lazy trading setup:", err);
-                                } finally {
-                                  setIsCheckingLazyTradingSetup(false);
-                                }
-                              })();
-                            }}
-                            className="w-full py-2 border border-[var(--accent)] text-[var(--accent)] font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-[var(--accent)]/10 transition-colors"
-                          >
-                            <Check className="w-4 h-4" />
-                            I&apos;ve Completed Setup
-                          </button>
-                          <button
-                            onClick={() => setLazyTradingEnabled(false)}
-                            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>

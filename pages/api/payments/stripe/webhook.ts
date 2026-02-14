@@ -85,7 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
 
                 if (credits && parseInt(credits) > 0) {
-                    console.log(`📝 [Webhook] Processing regular credits for ${userWallet}: ${credits} credits, ${trades} trades`);
+                    console.log(`📝 [Webhook] Processing regular credits for ${userWallet}: ${credits} credits`);
 
                     await CreditService.mintCredits(
                         userWallet,
@@ -99,15 +99,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                         }
                     );
 
-                    if (trades && parseInt(trades) > 0) {
-                        await TradeQuotaService.mintTradeQuota(
-                            userWallet,
-                            parseInt(trades),
-                            `stripe-trades-${session.id}`
-                        );
-                    }
+                    console.log(`✅ [Webhook] Successfully credited ${credits} credits to ${userWallet}`);
+                }
 
-                    console.log(`✅ [Webhook] Successfully credited ${credits} credits and ${trades} trades to ${userWallet}`);
+                // Mint trade quota independently of credits (OpenClaw plans have credits=0 but still need trades)
+                if (trades && parseInt(trades) > 0) {
+                    await TradeQuotaService.mintTradeQuota(
+                        userWallet,
+                        parseInt(trades),
+                        `stripe-trades-${session.id}`
+                    );
+                    console.log(`✅ [Webhook] Minted ${trades} trades for ${userWallet}`);
                 }
 
             } catch (error: any) {
