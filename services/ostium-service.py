@@ -144,11 +144,19 @@ def get_network_config(request_obj=None, is_testnet_override=None):
     
     # If not provided as override, try to read from request
     if is_testnet is None and request_obj:
-        if request_obj.is_json and request_obj.json:
-            is_testnet = request_obj.json.get('isTestnet')
-        elif request_obj.args:
+        # Try query params first (works for both GET and POST)
+        if request_obj.args:
             is_testnet = request_obj.args.get('isTestnet')
-        
+
+        # For POST requests with JSON body, try that too
+        if is_testnet is None and request_obj.is_json:
+            try:
+                json_data = request_obj.get_json(silent=True)
+                if json_data:
+                    is_testnet = json_data.get('isTestnet')
+            except:
+                pass  # Fall back to global config
+
         if isinstance(is_testnet, str):
             is_testnet = is_testnet.lower() == 'true'
     
