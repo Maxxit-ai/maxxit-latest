@@ -1,9 +1,9 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.0.0
+version: 1.1.0
 author: Maxxit
-description: Execute perpetual trades on Ostium via Maxxit's Lazy Trading API
+description: Execute perpetual trades on Ostium via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, and fetching market data.
 homepage: https://maxxit.ai
 repository: https://github.com/Maxxit-ai/maxxit-latest
 disableModelInvocation: true
@@ -23,16 +23,20 @@ metadata:
 
 # Maxxit Lazy Trading
 
-Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Trading API. This skill enables automated trading based on signals you send programmatically.
+Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Trading API. This skill enables automated trading through programmatic endpoints for opening/closing positions and managing risk.
 
 ## When to Use This Skill
 
 - User wants to execute trades on Ostium
-- User wants to send trading signals programmatically
 - User asks about their lazy trading account details
 - User wants to check their USDC/ETH balance
 - User wants to view their open positions or portfolio
 - User wants to see their closed position history or PnL
+- User wants to open a new trading position (long/short)
+- User wants to close an existing position
+- User wants to set or modify take profit levels
+- User wants to set or modify stop loss levels
+- User wants to fetch current token/market prices
 - User mentions "lazy trade", "perps", "perpetuals", or "futures trading"
 - User wants to automate their trading workflow
 
@@ -79,33 +83,6 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/club-details" \
     "trade_frequency": "moderate"
   },
   "ostium_agent_address": "0x..."
-}
-```
-
-### Send Trading Signal
-
-Send a trading signal/message that will be processed by your lazy trading agent.
-
-```bash
-curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/send-message" \
-  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Long BTC 10x leverage, entry 65000, TP 70000, SL 62000"}'
-```
-
-**Request Body:**
-```json
-{
-  "message": "Your trading signal text"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message_id": "api_0x..._1234567890_abc123",
-  "post_id": 456
 }
 ```
 
@@ -217,6 +194,219 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
     }
   ],
   "count": 25
+}
+```
+
+### Open Position
+
+Open a new perpetual futures position on Ostium.
+
+**Note:** The `agentAddress` and `userAddress` can be fetched from `/api/lazy-trading/programmatic/club-details` endpoint (`ostium_agent_address` and `user_wallet` respectively).
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/open-position" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentAddress": "0x...",
+    "userAddress": "0x...",
+    "market": "BTC",
+    "side": "long",
+    "collateral": 100,
+    "leverage": 10
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "agentAddress": "0x...",      // Ostium agent address (required)
+  "userAddress": "0x...",       // User's Ostium wallet address (required)
+  "market": "BTC",              // Token symbol to trade (required)
+  "side": "long",               // "long" or "short" (required)
+  "collateral": 100,            // Collateral amount in USDC (required)
+  "leverage": 10,               // Leverage multiplier (optional, default: 10)
+  "deploymentId": "uuid...",    // Associated deployment ID (optional)
+  "signalId": "uuid...",        // Associated signal ID (optional)
+  "isTestnet": false            // Use testnet (optional, default: false)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "orderId": "order_123",
+  "tradeId": "trade_abc",
+  "transactionHash": "0x...",
+  "txHash": "0x...",
+  "status": "OPEN",
+  "message": "Position opened successfully",
+  "actualTradeIndex": 2,
+  "entryPrice": 95000.0
+}
+```
+
+### Close Position
+
+Close an existing perpetual futures position on Ostium.
+
+**Note:** The `agentAddress` and `userAddress` can be fetched from `/api/lazy-trading/programmatic/club-details` endpoint.
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/close-position" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentAddress": "0x...",
+    "userAddress": "0x...",
+    "market": "BTC",
+    "tradeId": "12345"
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "agentAddress": "0x...",      // Ostium agent address (required)
+  "userAddress": "0x...",       // User's Ostium wallet address (required)
+  "market": "BTC",              // Token symbol (required)
+  "tradeId": "12345",           // Trade ID to close (optional)
+  "actualTradeIndex": 2,         // Trade index (optional)
+  "isTestnet": false            // Use testnet (optional, default: false)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "txHash": "0x...",
+    "market": "BTC",
+    "closePnl": 25.50
+  },
+  "closePnl": 25.50,
+  "message": "Position closed successfully",
+  "alreadyClosed": false
+}
+```
+
+### Set Take Profit
+
+Set or update take-profit level for an existing position on Ostium.
+
+**Note:** The `agentAddress` and `userAddress` can be fetched from `/api/lazy-trading/programmatic/club-details` endpoint.
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-take-profit" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentAddress": "0x...",
+    "userAddress": "0x...",
+    "market": "BTC",
+    "tradeIndex": 2,
+    "takeProfitPercent": 0.30,
+    "entryPrice": 90000,
+    "pairIndex": 0
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "agentAddress": "0x...",        // Ostium agent address (required)
+  "userAddress": "0x...",         // User's Ostium wallet address (required)
+  "market": "BTC",                // Token symbol (required)
+  "tradeIndex": 2,                // Trade index (required)
+  "takeProfitPercent": 0.30,       // Take profit as decimal (optional, default: 0.30)
+  "entryPrice": 90000,             // Entry price (required)
+  "pairIndex": 0,                  // Pair index (required)
+  "side": "long",                  // "long" or "short" (optional, default: "long")
+  "isTestnet": false              // Use testnet (optional, default: false)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Take profit set successfully",
+  "tpPrice": 117000.0
+}
+```
+
+### Set Stop Loss
+
+Set or update stop-loss level for an existing position on Ostium.
+
+**Note:** The `agentAddress` and `userAddress` can be fetched from `/api/lazy-trading/programmatic/club-details` endpoint.
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-stop-loss" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentAddress": "0x...",
+    "userAddress": "0x...",
+    "market": "BTC",
+    "tradeIndex": 2,
+    "stopLossPercent": 0.10,
+    "entryPrice": 90000,
+    "pairIndex": 0
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "agentAddress": "0x...",        // Ostium agent address (required)
+  "userAddress": "0x...",         // User's Ostium wallet address (required)
+  "market": "BTC",                // Token symbol (required)
+  "tradeIndex": 2,                // Trade index (required)
+  "stopLossPercent": 0.10,         // Stop loss as decimal (optional, default: 0.10)
+  "entryPrice": 90000,             // Entry price (required)
+  "pairIndex": 0,                  // Pair index (required)
+  "side": "long",                  // "long" or "short" (optional, default: "long")
+  "isTestnet": false              // Use testnet (optional, default: false)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Stop loss set successfully",
+  "slPrice": 81000.0,
+  "liquidationPrice": 85500.0,
+  "adjusted": false
+}
+```
+
+### Get Token Price
+
+Fetch the current market price for a token from Ostium price feed.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/price?token=BTC&isTestnet=false" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|-------|----------|-------------|
+| `token` | string | Yes | Token symbol to fetch price for (e.g., BTC, ETH, SOL) |
+| `isTestnet` | boolean | No | Use testnet price feed (default: false) |
+
+**Response:**
+```json
+{
+  "success": true,
+  "token": "BTC",
+  "price": 95000.0,
+  "isMarketOpen": true,
+  "isDayTradingClosed": false
 }
 ```
 
