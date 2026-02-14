@@ -33,6 +33,8 @@ Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Tradin
 - User wants to check their USDC/ETH balance
 - User wants to view their open positions or portfolio
 - User wants to see their closed position history or PnL
+- User wants to discover available trading symbols
+- User wants to get market data or LunarCrush metrics for analysis
 - User mentions "lazy trade", "perps", "perpetuals", or "futures trading"
 - User wants to automate their trading workflow
 
@@ -82,7 +84,113 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/club-details" \
 }
 ```
 
+### Get Available Symbols
+
+Retrieve all available trading symbols from the Ostium exchange. Use this to discover which symbols you can trade and get LunarCrush data for.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/symbols" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "symbols": [
+    {
+      "id": 0,
+      "symbol": "BTC/USD",
+      "group": "crypto",
+      "maxLeverage": 150
+    },
+    {
+      "id": 1,
+      "symbol": "ETH/USD",
+      "group": "crypto",
+      "maxLeverage": 100
+    }
+  ],
+  "groupedSymbols": {
+    "crypto": [
+      { "id": 0, "symbol": "BTC/USD", "group": "crypto", "maxLeverage": 150 },
+      { "id": 1, "symbol": "ETH/USD", "group": "crypto", "maxLeverage": 100 }
+    ],
+    "forex": [...]
+  },
+  "count": 45
+}
+```
+
+### Get LunarCrush Market Data
+
+Retrieve cached LunarCrush market metrics for a specific symbol. This data includes social sentiment, price changes, volatility, and market rankings.
+
+> **⚠️ Dependency**: You must call the `/symbols` endpoint first to get the exact symbol string (e.g., `"BTC/USD"`). The symbol parameter requires an exact match.
+
+```bash
+# First, get available symbols
+SYMBOL=$(curl -s -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/symbols" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" | jq -r '.symbols[0].symbol')
+
+# Then, get LunarCrush data for that symbol
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/lunarcrush?symbol=${SYMBOL}" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "symbol": "BTC/USD",
+  "lunarcrush": {
+    "galaxy_score": 72.5,
+    "alt_rank": 1,
+    "social_volume_24h": 15234,
+    "sentiment": 68.3,
+    "percent_change_24h": 2.45,
+    "volatility": 0.032,
+    "price": "95000.12345678",
+    "volume_24h": "45000000000.00000000",
+    "market_cap": "1850000000000.00000000",
+    "market_cap_rank": 1,
+    "social_dominance": 45.2,
+    "market_dominance": 52.1,
+    "interactions_24h": 890000,
+    "galaxy_score_previous": 70.1,
+    "alt_rank_previous": 1
+  },
+  "updated_at": "2026-02-14T08:30:00.000Z"
+}
+```
+
+**LunarCrush Field Descriptions:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `galaxy_score` | Float | Overall coin quality score (0-100) combining social, market, and developer activity |
+| `alt_rank` | Int | Rank among all cryptocurrencies (lower is better, 1 = best) |
+| `social_volume_24h` | Float | Social media mentions in last 24 hours |
+| `sentiment` | Float | Market sentiment score (0-100, 50 is neutral, >50 is bullish) |
+| `percent_change_24h` | Float | Price change percentage in last 24 hours |
+| `volatility` | Float | Price volatility score (0-1, <0.02 stable, 0.02-0.05 normal, >0.05 risky) |
+| `price` | String | Current price in USD (decimal string for precision) |
+| `volume_24h` | String | Trading volume in last 24 hours (decimal string) |
+| `market_cap` | String | Market capitalization (decimal string) |
+| `market_cap_rank` | Int | Rank by market cap (lower is better) |
+| `social_dominance` | Float | Social volume relative to total market |
+| `market_dominance` | Float | Market cap relative to total market |
+| `interactions_24h` | Float | Social media interactions in last 24 hours |
+| `galaxy_score_previous` | Float | Previous galaxy score (for trend analysis) |
+| `alt_rank_previous` | Int | Previous alt rank (for trend analysis) |
+
+**Data Freshness:**
+- LunarCrush data is cached and updated periodically by a background worker
+- Check the `updated_at` field to see when the data was last refreshed
+- Data is typically refreshed every few hours
+
 ### Send Trading Signal
+
 
 Send a trading signal/message that will be processed by your lazy trading agent.
 
