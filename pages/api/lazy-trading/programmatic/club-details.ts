@@ -23,7 +23,10 @@ export default async function handler(
     const lazyTraderAgent = await prisma.agents.findFirst({
       where: {
         creator_wallet: userWallet,
-        name: { startsWith: "Lazy Trader -" },
+        OR: [
+          { name: { startsWith: "Lazy Trader -" } },
+          { name: { startsWith: "OpenClaw Trader -" } },
+        ],
       },
       select: {
         id: true,
