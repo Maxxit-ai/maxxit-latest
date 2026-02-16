@@ -45,6 +45,7 @@ interface OstiumPair {
   to: string;
   group: {
     name: string;
+    maxLeverage?: string | number;
   };
   maxLeverage: string | number;
   makerMaxLeverage?: string | number;
@@ -108,7 +109,12 @@ async function syncOstiumPairs() {
         const pairId = parseInt(pair.id);
         const rawSymbol = `${pair.from}/${pair.to}`;
         const symbol = normalizeSymbol(rawSymbol);
-        const maxLeverage = Math.floor(parseInt(pair.maxLeverage.toString()) / 100);
+        const rawPairMaxLeverage = parseInt(pair.maxLeverage.toString());
+        const effectiveMaxLeverage =
+          rawPairMaxLeverage === 0 && pair.group?.maxLeverage != null
+            ? parseInt(pair.group.maxLeverage.toString())
+            : rawPairMaxLeverage;
+        const maxLeverage = Math.floor(effectiveMaxLeverage / 100);
         const makerMaxLeverage = pair.makerMaxLeverage
           ? Math.floor(parseInt(pair.makerMaxLeverage.toString()) / 100)
           : 0;
