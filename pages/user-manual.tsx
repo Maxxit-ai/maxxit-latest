@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, ArrowRight, Wallet, CreditCard, CheckCircle2, History, Users, MapPin, Settings, Bot, DollarSign, LineChart, ChevronDown, ChevronUp, PlusCircle, Radio } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Wallet, CreditCard, CheckCircle2, History, Users, MapPin, Settings, Bot, DollarSign, LineChart, ChevronDown, ChevronUp, PlusCircle, Radio, Orbit, Zap, MessageSquare, Key, Shield, Rocket } from 'lucide-react';
 import { Header } from '@components/Header';
 import FooterSection from '@components/home/FooterSection';
 
@@ -12,6 +12,7 @@ interface Step {
   description: string;
   icon: React.ElementType;
   image: string;
+  images?: { src: string; alt: string }[];
   details: string[];
   tip?: string;
 }
@@ -182,6 +183,154 @@ const joinClubSteps: Step[] = [
   },
 ];
 
+// Steps for OpenClaw setup flow
+const openclawSteps: Step[] = [
+  {
+    id: 'openclaw-start',
+    number: 1,
+    title: 'Get Started with OpenClaw',
+    description: 'OpenClaw is your personal AI assistant on Maxxit. It runs on a dedicated server and connects to your Telegram bot.',
+    icon: Orbit,
+    image: '/openclaw_images/01-landing-page.png',
+    details: [
+      'Navigate to the OpenClaw setup page',
+      'Review the features — dedicated instance, Telegram integration, and LLM budget',
+      'Click "Get Started" to begin the setup',
+    ],
+    tip: 'OpenClaw can be extended with skills like Maxxit Lazy Trading to execute trades via Telegram messages.',
+  },
+  {
+    id: 'openclaw-plan',
+    number: 2,
+    title: 'Choose Your Plan',
+    description: 'Select a plan that fits your needs. Each plan includes hosting, usage tracking, and Telegram integration.',
+    icon: CreditCard,
+    image: '/openclaw_images/02-plan-selection.png',
+    details: [
+      'Review the Starter plan ($29/mo) — includes $2 LLM usage with all models',
+      'Review the Pro plan ($49/mo) — includes $20 LLM usage plus custom skills',
+      'Select your preferred plan and complete payment',
+    ],
+    tip: 'Start with the Starter plan to try out OpenClaw. You can upgrade anytime.',
+  },
+  {
+    id: 'openclaw-telegram',
+    number: 3,
+    title: 'Create Your Telegram Bot',
+    description: 'Create a private Telegram bot using BotFather. Messages you send to this bot go directly to your OpenClaw instance.',
+    icon: MessageSquare,
+    image: '/openclaw_images/03-telegram-bot-token.png',
+    images: [
+      { src: '/openclaw_images/04-botfather-newbot.png', alt: 'BotFather /newbot command' },
+      { src: '/openclaw_images/05-botfather-token.png', alt: 'BotFather bot token' },
+      { src: '/openclaw_images/03-telegram-bot-token.png', alt: 'Paste bot token in setup' },
+    ],
+    details: [
+      'Open @BotFather in Telegram',
+      'Send /newbot and follow the prompts to name your bot',
+      'Copy the bot token BotFather gives you',
+      'Paste the token in the setup page and click "Verify & Connect Bot"',
+    ],
+    tip: 'Choose a bot name that\'s easy to find in your Telegram — you\'ll be messaging it frequently!',
+  },
+  {
+    id: 'openclaw-verify',
+    number: 4,
+    title: 'Verify Your Telegram Account',
+    description: 'After connecting your bot, verify your Telegram account by sending it a message. This links your Telegram ID.',
+    icon: CheckCircle2,
+    image: '/openclaw_images/08-bot-verified.png',
+    images: [
+      { src: '/openclaw_images/06-bot-verification-required.png', alt: 'Verification required' },
+      { src: '/openclaw_images/07-telegram-start-verify.png', alt: 'Send /start to verify' },
+      { src: '/openclaw_images/08-bot-verified.png', alt: 'Bot verified successfully' },
+    ],
+    details: [
+      'Open your newly created bot in Telegram',
+      'Send /start to the bot',
+      'Wait for the verification confirmation on the setup page',
+      'Your Telegram account is now securely linked',
+    ],
+  },
+  {
+    id: 'openclaw-openai',
+    number: 5,
+    title: 'Create OpenAI API Key',
+    description: 'Maxxit generates a personal OpenAI API key for your instance, enabling usage tracking and plan-based limits.',
+    icon: Key,
+    image: '/openclaw_images/10-openai-key-created.png',
+    images: [
+      { src: '/openclaw_images/09-openai-key-create.png', alt: 'Create OpenAI key' },
+      { src: '/openclaw_images/10-openai-key-created.png', alt: 'OpenAI key created' },
+    ],
+    details: [
+      'Click "Create API Key" on the OpenAI step',
+      'The key is generated and stored automatically',
+      'Your monthly LLM budget is included in your plan',
+      'You can top up LLM credits anytime if needed',
+    ],
+    tip: 'Your API key enables per-model usage tracking so you know exactly where your LLM budget goes.',
+  },
+  {
+    id: 'openclaw-skill',
+    number: 6,
+    title: 'Enable Maxxit Lazy Trading Skill',
+    description: 'The Maxxit Lazy Trading skill lets you execute trades on Ostium by sending a message to your OpenClaw bot.',
+    icon: Zap,
+    image: '/openclaw_images/12-skills-setup-agent.png',
+    images: [
+      { src: '/openclaw_images/11-skills-enable.png', alt: 'Enable the Lazy Trading skill' },
+      { src: '/openclaw_images/12-skills-setup-agent.png', alt: 'Set up trading agent' },
+    ],
+    details: [
+      'Click "Enable Skill" next to Maxxit Lazy Trading',
+      'Click "Set Up Trading Agent" to create a dedicated trading agent',
+      'The system creates an agent wallet for non-custodial trading',
+    ],
+    tip: 'This step is optional but highly recommended — it\'s what makes OpenClaw a trading assistant!',
+  },
+  {
+    id: 'openclaw-onchain',
+    number: 7,
+    title: 'Approve On-Chain Permissions',
+    description: 'Approve two on-chain transactions to let your trading agent operate on Ostium non-custodially.',
+    icon: Shield,
+    image: '/openclaw_images/13-skills-delegation-usdc.png',
+    images: [
+      { src: '/openclaw_images/13-skills-delegation-usdc.png', alt: 'Delegation and USDC approval' },
+      { src: '/openclaw_images/14-skills-generate-key.png', alt: 'Generate API key' },
+      { src: '/openclaw_images/15-skills-key-generated.png', alt: 'API key generated' },
+      { src: '/openclaw_images/16-skills-key-ready.png', alt: 'API key ready to use' },
+    ],
+    details: [
+      'Approve Delegation — allows the agent to trade on Ostium on your behalf (cannot withdraw funds)',
+      'Approve USDC — allows Ostium to use your USDC for trading (funds stay in your wallet)',
+      'Click "Create Deployment & Continue"',
+      'Generate the API key to connect the skill to your instance',
+    ],
+    tip: 'The agent can only trade — it cannot withdraw your funds. You can revoke access anytime from Ostium.',
+  },
+  {
+    id: 'openclaw-launch',
+    number: 8,
+    title: 'Launch Your OpenClaw',
+    description: 'Review your setup and launch your personal AI assistant. Once live, start chatting via Telegram!',
+    icon: Rocket,
+    image: '/openclaw_images/17-launch-review.png',
+    images: [
+      { src: '/openclaw_images/17-launch-review.png', alt: 'Review your setup' },
+      { src: '/openclaw_images/18-launch-deploying.png', alt: 'Instance deploying' },
+    ],
+    details: [
+      'Review your setup summary (plan, model, Telegram bot, API key)',
+      'Click "Launch OpenClaw" to spin up your instance',
+      'Wait for the instance to start (usually under a minute)',
+      'Open your Telegram bot and send a message to get started!',
+    ],
+    tip: 'Try sending: "Hey buy BTC now if the market looks bullish" — your OpenClaw will analyze and execute!',
+  },
+];
+
 // Steps for creating your own club (separate flow)
 const createClubSteps: Step[] = [
   {
@@ -251,18 +400,75 @@ function StepCard({ step, isExpanded, onToggle }: { step: Step; isExpanded: bool
       {/* Expanded Content */}
       {isExpanded && (
         <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4 sm:space-y-6">
-          {/* Image */}
-          <div className="relative rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-elevated)]">
-            <Image
-              src={step.image}
-              alt={step.title}
-              width={3000}
-              height={3000}
-              className="w-full h-auto"
-              priority={step.number <= 3}
-              quality={100}
-            />
-          </div>
+          {/* Images */}
+          {step.images && step.images.length > 0 ? (
+            <div className="space-y-3">
+              {step.images.length === 2 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {step.images.map((img, i) => (
+                    <div key={i} className="relative rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-elevated)]">
+                      <Image
+                        src={img.src}
+                        alt={img.alt}
+                        width={800}
+                        height={450}
+                        className="w-full h-auto"
+                        priority={step.number <= 3}
+                        quality={100}
+                      />
+                      <p className="text-[10px] text-[var(--text-secondary)] text-center py-1.5 bg-[var(--bg-elevated)]">{img.alt}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {step.images.length >= 3 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {step.images.slice(0, 2).map((img, i) => (
+                        <div key={i} className="relative rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-elevated)]">
+                          <Image
+                            src={img.src}
+                            alt={img.alt}
+                            width={800}
+                            height={450}
+                            className="w-full h-auto"
+                            priority={step.number <= 3}
+                            quality={100}
+                          />
+                          <p className="text-[10px] text-[var(--text-secondary)] text-center py-1.5 bg-[var(--bg-elevated)]">{img.alt}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {step.images.slice(2).map((img, i) => (
+                    <div key={i} className="relative rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-elevated)]">
+                      <Image
+                        src={img.src}
+                        alt={img.alt}
+                        width={3000}
+                        height={3000}
+                        className="w-full h-auto"
+                        quality={100}
+                      />
+                      <p className="text-[10px] text-[var(--text-secondary)] text-center py-1.5 bg-[var(--bg-elevated)]">{img.alt}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="relative rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--bg-elevated)]">
+              <Image
+                src={step.image}
+                alt={step.title}
+                width={3000}
+                height={3000}
+                className="w-full h-auto"
+                priority={step.number <= 3}
+                quality={100}
+              />
+            </div>
+          )}
 
           {/* Details */}
           <div className="space-y-2 sm:space-y-3">
@@ -297,10 +503,34 @@ function StepCard({ step, isExpanded, onToggle }: { step: Step; isExpanded: bool
 export default function UserManualPage() {
   const [expandedStep, setExpandedStep] = useState<string>('connect-wallet');
   const [activeSection, setActiveSection] = useState<string>('connect-wallet');
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   const toggleStep = (stepId: string) => {
     setExpandedStep(expandedStep === stepId ? '' : stepId);
   };
+
+  // Capture wheel events on the sidebar so main content doesn't scroll
+  useEffect(() => {
+    const el = sidebarRef.current;
+    if (!el) return;
+    const handleWheel = (e: WheelEvent) => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      // Only intercept if sidebar content is scrollable
+      if (scrollHeight <= clientHeight) return;
+      const atTop = scrollTop <= 0;
+      const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
+      const scrollingDown = e.deltaY > 0;
+      const scrollingUp = e.deltaY < 0;
+      // Prevent page scroll unless sidebar is at its boundary in that direction
+      if ((scrollingDown && !atBottom) || (scrollingUp && !atTop)) {
+        e.preventDefault();
+        e.stopPropagation();
+        el.scrollTop += e.deltaY;
+      }
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const scrollToStep = (stepId: string) => {
     setExpandedStep(stepId);
@@ -318,7 +548,7 @@ export default function UserManualPage() {
   };
 
   useEffect(() => {
-    const allSteps = [...joinClubSteps, ...createClubSteps];
+    const allSteps = [...joinClubSteps, ...createClubSteps, ...openclawSteps];
 
     const handleScroll = () => {
       const header = document.querySelector('header');
@@ -402,7 +632,11 @@ export default function UserManualPage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 sm:gap-8">
           {/* Sidebar Navigation */}
           <aside className="lg:col-span-1">
-            <div className="sticky top-20 sm:top-28 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-3 sm:p-4 max-h-[calc(100vh-6rem)] sm:max-h-[calc(100vh-8rem)] overflow-y-auto">
+            <div
+              ref={sidebarRef}
+              className="sticky top-20 sm:top-28 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-3 sm:p-4 max-h-[calc(100vh-6rem)] sm:max-h-[calc(100vh-8rem)] overflow-y-auto scroll-smooth"
+              style={{ scrollbarWidth: 'thin', overscrollBehavior: 'contain' }}
+            >
               {/* Join Club Section */}
               <h3 className="text-[10px] sm:text-xs font-semibold text-[var(--accent)] uppercase tracking-wide mb-2 sm:mb-3 px-1.5 sm:px-2 flex items-center gap-1.5 sm:gap-2">
                 <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
@@ -453,6 +687,38 @@ export default function UserManualPage() {
                         }`}
                     >
                       <span className={`flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-semibold flex items-center justify-center ${isActive
+                        ? 'bg-[var(--accent)] text-[var(--bg-deep)]'
+                        : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+                        }`}>
+                        {step.number}
+                      </span>
+                      <span className="truncate font-medium">{step.title}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* Divider */}
+              <div className="border-t border-[var(--border)] my-4"></div>
+
+              {/* OpenClaw Section */}
+              <h3 className="text-[10px] sm:text-xs font-semibold text-[var(--accent)] uppercase tracking-wide mb-2 sm:mb-3 px-1.5 sm:px-2 flex items-center gap-1.5 sm:gap-2">
+                <Orbit className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                OpenClaw Setup
+              </h3>
+              <nav className="space-y-0.5 sm:space-y-1">
+                {openclawSteps.map((step) => {
+                  const isActive = activeSection === step.id;
+                  return (
+                    <button
+                      key={step.id}
+                      onClick={() => scrollToStep(step.id)}
+                      className={`w-full flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-[10px] sm:text-xs transition-all duration-200 text-left ${isActive
+                        ? 'bg-[var(--accent)]/20 text-[var(--accent)] border-l-2 border-[var(--accent)]'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+                        }`}
+                    >
+                      <span className={`flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 rounded-full text-[9px] sm:text-[10px] font-semibold flex items-center justify-center ${isActive
                         ? 'bg-[var(--accent)] text-[var(--bg-deep)]'
                         : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
                         }`}>
@@ -559,6 +825,65 @@ export default function UserManualPage() {
                 <p className="text-[10px] sm:text-xs md:text-sm text-[var(--text-secondary)]">
                   After selecting your sources, continue with steps 7-11 from the "Join a Club" flow above
                   (Select Venue → Trading Preferences → Agent Assignment → Costs → Monitor Trades).
+                </p>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="relative py-8">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[var(--border)]"></div>
+              </div>
+            </div>
+
+            {/* Section: OpenClaw Setup */}
+            <div className="mb-6 sm:mb-8">
+              <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0">
+                  <Orbit className="h-4 w-4 sm:h-5 sm:w-5 text-[var(--accent)]" />
+                </div>
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">Set Up OpenClaw</h2>
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)]">Deploy your personal AI assistant with Telegram trading</p>
+                </div>
+              </div>
+
+              <div className="p-3 sm:p-4 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 mb-4 sm:mb-6">
+                <p className="text-xs sm:text-sm text-[var(--text-primary)]">
+                  <span className="font-semibold text-[var(--accent)]">OpenClaw</span> is your personal AI assistant instance.
+                  It runs on a dedicated server, connects to your Telegram, and can trade on Ostium via the <span className="font-semibold text-[var(--accent)]">Maxxit Lazy Trading</span> skill.
+                </p>
+              </div>
+
+              <div className="space-y-3 sm:space-y-4">
+                {openclawSteps.map((step) => (
+                  <div key={step.id} id={step.id} className="scroll-mt-32">
+                    <StepCard
+                      step={step}
+                      isExpanded={expandedStep === step.id}
+                      onToggle={() => toggleStep(step.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* OpenClaw welcome image */}
+              <div className="mt-4 sm:mt-6 p-4 sm:p-6 rounded-lg sm:rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30">
+                <h3 className="font-semibold text-[var(--accent)] mb-2 text-sm sm:text-base">🎉 Your OpenClaw is Ready!</h3>
+                <p className="text-xs sm:text-sm text-[var(--text-primary)] mb-4">
+                  Once launched, your bot will greet you on Telegram. Just send a message to start trading!
+                </p>
+                <div className="rounded-lg overflow-hidden border border-[var(--accent)]/30 max-w-sm mx-auto">
+                  <Image
+                    src="/openclaw_welcome.png"
+                    alt="OpenClaw welcome message on Telegram"
+                    width={500}
+                    height={400}
+                    className="w-full h-auto"
+                  />
+                </div>
+                <p className="text-[10px] sm:text-xs text-[var(--text-secondary)] text-center mt-2">
+                  Your OpenClaw bot greeting you on Telegram after launch
                 </p>
               </div>
             </div>
