@@ -501,8 +501,8 @@ function StepCard({ step, isExpanded, onToggle }: { step: Step; isExpanded: bool
 }
 
 export default function UserManualPage() {
-  const [expandedStep, setExpandedStep] = useState<string>('connect-wallet');
-  const [activeSection, setActiveSection] = useState<string>('connect-wallet');
+  const [expandedStep, setExpandedStep] = useState<string>('openclaw-start');
+  const [activeSection, setActiveSection] = useState<string>('openclaw-start');
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   const toggleStep = (stepId: string) => {
@@ -548,7 +548,7 @@ export default function UserManualPage() {
   };
 
   useEffect(() => {
-    const allSteps = [...joinClubSteps, ...createClubSteps, ...openclawSteps];
+    const allSteps = [...openclawSteps, ...joinClubSteps, ...createClubSteps];
 
     const handleScroll = () => {
       const header = document.querySelector('header');
@@ -637,6 +637,38 @@ export default function UserManualPage() {
               className="sticky top-20 sm:top-28 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl p-3 sm:p-4 max-h-[calc(100vh-6rem)] sm:max-h-[calc(100vh-8rem)] overflow-y-auto scroll-smooth"
               style={{ scrollbarWidth: 'thin', overscrollBehavior: 'contain' }}
             >
+              {/* OpenClaw Section */}
+              <h3 className="text-[10px] sm:text-xs font-semibold text-[var(--accent)] uppercase tracking-wide mb-2 sm:mb-3 px-1.5 sm:px-2 flex items-center gap-1.5 sm:gap-2">
+                <Orbit className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                OpenClaw Setup
+              </h3>
+              <nav className="space-y-0.5 sm:space-y-1 mb-3 sm:mb-4">
+                {openclawSteps.map((step) => {
+                  const isActive = activeSection === step.id;
+                  return (
+                    <button
+                      key={step.id}
+                      onClick={() => scrollToStep(step.id)}
+                      className={`w-full flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-[10px] sm:text-xs transition-all duration-200 text-left ${isActive
+                        ? 'bg-[var(--accent)]/20 text-[var(--accent)] border-l-2 border-[var(--accent)]'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+                        }`}
+                    >
+                      <span className={`flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 rounded-full text-[9px] sm:text-[10px] font-semibold flex items-center justify-center ${isActive
+                        ? 'bg-[var(--accent)] text-[var(--bg-deep)]'
+                        : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+                        }`}>
+                        {step.number}
+                      </span>
+                      <span className="truncate font-medium">{step.title}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* Divider */}
+              <div className="border-t border-[var(--border)] my-4"></div>
+
               {/* Join Club Section */}
               <h3 className="text-[10px] sm:text-xs font-semibold text-[var(--accent)] uppercase tracking-wide mb-2 sm:mb-3 px-1.5 sm:px-2 flex items-center gap-1.5 sm:gap-2">
                 <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
@@ -698,38 +730,6 @@ export default function UserManualPage() {
                 })}
               </nav>
 
-              {/* Divider */}
-              <div className="border-t border-[var(--border)] my-4"></div>
-
-              {/* OpenClaw Section */}
-              <h3 className="text-[10px] sm:text-xs font-semibold text-[var(--accent)] uppercase tracking-wide mb-2 sm:mb-3 px-1.5 sm:px-2 flex items-center gap-1.5 sm:gap-2">
-                <Orbit className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
-                OpenClaw Setup
-              </h3>
-              <nav className="space-y-0.5 sm:space-y-1">
-                {openclawSteps.map((step) => {
-                  const isActive = activeSection === step.id;
-                  return (
-                    <button
-                      key={step.id}
-                      onClick={() => scrollToStep(step.id)}
-                      className={`w-full flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-[10px] sm:text-xs transition-all duration-200 text-left ${isActive
-                        ? 'bg-[var(--accent)]/20 text-[var(--accent)] border-l-2 border-[var(--accent)]'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
-                        }`}
-                    >
-                      <span className={`flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 rounded-full text-[9px] sm:text-[10px] font-semibold flex items-center justify-center ${isActive
-                        ? 'bg-[var(--accent)] text-[var(--bg-deep)]'
-                        : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
-                        }`}>
-                        {step.number}
-                      </span>
-                      <span className="truncate font-medium">{step.title}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-
               {/* Additional Links */}
               <div className="mt-6 pt-4 border-t border-[var(--border)]">
                 <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide mb-3 px-2">
@@ -755,6 +755,65 @@ export default function UserManualPage() {
 
           {/* Main Content */}
           <main className="lg:col-span-3 space-y-3 sm:space-y-4 md:space-y-6">
+            {/* Section: OpenClaw Setup */}
+            <div className="mb-6 sm:mb-8">
+              <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0">
+                  <Orbit className="h-4 w-4 sm:h-5 sm:w-5 text-[var(--accent)]" />
+                </div>
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">Set Up OpenClaw</h2>
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)]">Deploy your personal AI assistant with Telegram trading</p>
+                </div>
+              </div>
+
+              <div className="p-3 sm:p-4 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 mb-4 sm:mb-6">
+                <p className="text-xs sm:text-sm text-[var(--text-primary)]">
+                  <span className="font-semibold text-[var(--accent)]">OpenClaw</span> is your personal AI assistant instance.
+                  It runs on a dedicated server, connects to your Telegram, and can trade on Ostium via the <span className="font-semibold text-[var(--accent)]">Maxxit Lazy Trading</span> skill.
+                </p>
+              </div>
+
+              <div className="space-y-3 sm:space-y-4">
+                {openclawSteps.map((step) => (
+                  <div key={step.id} id={step.id} className="scroll-mt-32">
+                    <StepCard
+                      step={step}
+                      isExpanded={expandedStep === step.id}
+                      onToggle={() => toggleStep(step.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* OpenClaw welcome image */}
+              <div className="mt-4 sm:mt-6 p-4 sm:p-6 rounded-lg sm:rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30">
+                <h3 className="font-semibold text-[var(--accent)] mb-2 text-sm sm:text-base">🎉 Your OpenClaw is Ready!</h3>
+                <p className="text-xs sm:text-sm text-[var(--text-primary)] mb-4">
+                  Once launched, your bot will greet you on Telegram. Just send a message to start trading!
+                </p>
+                <div className="rounded-lg overflow-hidden border border-[var(--accent)]/30 max-w-sm mx-auto">
+                  <Image
+                    src="/openclaw_welcome.png"
+                    alt="OpenClaw welcome message on Telegram"
+                    width={500}
+                    height={400}
+                    className="w-full h-auto"
+                  />
+                </div>
+                <p className="text-[10px] sm:text-xs text-[var(--text-secondary)] text-center mt-2">
+                  Your OpenClaw bot greeting you on Telegram after launch
+                </p>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="relative py-8">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[var(--border)]"></div>
+              </div>
+            </div>
+
             {/* Section: Join a Club */}
             <div className="mb-4 sm:mb-6 md:mb-8">
               <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6">
@@ -825,65 +884,6 @@ export default function UserManualPage() {
                 <p className="text-[10px] sm:text-xs md:text-sm text-[var(--text-secondary)]">
                   After selecting your sources, continue with steps 7-11 from the "Join a Club" flow above
                   (Select Venue → Trading Preferences → Agent Assignment → Costs → Monitor Trades).
-                </p>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="relative py-8">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-[var(--border)]"></div>
-              </div>
-            </div>
-
-            {/* Section: OpenClaw Setup */}
-            <div className="mb-6 sm:mb-8">
-              <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[var(--accent)]/20 flex items-center justify-center flex-shrink-0">
-                  <Orbit className="h-4 w-4 sm:h-5 sm:w-5 text-[var(--accent)]" />
-                </div>
-                <div>
-                  <h2 className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">Set Up OpenClaw</h2>
-                  <p className="text-xs sm:text-sm text-[var(--text-secondary)]">Deploy your personal AI assistant with Telegram trading</p>
-                </div>
-              </div>
-
-              <div className="p-3 sm:p-4 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 mb-4 sm:mb-6">
-                <p className="text-xs sm:text-sm text-[var(--text-primary)]">
-                  <span className="font-semibold text-[var(--accent)]">OpenClaw</span> is your personal AI assistant instance.
-                  It runs on a dedicated server, connects to your Telegram, and can trade on Ostium via the <span className="font-semibold text-[var(--accent)]">Maxxit Lazy Trading</span> skill.
-                </p>
-              </div>
-
-              <div className="space-y-3 sm:space-y-4">
-                {openclawSteps.map((step) => (
-                  <div key={step.id} id={step.id} className="scroll-mt-32">
-                    <StepCard
-                      step={step}
-                      isExpanded={expandedStep === step.id}
-                      onToggle={() => toggleStep(step.id)}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {/* OpenClaw welcome image */}
-              <div className="mt-4 sm:mt-6 p-4 sm:p-6 rounded-lg sm:rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30">
-                <h3 className="font-semibold text-[var(--accent)] mb-2 text-sm sm:text-base">🎉 Your OpenClaw is Ready!</h3>
-                <p className="text-xs sm:text-sm text-[var(--text-primary)] mb-4">
-                  Once launched, your bot will greet you on Telegram. Just send a message to start trading!
-                </p>
-                <div className="rounded-lg overflow-hidden border border-[var(--accent)]/30 max-w-sm mx-auto">
-                  <Image
-                    src="/openclaw_welcome.png"
-                    alt="OpenClaw welcome message on Telegram"
-                    width={500}
-                    height={400}
-                    className="w-full h-auto"
-                  />
-                </div>
-                <p className="text-[10px] sm:text-xs text-[var(--text-secondary)] text-center mt-2">
-                  Your OpenClaw bot greeting you on Telegram after launch
                 </p>
               </div>
             </div>
