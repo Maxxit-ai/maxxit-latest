@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, BookOpen, Wallet, Shield, Zap, TrendingUp, AlertTriangle, Lock, Users, Target, BarChart3, MessageSquare, Bot, Brain } from 'lucide-react';
+import { ArrowLeft, BookOpen, Wallet, Shield, Zap, TrendingUp, AlertTriangle, Lock, Users, Target, BarChart3, MessageSquare, Bot, Brain, Orbit } from 'lucide-react';
+import Image from 'next/image';
 import { Header } from '@components/Header';
 import FooterSection from '@components/home/FooterSection';
 
@@ -21,6 +22,7 @@ export default function DocsPage() {
     { id: 'agent-where', title: 'Agent WHERE', icon: Zap },
     { id: 'ostium', title: 'Ostium Trading', icon: TrendingUp },
     { id: 'telegram', title: 'Telegram Integration', icon: MessageSquare },
+    { id: 'openclaw', title: 'OpenClaw Setup', icon: Orbit },
     { id: 'risks', title: 'Risks & Disclaimers', icon: AlertTriangle },
   ];
 
@@ -820,6 +822,352 @@ export default function DocsPage() {
                       <strong className="text-[var(--accent)]"> Agent HOW</strong> sizes the position, and
                       <strong className="text-[var(--accent)]"> Agent WHERE</strong> executes and monitors.
                     </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+
+            {/* OpenClaw Setup */}
+            <section id="openclaw" className="scroll-mt-32">
+              <Card className="bg-[var(--bg-surface)] border-[var(--accent)]/30 hover:border-[var(--accent)]/50 transition-colors shadow-[0_0_20px_var(--accent-glow)]">
+                <CardHeader className="border-b border-[var(--accent)]/20">
+                  <CardTitle className="flex items-center gap-3 text-[var(--accent)]">
+                    <Orbit className="h-6 w-6" />
+                    OpenClaw Setup
+                  </CardTitle>
+                  <CardDescription className="text-[var(--text-secondary)] mt-2">
+                    Set up your personal AI assistant with Maxxit Lazy Trading skill
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <p className="text-[var(--text-primary)]">
+                    <strong className="text-[var(--accent)]">OpenClaw</strong> is your personal AI assistant instance on Maxxit.
+                    It runs on a dedicated server, connects to your Telegram bot, and can be extended with powerful skills — including the
+                    <strong className="text-[var(--accent)]"> Maxxit Lazy Trading</strong> skill that lets you execute trades on Ostium by simply sending a message.
+                  </p>
+
+                  <div className="bg-[var(--accent)]/10 p-4 rounded-lg border border-[var(--accent)]/30 shadow-[0_0_15px_var(--accent-glow)]">
+                    <h4 className="font-semibold mb-2 flex items-center gap-2 text-[var(--accent)]">
+                      <Zap className="h-4 w-4" />
+                      What You Get
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-[var(--text-primary)]">
+                      <div className="flex items-start gap-2">
+                        <span className="text-[var(--accent)]">✓</span>
+                        <span><strong>Dedicated Instance</strong> — Isolated runtime with your own config</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-[var(--accent)]">✓</span>
+                        <span><strong>Telegram Ready</strong> — Connect once and chat from your phone</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-[var(--accent)]">✓</span>
+                        <span><strong>LLM Budget Included</strong> — Simple monthly limits per plan</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Landing Page */}
+                  <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                    <Image src="/openclaw_images/01-landing-page.png" alt="OpenClaw landing page" width={800} height={450} className="w-full h-auto" />
+                  </div>
+
+                  <Separator />
+
+                  {/* Step 1: Choose Plan */}
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent)] text-[var(--bg-deep)] flex items-center justify-center text-sm font-semibold">1</div>
+                      Choose Your Plan
+                    </h4>
+                    <p className="text-sm text-[var(--text-secondary)] ml-10">
+                      Select a plan that fits your needs. Each plan includes hosting, usage tracking, and Telegram integration.
+                      The <strong className="text-[var(--accent)]">Starter</strong> plan ($29/mo) includes $2 LLM usage with all models.
+                      The <strong className="text-[var(--accent)]">Pro</strong> plan ($49/mo) includes $20 LLM usage plus custom skills.
+                    </p>
+                    <div className="rounded-lg overflow-hidden border border-[var(--border)] ml-10">
+                      <Image src="/openclaw_images/02-plan-selection.png" alt="Choose your plan" width={800} height={450} className="w-full h-auto" />
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Step 2: Telegram Bot */}
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent)] text-[var(--bg-deep)] flex items-center justify-center text-sm font-semibold">2</div>
+                      Create Your Telegram Bot
+                    </h4>
+                    <p className="text-sm text-[var(--text-secondary)] ml-10">
+                      After selecting your plan and model, you'll create your own private Telegram bot. Messages you send to this bot go directly to your OpenClaw instance.
+                    </p>
+
+                    <div className="ml-10 space-y-4">
+                      <div className="bg-[var(--bg-elevated)] p-4 rounded-lg border border-[var(--border)]">
+                        <h5 className="font-semibold text-sm text-[var(--accent)] mb-2">Setup Guide</h5>
+                        <ol className="list-decimal list-inside space-y-1 text-sm text-[var(--text-primary)]">
+                          <li>Open <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] underline">@BotFather</a> in Telegram</li>
+                          <li>Send <code className="bg-[var(--bg-deep)] px-1.5 py-0.5 rounded text-[var(--accent)]">/newbot</code> and follow the prompts</li>
+                          <li>Copy the bot token BotFather gives you</li>
+                          <li>Paste it in the setup page</li>
+                        </ol>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Creating a bot with BotFather</p>
+                          <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                            <Image src="/openclaw_images/04-botfather-newbot.png" alt="BotFather /newbot" width={400} height={250} className="w-full h-auto" />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Bot created — copy the token</p>
+                          <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                            <Image src="/openclaw_images/05-botfather-token.png" alt="BotFather token" width={400} height={250} className="w-full h-auto" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                        <Image src="/openclaw_images/03-telegram-bot-token.png" alt="Paste bot token" width={800} height={450} className="w-full h-auto" />
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Paste your bot token and click "Verify & Connect Bot"
+                      </p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Step 3: Verify Telegram */}
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent)] text-[var(--bg-deep)] flex items-center justify-center text-sm font-semibold">3</div>
+                      Verify Your Telegram Account
+                    </h4>
+                    <p className="text-sm text-[var(--text-secondary)] ml-10">
+                      After connecting your bot, you need to verify your Telegram account by sending a message to it.
+                      This links your Telegram ID for secure access.
+                    </p>
+
+                    <div className="ml-10 space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Bot connected — verification required</p>
+                          <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                            <Image src="/openclaw_images/06-bot-verification-required.png" alt="Verification required" width={400} height={250} className="w-full h-auto" />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Send /start to verify</p>
+                          <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                            <Image src="/openclaw_images/07-telegram-start-verify.png" alt="Verification successful" width={400} height={250} className="w-full h-auto" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                        <Image src="/openclaw_images/08-bot-verified.png" alt="Verified and ready" width={800} height={450} className="w-full h-auto" />
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Once verified, your Telegram account is linked and ready.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Step 4: OpenAI Key */}
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent)] text-[var(--bg-deep)] flex items-center justify-center text-sm font-semibold">4</div>
+                      Create OpenAI API Key
+                    </h4>
+                    <p className="text-sm text-[var(--text-secondary)] ml-10">
+                      Maxxit generates a personal OpenAI API key for your instance. This enables accurate usage tracking per model
+                      and enforces plan-based limits. Your monthly LLM budget is included in your plan.
+                    </p>
+
+                    <div className="ml-10 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Create your API key</p>
+                        <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                          <Image src="/openclaw_images/09-openai-key-create.png" alt="Create OpenAI key" width={400} height={250} className="w-full h-auto" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Key created successfully</p>
+                        <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                          <Image src="/openclaw_images/10-openai-key-created.png" alt="OpenAI key created" width={400} height={250} className="w-full h-auto" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Step 5: Maxxit Lazy Trading Skill */}
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent)] text-[var(--bg-deep)] flex items-center justify-center text-sm font-semibold">5</div>
+                      Enable Maxxit Lazy Trading Skill
+                    </h4>
+                    <p className="text-sm text-[var(--text-secondary)] ml-10">
+                      This is the key step! The <strong className="text-[var(--accent)]">Maxxit Lazy Trading</strong> skill lets you execute trades on Ostium
+                      by simply sending a message to your OpenClaw bot. Click "Enable Skill" to begin the setup.
+                    </p>
+
+                    <div className="ml-10 space-y-6">
+                      {/* 5a: Enable Skill */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-[var(--accent)]/20 text-[var(--accent)] border-[var(--accent)]/40">Step 5a</Badge>
+                          <h5 className="font-semibold text-sm">Enable the Skill</h5>
+                        </div>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          On the Skills step, click <strong className="text-[var(--accent)]">"Enable Skill"</strong> next to Maxxit Lazy Trading.
+                        </p>
+                        <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                          <Image src="/openclaw_images/11-skills-enable.png" alt="Enable Skill" width={800} height={450} className="w-full h-auto" />
+                        </div>
+                      </div>
+
+                      {/* 5b: Set Up Trading Agent */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-[var(--accent)]/20 text-[var(--accent)] border-[var(--accent)]/40">Step 5b</Badge>
+                          <h5 className="font-semibold text-sm">Set Up Trading Agent</h5>
+                        </div>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          Click <strong className="text-[var(--accent)]">"Set Up Trading Agent"</strong>. This creates a dedicated trading agent and sets up on-chain permissions.
+                        </p>
+                        <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                          <Image src="/openclaw_images/12-skills-setup-agent.png" alt="Set Up Trading Agent" width={800} height={450} className="w-full h-auto" />
+                        </div>
+                      </div>
+
+                      {/* 5c: On-chain Setup */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-[var(--accent)]/20 text-[var(--accent)] border-[var(--accent)]/40">Step 5c</Badge>
+                          <h5 className="font-semibold text-sm">Approve On-Chain Permissions</h5>
+                        </div>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          You'll be asked to approve two on-chain transactions via MetaMask:
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="p-3 bg-[var(--bg-elevated)] rounded border border-[var(--border)]">
+                            <h6 className="font-semibold text-sm text-[var(--accent)] mb-1">1. Delegation</h6>
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              Allow your trading agent to trade on Ostium on your behalf. The agent <strong className="text-[var(--accent)]">cannot withdraw funds</strong>.
+                            </p>
+                          </div>
+                          <div className="p-3 bg-[var(--bg-elevated)] rounded border border-[var(--border)]">
+                            <h6 className="font-semibold text-sm text-[var(--accent)] mb-1">2. USDC Approval</h6>
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              Allow Ostium to use your USDC for trading. Your funds stay in your wallet at all times.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                          <Image src="/openclaw_images/13-skills-delegation-usdc.png" alt="Delegation and USDC approved" width={800} height={450} className="w-full h-auto" />
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)]">
+                          Once both approvals are confirmed, click "Create Deployment & Continue".
+                        </p>
+                      </div>
+
+                      {/* 5d: Generate API Key */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-[var(--accent)]/20 text-[var(--accent)] border-[var(--accent)]/40">Step 5d</Badge>
+                          <h5 className="font-semibold text-sm">Generate API Key</h5>
+                        </div>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          After the trading setup is complete, generate an API key to connect the skill to your OpenClaw instance.
+                          This key is securely stored and configured automatically.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Generate API Key</p>
+                            <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                              <Image src="/openclaw_images/14-skills-generate-key.png" alt="Generate API Key" width={400} height={250} className="w-full h-auto" />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">API Key generated — Ready!</p>
+                            <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                              <Image src="/openclaw_images/15-skills-key-generated.png" alt="API Key generated" width={400} height={250} className="w-full h-auto" />
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)]">
+                          Click "Continue with Skill" to proceed to the final launch step.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Step 6: Launch */}
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent)] text-[var(--bg-deep)] flex items-center justify-center text-sm font-semibold">6</div>
+                      Launch Your OpenClaw
+                    </h4>
+                    <p className="text-sm text-[var(--text-secondary)] ml-10">
+                      Review your setup summary and click <strong className="text-[var(--accent)]">"Launch OpenClaw"</strong> to spin up your instance.
+                      Once launched, your instance will be active and ready to receive messages via your Telegram bot.
+                    </p>
+
+                    <div className="ml-10 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Review & Launch</p>
+                        <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                          <Image src="/openclaw_images/17-launch-review.png" alt="Launch OpenClaw" width={400} height={250} className="w-full h-auto" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Instance launching</p>
+                        <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                          <Image src="/openclaw_images/18-launch-deploying.png" alt="Launching instance" width={400} height={250} className="w-full h-auto" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Usage Guide */}
+                  <div className="bg-[var(--accent)]/10 p-5 rounded-lg border border-[var(--accent)]/30 shadow-[0_0_15px_var(--accent-glow)]">
+                    <h4 className="font-semibold text-[var(--accent)] mb-3">🎉 You're All Set!</h4>
+                    <p className="text-sm text-[var(--text-primary)] mb-3">
+                      Once your instance is running, open your Telegram bot and start trading. With the Maxxit Lazy Trading skill enabled, you can:
+                    </p>
+                    <div className="bg-[var(--bg-elevated)] p-3 rounded border border-[var(--accent)]/30 font-mono text-sm mb-3">
+                      <p className="text-[var(--accent)]">
+                        "Hey buy BTC now if the market looks bullish and close the trade with sufficient profit"
+                      </p>
+                    </div>
+                    <p className="text-sm text-[var(--text-primary)] mb-4">
+                      Your OpenClaw instance processes the message, analyzes market conditions, sizes the position to your risk preferences,
+                      and executes the trade on Ostium — all <strong className="text-[var(--accent)]">non-custodially</strong> via delegation.
+                    </p>
+                    <div className="rounded-lg overflow-hidden border border-[var(--accent)]/30 max-w-md mx-auto">
+                      <Image src="/openclaw_welcome.png" alt="OpenClaw welcome message on Telegram" width={500} height={400} className="w-full h-auto" />
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] text-center mt-2">
+                      Your OpenClaw bot greeting you on Telegram after launch
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Link href="/openclaw">
+                      <Button data-testid="button-setup-openclaw">
+                        Set Up OpenClaw
+                      </Button>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>
