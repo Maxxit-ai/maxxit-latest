@@ -1,9 +1,9 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.1.0
+version: 1.2.0
 author: Maxxit
-description: Execute perpetual trades on Ostium via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, and fetching market data.
+description: Execute perpetual trades on Ostium via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, and copy-trading other OpenClaw agents.
 homepage: https://maxxit.ai
 repository: https://github.com/Maxxit-ai/maxxit-latest
 disableModelInvocation: true
@@ -45,6 +45,10 @@ Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Tradin
 - User wants to fetch current token/market prices
 - User mentions "lazy trade", "perps", "perpetuals", or "futures trading"
 - User wants to automate their trading workflow
+- User wants to copy-trade or mirror another trader's positions
+- User wants to discover other OpenClaw agents to learn from
+- User wants to see what trades top-performing traders are making
+- User wants to find high-impact-factor traders to replicate
 
 ---
 
@@ -69,6 +73,7 @@ The following shows where each required parameter comes from. **Always resolve d
 | `leverage` | User specifies the multiplier | User input (required) |
 | `takeProfitPercent` | User specifies (e.g., 0.30 = 30%) | User input (required) |
 | `stopLossPercent` | User specifies (e.g., 0.10 = 10%) | User input (required) |
+| `address` (for copy-trader-trades) | `/copy-traders` response → `creatorWallet` or `walletAddress` | `GET /copy-traders` |
 
 ### Mandatory Workflow Rules
 
@@ -666,6 +671,160 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/price?token=BTC&
 }
 ```
 
+### Discover Traders to Copy (Copy Trading — Step 1)
+
+Discover other OpenClaw Traders and top-performing traders to potentially copy-trade. This is the **first step** in the copy-trading workflow — the returned wallet addresses are used as the `address` parameter in the `/copy-trader-trades` endpoint.
+
+> **⚠️ Dependency Chain**: This endpoint provides the wallet addresses needed by `/copy-trader-trades`. You MUST call this endpoint FIRST to get trader addresses — do NOT guess or hardcode addresses.
+
+```bash
+# Get all traders (OpenClaw + Leaderboard)
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-traders" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+
+# Get only OpenClaw Traders (prioritized)
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-traders?source=openclaw" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+
+# Get only Leaderboard traders with filters
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-traders?source=leaderboard&minImpactFactor=50&minTrades=100" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | string | `all` | `openclaw` (OpenClaw agents only), `leaderboard` (top traders only), `all` (both) |
+| `limit` | int | 20 | Max results per tier (max 100) |
+| `minTrades` | int | — | Min trade count filter (leaderboard only) |
+| `minImpactFactor` | float | — | Min impact factor filter (leaderboard only) |
+
+**Response:**
+```json
+{
+  "success": true,
+  "openclawTraders": [
+    {
+      "agentId": "3dbc322f-...",
+      "agentName": "OpenClaw Trader - 140226114735",
+      "creatorWallet": "0x4e7f1e29d9e1f81c3e9249e3444843c2006f3325",
+      "venue": "OSTIUM",
+      "status": "PRIVATE",
+      "isCopyTradeClub": false,
+      "performance": {
+        "apr30d": 0,
+        "apr90d": 0,
+        "aprSinceInception": 0,
+        "sharpe30d": 0
+      },
+      "deployment": {
+        "id": "dep-uuid",
+        "status": "ACTIVE",
+        "safeWallet": "0x...",
+        "isTestnet": false
+      }
+    }
+  ],
+  "topTraders": [
+    {
+      "walletAddress": "0xabc...",
+      "totalVolume": "1500000.000000",
+      "totalClosedVolume": "1200000.000000",
+      "totalPnl": "85000.000000",
+      "totalProfitTrades": 120,
+      "totalLossTrades": 30,
+      "totalTrades": 150,
+      "winRate": 0.80,
+      "lastActiveAt": "2026-02-15T10:30:00.000Z",
+      "scores": {
+        "edgeScore": 0.82,
+        "consistencyScore": 0.75,
+        "stakeScore": 0.68,
+        "freshnessScore": 0.92,
+        "impactFactor": 72.5
+      },
+      "updatedAt": "2026-02-17T06:00:00.000Z"
+    }
+  ],
+  "openclawCount": 5,
+  "topTradersCount": 20
+}
+```
+
+**Key fields to use in next steps:**
+- `openclawTraders[].creatorWallet` → use as `address` in `/copy-trader-trades`
+- `topTraders[].walletAddress` → use as `address` in `/copy-trader-trades`
+
+### Get Trader's Recent Trades (Copy Trading — Step 2)
+
+Fetch recent on-chain trades for a specific trader address. This queries the Ostium subgraph in real-time for fresh trade data.
+
+> **⚠️ Dependency**: The `address` parameter MUST come from the `/copy-traders` endpoint response:
+> - For OpenClaw traders: use `creatorWallet` from `openclawTraders[]`
+> - For leaderboard traders: use `walletAddress` from `topTraders[]`
+>
+> **NEVER guess or hardcode the address.** Always call `/copy-traders` first.
+
+```bash
+# Step 1: Discover traders first
+TRADER_ADDRESS=$(curl -s -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-traders?source=openclaw" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" | jq -r '.openclawTraders[0].creatorWallet')
+
+# Step 2: Fetch their recent trades
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-trader-trades?address=${TRADER_ADDRESS}" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+
+# With custom lookback and limit
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-trader-trades?address=${TRADER_ADDRESS}&hours=48&limit=50" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `address` | string | *required* | Trader wallet address (from `/copy-traders`) |
+| `limit` | int | 20 | Max trades to return (max 50) |
+| `hours` | int | 24 | Lookback window in hours (max 168 / 7 days) |
+
+**Response:**
+```json
+{
+  "success": true,
+  "traderAddress": "0x4e7f1e29d9e1f81c3e9249e3444843c2006f3325",
+  "trades": [
+    {
+      "tradeId": "0x123...",
+      "side": "LONG",
+      "tokenSymbol": "BTC",
+      "pair": "BTC/USD",
+      "collateral": 500.00,
+      "leverage": 10.0,
+      "entryPrice": 95000.50,
+      "takeProfitPrice": 100000.00,
+      "stopLossPrice": 90000.00,
+      "timestamp": "2026-02-17T14:30:00.000Z"
+    }
+  ],
+  "count": 5,
+  "lookbackHours": 24
+}
+```
+
+**Trade Field Descriptions:**
+| Field | Description |
+|-------|-------------|
+| `side` | `"LONG"` or `"SHORT"` — the trade direction |
+| `tokenSymbol` | Token being traded (e.g., `BTC`, `ETH`) |
+| `pair` | Full pair label (e.g., `BTC/USD`) |
+| `collateral` | USDC amount used as collateral |
+| `leverage` | Leverage multiplier (e.g., 10.0 = 10x) |
+| `entryPrice` | Price at which the trade was opened |
+| `takeProfitPrice` | Take profit price (null if not set) |
+| `stopLossPrice` | Stop loss price (null if not set) |
+| `timestamp` | When the trade was opened |
+
+> **Next step**: After reviewing the trades, use `/open-position` to open a similar position. You'll need your own `agentAddress` and `userAddress` from `/club-details`.
+
 ## Signal Format Examples
 
 The lazy trading system processes natural language trading signals. Here are examples:
@@ -772,6 +931,44 @@ Step 3: POST /positions (address = user_wallet)
 
 Step 4 (optional): GET /market-data
    → Show market conditions for tokens they hold
+```
+
+### Workflow 5: Copy-Trading Another OpenClaw Agent (Full Flow)
+
+```
+Step 1: GET /copy-traders?source=openclaw
+   → Discover other OpenClaw Trader agents
+   → Extract: creatorWallet from the trader you want to copy
+   → IMPORTANT: This is a REQUIRED first step — you cannot call
+     /copy-trader-trades without an address from this endpoint
+
+Step 2: GET /copy-trader-trades?address={creatorWallet}
+   → Fetch recent trades for that trader from the Ostium subgraph
+   → Review: side (LONG/SHORT), tokenSymbol, leverage, collateral, entry price
+   → Decide: "Should I copy this trade?"
+   → DEPENDENCY: The address param comes from Step 1 (creatorWallet or walletAddress)
+
+Step 3: GET /club-details
+   → Get YOUR OWN userAddress (user_wallet) and agentAddress (ostium_agent_address)
+   → These are needed to execute your own trade
+
+Step 4: POST /open-position
+   → Mirror the trade from Step 2 using your own addresses from Step 3:
+     - market = tokenSymbol from the copied trade
+     - side = side from the copied trade (LONG/SHORT → long/short)
+     - collateral = decide based on your own risk tolerance
+     - leverage = match the copied trader's leverage or adjust
+   → SAVE: actualTradeIndex and entryPrice from response
+
+Step 5 (optional): POST /set-take-profit and/or POST /set-stop-loss
+   → Use actualTradeIndex and entryPrice from Step 4
+   → Match the copied trader's TP/SL ratios or set your own
+```
+
+**Dependency Chain Summary:**
+```
+/copy-traders → provides address → /copy-trader-trades → provides trade details
+/club-details → provides your addresses → /open-position → copies the trade
 ```
 
 ---
