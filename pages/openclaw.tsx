@@ -235,6 +235,13 @@ export default function OpenClawSetupPage() {
   const [enablingTrading, setEnablingTrading] = useState(false);
   const [hasDeployment, setHasDeployment] = useState(false);
 
+  // Aster DEX state
+  const [asterEnabled, setAsterEnabled] = useState(false);
+  const [asterAgentAddress, setAsterAgentAddress] = useState<string | null>(null);
+  const [asterConfigured, setAsterConfigured] = useState(false);
+  const [isSavingAsterConfig, setIsSavingAsterConfig] = useState(false);
+  const [asterShowGuide, setAsterShowGuide] = useState(false);
+
   const [openaiKeyStatus, setOpenaiKeyStatus] = useState<'not_created' | 'creating' | 'created'>('not_created');
   const [openaiKeyPrefix, setOpenaiKeyPrefix] = useState<string | null>(null);
   const [openaiKeyCreatedAt, setOpenaiKeyCreatedAt] = useState<string | null>(null);
@@ -481,6 +488,29 @@ export default function OpenClawSetupPage() {
       })();
     }
   }, [pendingPaymentPlan, walletAddress, isLoading, markComplete]);
+
+  // Check if Aster is configured (agent wallet exists + aster_enabled)
+  useEffect(() => {
+    if (!walletAddress || !authenticated) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/lazy-trading/check-aster-config?userWallet=${walletAddress}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.configured) {
+            setAsterConfigured(true);
+            setAsterAgentAddress(data.agentAddress || null);
+          }
+          if (data.asterEnabled) {
+            setAsterEnabled(true);
+          }
+        }
+      } catch (err) {
+        console.error('[OpenClaw] Failed to check Aster config:', err);
+      }
+    })();
+  }, [walletAddress, authenticated]);
 
   useEffect(() => {
     if (!walletAddress || currentStepKey !== "telegram" || !telegramLinked || telegramVerified) {
@@ -1557,8 +1587,8 @@ export default function OpenClawSetupPage() {
                           {/* Progress indicators */}
                           <div className="space-y-3">
                             <div className={`flex items-center gap-3 p-3 rounded-lg border ${delegationComplete
-                                ? "border-green-500/50 bg-green-500/5"
-                                : "border-[var(--border)]"
+                              ? "border-green-500/50 bg-green-500/5"
+                              : "border-[var(--border)]"
                               }`}>
                               {delegationComplete ? (
                                 <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
@@ -1576,8 +1606,8 @@ export default function OpenClawSetupPage() {
                             </div>
 
                             <div className={`flex items-center gap-3 p-3 rounded-lg border ${allowanceComplete
-                                ? "border-green-500/50 bg-green-500/5"
-                                : "border-[var(--border)]"
+                              ? "border-green-500/50 bg-green-500/5"
+                              : "border-[var(--border)]"
                               }`}>
                               {allowanceComplete ? (
                                 <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
@@ -1794,6 +1824,149 @@ export default function OpenClawSetupPage() {
                           </button>
                         </div>
                       ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Aster DEX (BNB Chain) Card */}
+                <div className={`border rounded-lg p-5 transition-all ${asterEnabled
+                  ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                  : "border-[var(--border)]"
+                  }`}>
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl">🌟</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold">Aster DEX (BNB Chain)</h3>
+                        {asterEnabled && (
+                          <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                            Enabled
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[var(--text-secondary)] mb-4">
+                        Trade perpetual futures on BNB Chain using your agent wallet.
+                      </p>
+
+                      {!ostiumAgentAddress ? (
+                        <p className="text-xs text-[var(--text-muted)] italic">
+                          Complete the Ostium 1-click trading setup above first to create an agent wallet.
+                        </p>
+                      ) : asterEnabled ? (
+                        <div className="space-y-3">
+                          <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
+                            <p className="text-sm text-green-400 mb-1">
+                              <strong>Aster DEX Enabled ✓</strong>
+                            </p>
+                            <p className="text-xs text-[var(--text-muted)]">
+                              Your agent wallet <code className="bg-[var(--bg-deep)] px-1.5 py-0.5 rounded text-xs">{ostiumAgentAddress}</code> is authorized for Aster trading.
+                            </p>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              setIsSavingAsterConfig(true);
+                              try {
+                                const res = await fetch("/api/lazy-trading/save-aster-credentials", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ userWallet: walletAddress, enabled: false }),
+                                });
+                                const data = await res.json();
+                                if (data.success) setAsterEnabled(false);
+                              } catch { } finally {
+                                setIsSavingAsterConfig(false);
+                              }
+                            }}
+                            className="text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                          >
+                            Disable Aster
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* Agent address display */}
+                          <div className="bg-[var(--bg-deep)] border border-[var(--border)] rounded-lg p-3">
+                            <p className="text-xs text-[var(--text-muted)] mb-1">Your Agent Address</p>
+                            <p className="text-sm font-mono break-all">{ostiumAgentAddress}</p>
+                          </div>
+
+                          {/* Instructions */}
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium">To enable Aster trading:</p>
+                            <ol className="text-sm text-[var(--text-secondary)] list-decimal list-inside space-y-1">
+                              <li>Go to Aster&apos;s API Wallet page</li>
+                              <li>Click &quot;Authorize new API wallet&quot;</li>
+                              <li>Paste your agent address above as the &quot;API wallet address&quot;</li>
+                              <li>Click &quot;Authorize&quot; to grant it trading permission</li>
+                              <li>Come back here and click &quot;Enable Aster&quot;</li>
+                            </ol>
+                          </div>
+
+                          {/* Guide images toggle */}
+                          <button
+                            onClick={() => setAsterShowGuide(!asterShowGuide)}
+                            className="text-xs text-[var(--accent)] hover:underline flex items-center gap-1"
+                          >
+                            {asterShowGuide ? "Hide" : "Show"} visual guide ▾
+                          </button>
+
+                          {asterShowGuide && (
+                            <div className="space-y-3">
+                              <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                                <img src="/aster-finance/aster-wallet-api.png" alt="Authorize API wallet on Aster" className="w-full" />
+                                <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">Step 1: Enter your agent address and click Authorize</p>
+                              </div>
+                              <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                                <img src="/aster-finance/aster-wallet-api-2.png" alt="Authorized agent wallet on Aster" className="w-full" />
+                                <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">Step 2: Your agent wallet should appear in the list</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action buttons */}
+                          <div className="flex gap-3">
+                            <a
+                              href="https://www.asterdextestnet.com/en/api-wallet"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 py-2.5 text-center border border-[var(--border)] rounded-lg text-sm hover:border-[var(--accent)] transition-colors"
+                            >
+                              Open Aster API Wallet ↗
+                            </a>
+                            <button
+                              onClick={async () => {
+                                setIsSavingAsterConfig(true);
+                                setErrorMessage("");
+                                try {
+                                  const res = await fetch("/api/lazy-trading/save-aster-credentials", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ userWallet: walletAddress, enabled: true }),
+                                  });
+                                  const data = await res.json();
+                                  if (data.success) {
+                                    setAsterEnabled(true);
+                                  } else {
+                                    setErrorMessage(data.error || "Failed to enable Aster");
+                                  }
+                                } catch {
+                                  setErrorMessage("Failed to enable Aster");
+                                } finally {
+                                  setIsSavingAsterConfig(false);
+                                }
+                              }}
+                              disabled={isSavingAsterConfig}
+                              className="flex-1 py-2.5 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                            >
+                              {isSavingAsterConfig ? (
+                                <><Loader2 className="w-4 h-4 animate-spin" /> Enabling...</>
+                              ) : (
+                                "Enable Aster"
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

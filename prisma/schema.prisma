@@ -44,6 +44,7 @@ model user_agent_addresses {
   ostium_agent_key_encrypted      String?
   ostium_agent_key_iv             String?
   ostium_agent_key_tag            String?
+  aster_enabled                   Boolean   @default(false)
   created_at                      DateTime  @default(now()) @db.Timestamptz(6)
   last_used_at                    DateTime? @db.Timestamptz(6)
 

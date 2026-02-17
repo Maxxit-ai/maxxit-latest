@@ -776,6 +776,331 @@ Step 4 (optional): GET /market-data
 
 ---
 
+## Aster DEX (BNB Chain) Endpoints
+
+> Aster DEX is a perpetual futures exchange on BNB Chain. Use Aster endpoints when the user wants to trade on BNB Chain. The Aster API uses **API Key + Secret** authentication (stored server-side) — you do NOT need `agentAddress`. You only need `userAddress` from `/club-details`.
+
+### Venue Selection
+
+| Venue | Chain | Symbol Format | Auth Required | When to Use |
+|-------|-------|--------------|---------------|-------------|
+| **Ostium** | Arbitrum | `BTC`, `ETH` | `agentAddress` + `userAddress` | Default for most trades |
+| **Aster** | BNB Chain | `BTCUSDT`, `ETHUSDT` | `userAddress` only | When user specifies BNB Chain or Aster |
+
+**How to check if Aster is configured:** In the `/club-details` response, `aster_configured: true` means the user has set up Aster API keys. If `false`, direct them to set up Aster at maxxit.ai/openclaw.
+
+### Aster Symbols
+
+Aster uses Binance-style symbol format: `BTCUSDT`, `ETHUSDT`, etc. The API auto-appends `USDT` if you pass just `BTC`.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/symbols" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "symbols": [
+    {
+      "symbol": "BTCUSDT",
+      "baseAsset": "BTC",
+      "quoteAsset": "USDT",
+      "pricePrecision": 2,
+      "quantityPrecision": 3,
+      "contractType": "PERPETUAL",
+      "status": "TRADING"
+    }
+  ],
+  "count": 50
+}
+```
+
+### Aster Price
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/price?token=BTC" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "token": "BTC",
+  "symbol": "BTCUSDT",
+  "price": 95000.50
+}
+```
+
+### Aster Market Data
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/market-data?symbol=BTC" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+### Aster Balance
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/balance" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x..."
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "userAddress": "0x..."    // REQUIRED — from /club-details → user_wallet. NEVER guess.
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "balance": 1000.50,
+  "availableBalance": 800.25,
+  "unrealizedProfit": 50.10
+}
+```
+
+### Aster Positions
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/positions" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x..."
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "positions": [
+    {
+      "symbol": "BTCUSDT",
+      "positionAmt": 0.01,
+      "entryPrice": 95000.0,
+      "markPrice": 96000.0,
+      "unrealizedProfit": 10.0,
+      "liquidationPrice": 80000.0,
+      "leverage": 10,
+      "side": "long"
+    }
+  ],
+  "count": 1
+}
+```
+
+### Aster Open Position
+
+**Option A — Specify size in base asset (e.g. BTC):**
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/open-position" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "symbol": "BTC",
+    "side": "long",
+    "quantity": 0.01,
+    "leverage": 10
+  }'
+```
+
+**Option B — Specify size in USDT (collateral):**
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/open-position" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "symbol": "BTC",
+    "side": "long",
+    "collateral": 100,
+    "leverage": 10
+  }'
+```
+
+**Request Body (provide EITHER `quantity` OR `collateral`):**
+```json
+{
+  "userAddress": "0x...",     // REQUIRED — from /club-details → user_wallet
+  "symbol": "BTC",           // REQUIRED — Token name or full symbol (BTCUSDT)
+  "side": "long",            // REQUIRED — "long" or "short". ASK the user.
+  "quantity": 0.01,          // Option A — Position size in base asset (e.g. 0.01 BTC)
+  "collateral": 100,         // Option B — Position size in USDT (e.g. 100 USDT)
+  "leverage": 10,            // Optional — Leverage multiplier. ASK the user.
+  "type": "MARKET",          // Optional — "MARKET" (default) or "LIMIT"
+  "price": 95000             // Required only for LIMIT orders
+}
+```
+
+> ⚠️ **IMPORTANT:** Provide EITHER `quantity` (base asset, e.g. 0.01 BTC) OR `collateral` (USDT amount, e.g. 100 USDT), NOT both. If the user says "trade $100 of BTC", use `collateral` — the server auto-fetches the current price and converts to the correct quantity. If the user says "buy 0.01 BTC", use `quantity`.
+
+**Response (IMPORTANT — save these values):**
+```json
+{
+  "success": true,
+  "orderId": 12345678,
+  "symbol": "BTCUSDT",
+  "side": "BUY",
+  "status": "FILLED",
+  "avgPrice": "95000.50",
+  "executedQty": "0.010",
+  "message": "Position opened: long BTCUSDT"
+}
+```
+
+### Aster Close Position
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/close-position" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "symbol": "BTC"
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "userAddress": "0x...",    // REQUIRED
+  "symbol": "BTC",          // REQUIRED
+  "quantity": 0.005         // Optional — omit to close full position
+}
+```
+
+### Aster Set Take Profit
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/set-take-profit" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "symbol": "BTC",
+    "takeProfitPercent": 0.30,
+    "entryPrice": 95000,
+    "side": "long"
+  }'
+```
+
+**Request Body (two options):**
+```json
+{
+  "userAddress": "0x...",
+  "symbol": "BTC",
+  "stopPrice": 123500          // Option A: exact trigger price
+}
+```
+```json
+{
+  "userAddress": "0x...",
+  "symbol": "BTC",
+  "takeProfitPercent": 0.30,   // Option B: percentage (0.30 = 30%)
+  "entryPrice": 95000,
+  "side": "long"
+}
+```
+
+### Aster Set Stop Loss
+
+Same pattern as take profit:
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/set-stop-loss" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "symbol": "BTC",
+    "stopLossPercent": 0.10,
+    "entryPrice": 95000,
+    "side": "long"
+  }'
+```
+
+### Aster Change Leverage
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/change-leverage" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "symbol": "BTC",
+    "leverage": 20
+  }'
+```
+
+### Aster Parameter Dependency Graph
+
+| Parameter | Source | How to Get |
+|-----------|--------|-----------|
+| `userAddress` | `/club-details` → `user_wallet` | `GET /club-details` |
+| `aster_configured` | `/club-details` → `aster_configured` | `GET /club-details` (must be `true`) |
+| `symbol` | User specifies token | User input (auto-resolved: `BTC` → `BTCUSDT`) |
+| `side` | User specifies `"long"` or `"short"` | User input (required) |
+| `quantity` | User specifies or calculated | User input or `collateral * leverage / price` |
+| `leverage` | User specifies | User input |
+| `entryPrice` | `/aster/positions` → `entryPrice` | From position data |
+| `stopPrice` | User specifies or calculated from percent | User input or calculated |
+
+### Aster Workflow: Open Position on BNB Chain
+
+```
+Step 1: GET /club-details
+   → Extract: user_wallet
+   → Check: aster_configured == true (if false, tell user to set up Aster)
+
+Step 2: GET /aster/symbols
+   → Verify the token is available on Aster
+
+Step 3: GET /aster/price?token=BTC
+   → Get current price, present to user
+
+Step 4: ASK the user for trade parameters
+   → "How much BTC do you want to trade? (or specify USDC collateral)"
+   → "Leverage? Long or short?"
+   → Calculate quantity if user gives collateral: quantity = collateral * leverage / price
+
+Step 5: POST /aster/open-position
+   → Use userAddress from Step 1
+   → Use symbol, side, quantity, leverage from Step 4
+   → SAVE orderId and avgPrice from response
+
+Step 6 (if user wants TP/SL): POST /aster/set-take-profit and/or POST /aster/set-stop-loss
+   → Use entryPrice = avgPrice from Step 5
+   → Use side from Step 4
+   → Use takeProfitPercent/stopLossPercent from user
+```
+
+### Aster Workflow: Close Position
+
+```
+Step 1: GET /club-details → Extract user_wallet
+
+Step 2: POST /aster/positions (userAddress = user_wallet)
+   → Show positions to user, let them pick which to close
+
+Step 3: POST /aster/close-position
+   → Pass userAddress and symbol
+   → Omit quantity to close full position
+```
+
+---
+
 ## Environment Variables
 
 | Variable | Description | Example |
@@ -805,3 +1130,4 @@ Step 4 (optional): GET /market-data
 - Never share your API key
 - API keys can be revoked and regenerated from the dashboard
 - All trades execute on-chain with your delegated wallet permissions
+
