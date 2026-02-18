@@ -11,7 +11,6 @@ import { getOstiumConfig } from '../lib/ostium-config';
 import { useWalletProvider } from '../hooks/useWalletProvider';
 import { Web3CheckoutModal } from './Web3CheckoutModal';
 import { PaymentSelectorModal } from './PaymentSelectorModal';
-import { useWalletProvider } from '../hooks/useWalletProvider';
 
 const pricingTiers = [
   {
