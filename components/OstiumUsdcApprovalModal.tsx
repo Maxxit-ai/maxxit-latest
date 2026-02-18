@@ -7,6 +7,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { X, Wallet, CheckCircle, AlertCircle, Activity, ExternalLink } from 'lucide-react';
 import { ethers } from 'ethers';
 import { getOstiumConfig } from '../lib/ostium-config';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface OstiumUsdcApprovalModalProps {
   onClose: () => void;
@@ -31,6 +32,7 @@ export function OstiumUsdcApprovalModal({
   onSuccess,
 }: OstiumUsdcApprovalModalProps) {
   const { authenticated, user, login } = usePrivy();
+  const { getEip1193Provider } = useWalletProvider();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -52,12 +54,9 @@ export function OstiumUsdcApprovalModal({
         throw new Error('Please connect your wallet');
       }
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found.');
-      }
+      const provider = await getEip1193Provider();
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send('eth_requestAccounts', []);
 
       const network = await ethersProvider.getNetwork();

@@ -31,7 +31,7 @@ export default function GMXSetup() {
 
     try {
       const rawProvider = await getEip1193Provider();
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
 
       // Check module enabled
       const safeAbi = ['function isModuleEnabled(address module) view returns (bool)'];
@@ -72,7 +72,7 @@ export default function GMXSetup() {
     try {
       // Connect wallet
       const rawProvider = await getEip1193Provider();
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const signerAddress = await signer.getAddress();
@@ -189,8 +189,8 @@ export default function GMXSetup() {
           {status && (
             <div
               className={`mt-4 p-4 rounded-md border ${setupComplete
-                  ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800'
-                  : 'bg-muted border-border'
+                ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800'
+                : 'bg-muted border-border'
                 }`}
             >
               <p className="text-sm">

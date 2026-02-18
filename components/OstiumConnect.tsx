@@ -8,6 +8,7 @@ import { X, Wallet, CheckCircle, AlertCircle, Zap, Activity, ExternalLink, Credi
 import { ethers } from 'ethers';
 import { TradingPreferencesForm, TradingPreferences } from './TradingPreferencesModal';
 import { getOstiumConfig } from '../lib/ostium-config';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 import { Web3CheckoutModal } from './Web3CheckoutModal';
 import { PaymentSelectorModal } from './PaymentSelectorModal';
 import { useWalletProvider } from '../hooks/useWalletProvider';

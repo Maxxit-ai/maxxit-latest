@@ -41,7 +41,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
 
       addStep('Connecting wallet...');
 
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const userWallet = await signer.getAddress();
