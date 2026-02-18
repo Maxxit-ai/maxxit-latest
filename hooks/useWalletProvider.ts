@@ -45,7 +45,7 @@ export function useWalletProvider() {
      */
     const getProvider = async (): Promise<ethers.providers.Web3Provider> => {
         const eip1193 = await getEip1193Provider();
-        return new ethers.providers.Web3Provider(eip1193);
+        return new ethers.providers.Web3Provider(eip1193, "any");
     };
 
     /**

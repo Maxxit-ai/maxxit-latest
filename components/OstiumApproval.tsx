@@ -51,7 +51,7 @@ export function OstiumApproval({
       // Get provider from Privy/embedded wallet or MetaMask
       const provider = await getEip1193Provider();
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       const signer = ethersProvider.getSigner();
 
       // Create contract instance

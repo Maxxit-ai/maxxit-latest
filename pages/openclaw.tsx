@@ -1680,7 +1680,7 @@ export default function OpenClawSetupPage() {
                                     const provider = (window as any).ethereum;
                                     if (!provider) throw new Error("No wallet provider found. Please install MetaMask.");
                                     await provider.request({ method: "eth_requestAccounts" });
-                                    const ethersProvider = new ethers.providers.Web3Provider(provider);
+                                    const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
                                     const network = await ethersProvider.getNetwork();
                                     if (network.chainId !== 42161) {
                                       try {
@@ -1693,7 +1693,7 @@ export default function OpenClawSetupPage() {
                                         throw new Error(switchErr.code === 4902 ? "Please add Arbitrum to your wallet" : "Please switch to Arbitrum network");
                                       }
                                     }
-                                    const freshProvider = new ethers.providers.Web3Provider((window as any).ethereum);
+                                    const freshProvider = new ethers.providers.Web3Provider((window as any).ethereum, "any");
                                     const signer = freshProvider.getSigner();
                                     const contract = new ethers.Contract(OSTIUM_TRADING_CONTRACT, OSTIUM_TRADING_ABI, signer);
                                     const gasEstimate = await contract.estimateGas.setDelegate(ostiumAgentAddress);
@@ -1710,7 +1710,7 @@ export default function OpenClawSetupPage() {
                                     setSkillCurrentAction("Approving USDC allowance...");
                                     const provider = (window as any).ethereum;
                                     if (!provider) throw new Error("No wallet provider found.");
-                                    const ethersProvider = new ethers.providers.Web3Provider(provider);
+                                    const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
                                     await ethersProvider.send("eth_requestAccounts", []);
                                     const signer = ethersProvider.getSigner();
                                     const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);

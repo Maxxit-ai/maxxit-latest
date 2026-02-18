@@ -434,7 +434,7 @@ export function OstiumConnect({
         throw new Error('No wallet provider found. Please install MetaMask.');
       }
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       const network = await ethersProvider.getNetwork();
 
       if (network.chainId !== ARBITRUM_CHAIN_ID) {
@@ -503,7 +503,7 @@ export function OstiumConnect({
         throw new Error('No wallet provider found.');
       }
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send('eth_requestAccounts', []);
 
       const network = await ethersProvider.getNetwork();
@@ -554,7 +554,7 @@ export function OstiumConnect({
     }
 
     const provider = (window as any).ethereum;
-    const ethersProvider = new ethers.providers.Web3Provider(provider);
+    const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
     const signer = ethersProvider.getSigner();
     const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
 
@@ -604,7 +604,7 @@ export function OstiumConnect({
         throw new Error('No wallet provider found.');
       }
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send('eth_requestAccounts', []);
 
       const network = await ethersProvider.getNetwork();

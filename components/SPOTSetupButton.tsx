@@ -29,7 +29,7 @@ export function SPOTSetupButton({ safeAddress, onSetupComplete }: SPOTSetupButto
 
       console.log('[SPOTSetup] Starting module setup...');
 
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const userWallet = await signer.getAddress();

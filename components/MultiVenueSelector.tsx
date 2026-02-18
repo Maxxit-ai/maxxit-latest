@@ -76,7 +76,7 @@ export function MultiVenueSelector({
         throw new Error('No wallet provider found. Please install MetaMask.');
       }
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       const signer = ethersProvider.getSigner();
 
       // Convert ETH to Wei
@@ -90,7 +90,7 @@ export function MultiVenueSelector({
 
       setEthTxHash(tx.hash);
       setNotification(`ETH transaction sent! Hash: ${tx.hash.slice(0, 10)}...`);
-      
+
       // Wait for confirmation
       await tx.wait();
       setNotification('ETH successfully sent to agent address!');
@@ -136,7 +136,7 @@ export function MultiVenueSelector({
         const hasOstium = data.hasOstiumDeployment || false;
 
         setSetupStatus({ hasHyperliquid, hasOstium });
-        
+
         // Don't auto-close - let user see status and choose to set up other venues
         setLoading(false);
       } else {
@@ -274,14 +274,14 @@ export function MultiVenueSelector({
           </div>
 
           {/* Content - Scrollable */}
-          <div 
-            className="p-2 sm:p-3 md:p-4 overflow-y-auto flex-1 modal-scrollable" 
+          <div
+            className="p-2 sm:p-3 md:p-4 overflow-y-auto flex-1 modal-scrollable"
             style={{ overscrollBehavior: 'contain' }}
             onWheel={(e) => {
               const target = e.currentTarget;
               const isAtTop = target.scrollTop === 0;
               const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
-              
+
               // Prevent scroll propagation if not at boundaries
               if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
                 e.stopPropagation();
@@ -507,7 +507,7 @@ export function MultiVenueSelector({
             {userAgentAddresses?.ostium && (
               <div className="border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-3 sm:p-4 mt-4 sm:mt-6">
                 <p className="data-label mb-2 sm:mb-3 text-[10px] sm:text-xs">OSTIUM SETUP COMPLETE - NEXT STEPS</p>
-                
+
                 {/* ETH Funding Section */}
                 <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
                   <p className="text-[10px] sm:text-xs font-bold text-[var(--text-primary)] mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2">

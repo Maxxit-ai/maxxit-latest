@@ -524,7 +524,7 @@ export default function LazyTrading() {
       // Request account access first - this triggers MetaMask popup if needed
       await provider.request({ method: "eth_requestAccounts" });
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       const network = await ethersProvider.getNetwork();
 
       // Check network (Arbitrum One = 42161, Arbitrum Sepolia = 421614)
@@ -548,7 +548,7 @@ export default function LazyTrading() {
 
       // Get fresh provider after potential network switch
       const freshProvider = new ethers.providers.Web3Provider(
-        (window as any).ethereum
+        (window as any).ethereum, "any"
       );
       const signer = freshProvider.getSigner();
       const contract = new ethers.Contract(
@@ -597,7 +597,7 @@ export default function LazyTrading() {
         throw new Error("No wallet provider found.");
       }
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send("eth_requestAccounts", []);
 
       const signer = ethersProvider.getSigner();
@@ -716,7 +716,7 @@ export default function LazyTrading() {
         throw new Error("No wallet provider found.");
       }
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send("eth_requestAccounts", []);
 
       const amountInWei = ethers.utils.parseEther(ethAmount);

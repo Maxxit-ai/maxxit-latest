@@ -126,7 +126,7 @@ export function Header() {
 
       // Get provider from connected wallet
       const rawProvider = await getEip1193Provider();
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       const contract = new ethers.Contract(ACTIVE_NETWORK.usdcAddress, USDC_ABI, provider);
 
       // Direct contract call to get balance

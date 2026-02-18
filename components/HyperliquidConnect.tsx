@@ -53,7 +53,7 @@ export function HyperliquidConnect({
   const checkExistingConnection = async () => {
     try {
       const rawProvider = await getEip1193Provider();
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       const accounts = await provider.listAccounts();
       if (accounts.length > 0) {
         const address = accounts[0];
@@ -130,7 +130,7 @@ export function HyperliquidConnect({
 
     try {
       const rawProvider = await getEip1193Provider();
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const address = await signer.getAddress();

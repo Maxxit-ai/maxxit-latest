@@ -59,7 +59,7 @@ export function Web3CheckoutModal({
             setError(null);
 
             const rawProvider = await getEip1193Provider();
-            const provider = new ethers.providers.Web3Provider(rawProvider);
+            const provider = new ethers.providers.Web3Provider(rawProvider, "any");
             const signer = provider.getSigner();
             const address = await signer.getAddress();
 

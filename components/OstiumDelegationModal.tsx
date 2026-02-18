@@ -53,7 +53,7 @@ export function OstiumDelegationModal({
 
       const provider = await getEip1193Provider();
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       const network = await ethersProvider.getNetwork();
 
       if (network.chainId !== ARBITRUM_CHAIN_ID) {

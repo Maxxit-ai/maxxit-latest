@@ -69,7 +69,7 @@ export function HyperliquidAgentModal({
       // Try to connect wallet and get user's address
       try {
         const rawProvider = await getEip1193Provider();
-        const provider = new ethers.providers.Web3Provider(rawProvider);
+        const provider = new ethers.providers.Web3Provider(rawProvider, "any");
         const accounts = await provider.listAccounts();
         if (accounts.length > 0) {
           setUserHyperliquidAddress(accounts[0]);
@@ -102,7 +102,7 @@ export function HyperliquidAgentModal({
   const connectMetaMask = async () => {
     try {
       const rawProvider = await getEip1193Provider();
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const address = await signer.getAddress();

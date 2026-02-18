@@ -111,7 +111,7 @@ export default function DeployAgent() {
 
       // Connect wallet
       const rawProvider = await getEip1193Provider();
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
 
@@ -519,7 +519,7 @@ export default function DeployAgent() {
 
       // Connect wallet
       const rawProvider = await getEip1193Provider();
-      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const provider = new ethers.providers.Web3Provider(rawProvider, "any");
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const chainId = await provider.getNetwork().then(n => n.chainId);
