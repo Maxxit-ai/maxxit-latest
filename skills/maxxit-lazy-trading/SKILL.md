@@ -3,7 +3,7 @@ emoji: 📈
 name: maxxit-lazy-trading
 version: 1.2.0
 author: Maxxit
-description: Execute perpetual trades on Ostium via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, and copy-trading other OpenClaw agents.
+description: Execute perpetual trades on Ostium and Aster via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, and copy-trading other OpenClaw agents.
 homepage: https://maxxit.ai
 repository: https://github.com/Maxxit-ai/maxxit-latest
 disableModelInvocation: true
@@ -23,11 +23,12 @@ metadata:
 
 # Maxxit Lazy Trading
 
-Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Trading API. This skill enables automated trading through programmatic endpoints for opening/closing positions and managing risk.
+Execute perpetual futures trades on Ostium and Aster DEX through Maxxit's Lazy Trading API. This skill enables automated trading through programmatic endpoints for opening/closing positions and managing risk.
 
 ## When to Use This Skill
 
 - User wants to execute trades on Ostium
+- User wants to execute trades on Aster DEX
 - User asks about their lazy trading account details
 - User wants to check their USDC/ETH balance
 - User wants to view their open positions or portfolio
@@ -49,6 +50,21 @@ Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Tradin
 - User wants to discover other OpenClaw agents to learn from
 - User wants to see what trades top-performing traders are making
 - User wants to find high-impact-factor traders to replicate
+
+---
+
+## ⚠️ DEX Routing Rules (Mandatory)
+
+1. **Always ask venue first if unclear**: "Do you want to trade on Ostium or Aster?"
+2. **Always state the active venue explicitly** in your response (e.g., "Using Ostium..." or "Using Aster...").
+3. **Do not mix venue suggestions**:
+   - If user is trading on **Ostium**, only suggest Ostium endpoints/actions.
+   - If user is trading on **Aster**, only suggest Aster endpoints/actions.
+4. **Do not ask network clarification**:
+   - **Ostium is mainnet-only** in this setup.
+   - **Aster is testnet-only** in this setup.
+   - Therefore do **not** ask "mainnet or testnet?" for either venue.
+5. If user switches venue mid-conversation, confirm the switch and then continue with only that venue's flow.
 
 ---
 
@@ -991,8 +1007,10 @@ Step 5 (optional): POST /set-take-profit and/or POST /set-stop-loss
 
 | Venue | Chain | Symbol Format | Auth Required | When to Use |
 |-------|-------|--------------|---------------|-------------|
-| **Ostium** | Arbitrum | `BTC`, `ETH` | `agentAddress` + `userAddress` | Default for most trades |
-| **Aster** | BNB Chain | `BTCUSDT`, `ETHUSDT` | `userAddress` only | When user specifies BNB Chain or Aster |
+| **Ostium** | Arbitrum (mainnet only) | `BTC`, `ETH` | `agentAddress` + `userAddress` | Default for most trades |
+| **Aster** | BNB Chain (testnet only) | `BTCUSDT`, `ETHUSDT` | `userAddress` only | When user specifies BNB Chain or Aster |
+
+> **Network behavior rule:** Do not ask users to choose mainnet/testnet for these venues. Ostium is fixed to mainnet and Aster is fixed to testnet in this environment.
 
 **How to check if Aster is configured:** In the `/club-details` response, `aster_configured: true` means the user has set up Aster API keys. If `false`, direct them to set up Aster at maxxit.ai/openclaw.
 
@@ -1106,6 +1124,36 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/positions
   "count": 1
 }
 ```
+
+### Aster History (All Orders)
+
+Fetch full order history for a symbol (includes active, canceled, and filled orders) from Aster.
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/history" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "symbol": "BTC",
+    "limit": 100
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "userAddress": "0x...",        // REQUIRED — from /club-details → user_wallet
+  "symbol": "BTC",               // REQUIRED — token or full symbol (BTC or BTCUSDT)
+  "limit": 100,                  // Optional — default depends on exchange (max 1000)
+  "orderId": 12345,              // Optional — fetch from this orderId onward
+  "startTime": 1709251200000,    // Optional — ms timestamp
+  "endTime": 1709856000000       // Optional — ms timestamp
+}
+```
+
+> `POST /api/lazy-trading/programmatic/aster/history` now proxies to Aster `/fapi/v3/allOrders`.
+> Use this endpoint when users ask for "all old trades/orders", "order history", or "past orders" on Aster.
 
 ### Aster Open Position
 
