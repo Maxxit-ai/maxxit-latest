@@ -71,11 +71,12 @@ export default async function handler(
       orderBy: { sub_started_at: "desc" },
     });
 
-    const userAgentAddress = await prisma.user_agent_addresses.findUnique({
+    const userAgentAddress = await prismaClient.user_agent_addresses.findUnique({
       where: { user_wallet: userWallet },
       select: {
         ostium_agent_address: true,
         hyperliquid_agent_address: true,
+        aster_enabled: true,
       },
     });
 
@@ -100,30 +101,31 @@ export default async function handler(
       },
       telegram_user: telegramUser
         ? {
-            id: telegramUser.id,
-            telegram_user_id: telegramUser.telegram_user_id,
-            telegram_username: telegramUser.telegram_username,
-            first_name: telegramUser.first_name,
-            last_name: telegramUser.last_name,
-          }
+          id: telegramUser.id,
+          telegram_user_id: telegramUser.telegram_user_id,
+          telegram_username: telegramUser.telegram_username,
+          first_name: telegramUser.first_name,
+          last_name: telegramUser.last_name,
+        }
         : null,
       deployment: deployment
         ? {
-            id: deployment.id,
-            status: deployment.status,
-            enabled_venues: deployment.enabled_venues,
-          }
+          id: deployment.id,
+          status: deployment.status,
+          enabled_venues: deployment.enabled_venues,
+        }
         : null,
       trading_preferences: deployment
         ? {
-            risk_tolerance: deployment.risk_tolerance,
-            trade_frequency: deployment.trade_frequency,
-            social_sentiment_weight: deployment.social_sentiment_weight,
-            price_momentum_focus: deployment.price_momentum_focus,
-            market_rank_priority: deployment.market_rank_priority,
-          }
+          risk_tolerance: deployment.risk_tolerance,
+          trade_frequency: deployment.trade_frequency,
+          social_sentiment_weight: deployment.social_sentiment_weight,
+          price_momentum_focus: deployment.price_momentum_focus,
+          market_rank_priority: deployment.market_rank_priority,
+        }
         : null,
       ostium_agent_address: userAgentAddress?.ostium_agent_address || null,
+      aster_configured: !!userAgentAddress?.aster_enabled,
     });
   } catch (error: any) {
     console.error("[API] Lazy trading club details error:", error);
