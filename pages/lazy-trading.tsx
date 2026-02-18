@@ -33,6 +33,7 @@ import {
 import { ethers } from "ethers";
 import { getOstiumConfig } from "../lib/ostium-config";
 import FooterSection from "@components/home/FooterSection";
+import { useWalletProvider } from "../hooks/useWalletProvider";
 
 // Ostium configuration
 const {
@@ -59,6 +60,7 @@ interface TelegramUser {
 export default function LazyTrading() {
   const router = useRouter();
   const { authenticated, user, login } = usePrivy();
+  const { getEip1193Provider } = useWalletProvider();
 
   // Redirect to external URL when page is accessed directly
   // useEffect(() => {
@@ -516,10 +518,7 @@ export default function LazyTrading() {
     setError("");
 
     try {
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error("No wallet provider found. Please install MetaMask.");
-      }
+      const provider = await getEip1193Provider();
 
       // Request account access first - this triggers MetaMask popup if needed
       await provider.request({ method: "eth_requestAccounts" });
@@ -548,7 +547,7 @@ export default function LazyTrading() {
 
       // Get fresh provider after potential network switch
       const freshProvider = new ethers.providers.Web3Provider(
-        (window as any).ethereum, "any"
+        provider, "any"
       );
       const signer = freshProvider.getSigner();
       const contract = new ethers.Contract(
@@ -592,10 +591,7 @@ export default function LazyTrading() {
     setError("");
 
     try {
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error("No wallet provider found.");
-      }
+      const provider = await getEip1193Provider();
 
       const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send("eth_requestAccounts", []);
@@ -711,10 +707,7 @@ export default function LazyTrading() {
     setEthTxHash(null);
 
     try {
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error("No wallet provider found.");
-      }
+      const provider = await getEip1193Provider();
 
       const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send("eth_requestAccounts", []);

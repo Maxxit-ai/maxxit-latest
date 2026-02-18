@@ -8,6 +8,7 @@ import { X, Wallet, CheckCircle, AlertCircle, Zap, Activity, ExternalLink, Credi
 import { ethers } from 'ethers';
 import { TradingPreferencesForm, TradingPreferences } from './TradingPreferencesModal';
 import { getOstiumConfig } from '../lib/ostium-config';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 import { Web3CheckoutModal } from './Web3CheckoutModal';
 import { PaymentSelectorModal } from './PaymentSelectorModal';
 
@@ -60,6 +61,7 @@ export function OstiumConnect({
   onSuccess,
 }: OstiumConnectProps) {
   const { user, authenticated, login } = usePrivy();
+  const { getEip1193Provider } = useWalletProvider();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [agentAddress, setAgentAddress] = useState<string>('');
@@ -429,10 +431,7 @@ export function OstiumConnect({
         throw new Error('Agent not assigned yet');
       }
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found. Please install MetaMask.');
-      }
+      const provider = await getEip1193Provider();
 
       const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       const network = await ethersProvider.getNetwork();
@@ -498,10 +497,7 @@ export function OstiumConnect({
         throw new Error('Please connect your wallet');
       }
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found.');
-      }
+      const provider = await getEip1193Provider();
 
       const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send('eth_requestAccounts', []);
@@ -553,7 +549,7 @@ export function OstiumConnect({
       throw new Error('Please connect your wallet');
     }
 
-    const provider = (window as any).ethereum;
+    const provider = await getEip1193Provider();
     const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
     const signer = ethersProvider.getSigner();
     const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
@@ -599,10 +595,7 @@ export function OstiumConnect({
         throw new Error('Please connect your wallet');
       }
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found.');
-      }
+      const provider = await getEip1193Provider();
 
       const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       await ethersProvider.send('eth_requestAccounts', []);

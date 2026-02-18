@@ -1780,7 +1780,7 @@ export default function OpenClawSetupPage() {
                                         );
                                       }
                                     }
-                                    const freshProvider = new ethers.providers.Web3Provider(provider);
+                                    const freshProvider = new ethers.providers.Web3Provider(provider, "any");
                                     const signer = freshProvider.getSigner();
                                     const contract = new ethers.Contract(OSTIUM_TRADING_CONTRACT, OSTIUM_TRADING_ABI, signer);
                                     const gasEstimate = await contract.estimateGas.setDelegate(ostiumAgentAddress);

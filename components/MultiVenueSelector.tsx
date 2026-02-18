@@ -4,6 +4,7 @@ import { X, Zap, ArrowRight, CheckCircle, Activity, Wallet, Copy, Check, Externa
 import { HyperliquidConnect } from './HyperliquidConnect';
 import { OstiumConnect } from './OstiumConnect';
 import { ethers } from 'ethers';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface MultiVenueSelectorProps {
   agentId: string;
@@ -26,6 +27,7 @@ export function MultiVenueSelector({
   userAgentAddresses,
 }: MultiVenueSelectorProps) {
   const { authenticated, user, login } = usePrivy();
+  const { getEip1193Provider } = useWalletProvider();
   const [hyperliquidModalOpen, setHyperliquidModalOpen] = useState(false);
   const [ostiumModalOpen, setOstiumModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -71,10 +73,7 @@ export function MultiVenueSelector({
       setEthError(null);
       setEthTxHash(null);
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found. Please install MetaMask.');
-      }
+      const provider = await getEip1193Provider();
 
       const ethersProvider = new ethers.providers.Web3Provider(provider, "any");
       const signer = ethersProvider.getSigner();
