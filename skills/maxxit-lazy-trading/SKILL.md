@@ -63,7 +63,7 @@ The following shows where each required parameter comes from. **Always resolve d
 | `tradeIndex` | `/open-position` response → `actualTradeIndex` **OR** `/positions` response → `tradeIndex` | `POST /open-position` or `POST /positions` |
 | `pairIndex` | `/positions` response → `pairIndex` **OR** `/symbols` response → symbol `id` | `POST /positions` or `GET /symbols` |
 | `entryPrice` | `/open-position` response → `entryPrice` **OR** `/positions` response → `entryPrice` | `POST /open-position` or `POST /positions` |
-| `market` / `symbol` | User specifies the token **OR** `/symbols` response → `symbol` | User input or `GET /symbols` |
+| `market` / `symbol` | User specifies token **OR** `/symbols` response → `symbol` (e.g. `ETH/USD`) | User input or `GET /symbols` |
 | `side` | User specifies `"long"` or `"short"` | User input (required) |
 | `collateral` | User specifies the USDC amount | User input (required) |
 | `leverage` | User specifies the multiplier | User input (required) |
@@ -75,6 +75,7 @@ The following shows where each required parameter comes from. **Always resolve d
 1. **Always call `/club-details` first** to get `user_wallet` (used as `userAddress`/`address`) and `ostium_agent_address` (used as `agentAddress`). Cache these for the session — they don't change.
 2. **Never hardcode or guess wallet addresses.** They are unique per user and must come from `/club-details`.
 3. **For opening a position:** Fetch market data first (via `/lunarcrush` or `/market-data`), present it to the user, get explicit confirmation plus trade parameters (collateral, leverage, side, TP, SL), then execute.
+   - **Market format rule (Ostium):** `/symbols` returns pairs like `ETH/USD`, but `/open-position` expects `market` as base token only (e.g. `ETH`). Convert by taking the base token before `/`.
 4. **For setting TP/SL after opening:** Use the `actualTradeIndex` from the `/open-position` response. If you don't have it (e.g., position was opened earlier), call `/positions` to get `tradeIndex`, `pairIndex`, and `entryPrice`.
 5. **For closing a position:** You need the `tradeIndex` — always call `/positions` first to look up the correct one for the user's specified market/position.
 6. **Ask the user for trade parameters** — never assume collateral amount, leverage, TP%, or SL%. Present defaults but let the user confirm or override.
@@ -100,6 +101,10 @@ All requests require an API key with prefix `lt_`. Pass it via:
 - Or: `Authorization: Bearer lt_your_api_key`
 
 ## API Endpoints
+
+## Ostium Programmatic Endpoints (`/api/lazy-trading/programmatic/*`)
+
+> All endpoints under `/api/lazy-trading/programmatic/*` are for **Ostium** unless explicitly prefixed with `/aster/`.
 
 ### Get Account Details
 
@@ -135,7 +140,8 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/club-details" \
     "risk_tolerance": "medium",
     "trade_frequency": "moderate"
   },
-  "ostium_agent_address": "0x..."
+  "ostium_agent_address": "0x...",
+  "aster_configured": "true",
 }
 ```
 
@@ -374,6 +380,7 @@ Open a new perpetual futures position on Ostium.
 > 1. `agentAddress` → from `/club-details` → `ostium_agent_address` (NEVER guess)
 > 2. `userAddress` → from `/club-details` → `user_wallet` (NEVER guess)
 > 3. `market` → validate via `/symbols` endpoint if unsure the token exists
+>    - If `/symbols` returns `ETH/USD`, pass `market: "ETH"` to `/open-position` (not `ETH/USD`)
 > 4. `side`, `collateral`, `leverage` → **ASK the user explicitly**, do not assume
 >
 > **📊 Recommended Pre-Trade Flow:**
@@ -403,7 +410,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/open-position" 
 {
   "agentAddress": "0x...",      // REQUIRED — from /club-details → ostium_agent_address. NEVER guess.
   "userAddress": "0x...",       // REQUIRED — from /club-details → user_wallet. NEVER guess.
-  "market": "BTC",              // REQUIRED — Token symbol. Validate via /symbols if unsure.
+  "market": "BTC",              // REQUIRED — Base token only for Ostium (e.g. "ETH", not "ETH/USD"). Validate via /symbols if unsure.
   "side": "long",               // REQUIRED — "long" or "short". ASK the user.
   "collateral": 100,            // REQUIRED — Collateral in USDC. ASK the user.
   "leverage": 10,               // Optional (default: 10). ASK the user.
@@ -699,6 +706,8 @@ Step 1: GET /club-details
 Step 2: GET /symbols
    → Verify the user's requested token is available on Ostium
    → Extract exact symbol string and maxLeverage
+   → Convert pair format to market token for /open-position:
+     "ETH/USD" -> "ETH"
 
 Step 3: GET /lunarcrush?symbol=TOKEN/USD  (or GET /market-data for all)
    → Get market data: price, sentiment, volatility, galaxy_score
@@ -714,6 +723,7 @@ Step 4: ASK the user for trade parameters
 Step 5: POST /open-position
    → Use agentAddress and userAddress from Step 1
    → Use market, side, collateral, leverage from Step 4
+   → IMPORTANT: Pass market as base token only (e.g. ETH), not pair format (ETH/USD)
    → SAVE the response: actualTradeIndex and entryPrice
 
 Step 6 (if user wants TP/SL): POST /set-take-profit and/or POST /set-stop-loss
@@ -902,7 +912,16 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/positions
 
 ### Aster Open Position
 
-**Option A — Specify size in base asset (e.g. BTC):**
+> **📋 LLM Pre-Call Checklist — Ask the user these questions before calling this endpoint:**
+> 1. **Symbol**: "Which token do you want to trade?" (e.g. BTC, ETH, SOL)
+> 2. **Side**: "Long or short?"
+> 3. **Quantity**: "How much [TOKEN] do you want to trade?" — get the answer in base asset units (e.g. `0.01 BTC`, `0.5 ETH`).
+> 4. **Leverage**: "What leverage? (e.g. 10x)"
+> 5. **Order type**: "Market order or limit order?" (default: MARKET). If LIMIT, also ask for the limit price.
+>
+> **Aster requires `quantity` (base asset) for open-position. Do not use collateral.**
+> **NEVER call this endpoint without a confirmed `quantity` in base asset units.**
+
 ```bash
 curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/open-position" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}" \
@@ -916,35 +935,22 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/open-posi
   }'
 ```
 
-**Option B — Specify size in USDT (collateral):**
-```bash
-curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/open-position" \
-  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userAddress": "0x...",
-    "symbol": "BTC",
-    "side": "long",
-    "collateral": 100,
-    "leverage": 10
-  }'
-```
-
-**Request Body (provide EITHER `quantity` OR `collateral`):**
+**Request Body:**
 ```json
 {
-  "userAddress": "0x...",     // REQUIRED — from /club-details → user_wallet
-  "symbol": "BTC",           // REQUIRED — Token name or full symbol (BTCUSDT)
+  "userAddress": "0x...",     // REQUIRED — from /club-details → user_wallet. NEVER guess.
+  "symbol": "BTC",           // REQUIRED — Token name or full symbol (BTCUSDT). ASK the user.
   "side": "long",            // REQUIRED — "long" or "short". ASK the user.
-  "quantity": 0.01,          // Option A — Position size in base asset (e.g. 0.01 BTC)
-  "collateral": 100,         // Option B — Position size in USDT (e.g. 100 USDT)
+  "quantity": 0.01,          // REQUIRED — Position size in BASE asset (e.g. 0.01 BTC). ASK the user.
   "leverage": 10,            // Optional — Leverage multiplier. ASK the user.
-  "type": "MARKET",          // Optional — "MARKET" (default) or "LIMIT"
-  "price": 95000             // Required only for LIMIT orders
+  "type": "MARKET",          // Optional — "MARKET" (default) or "LIMIT". ASK the user.
+  "price": 95000             // Required only for LIMIT orders. ASK the user if type is LIMIT.
 }
 ```
 
-> ⚠️ **IMPORTANT:** Provide EITHER `quantity` (base asset, e.g. 0.01 BTC) OR `collateral` (USDT amount, e.g. 100 USDT), NOT both. If the user says "trade $100 of BTC", use `collateral` — the server auto-fetches the current price and converts to the correct quantity. If the user says "buy 0.01 BTC", use `quantity`.
+> ⚠️ **IMPORTANT:** `quantity` must always be specified in the **base asset** (e.g. `0.01` for 0.01 BTC).  
+> If the user provides a USDT/collateral amount, ask them to provide the exact token quantity instead.  
+> Do not convert collateral to quantity in this workflow.
 
 **Response (IMPORTANT — save these values):**
 ```json
@@ -1052,7 +1058,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/change-le
 | `aster_configured` | `/club-details` → `aster_configured` | `GET /club-details` (must be `true`) |
 | `symbol` | User specifies token | User input (auto-resolved: `BTC` → `BTCUSDT`) |
 | `side` | User specifies `"long"` or `"short"` | User input (required) |
-| `quantity` | User specifies or calculated | User input or `collateral * leverage / price` |
+| `quantity` | User specifies in base asset units (e.g. `0.01 BTC`) | User input (required). If user provides USDT/collateral amount, ask for quantity instead. Do not calculate in the workflow. |
 | `leverage` | User specifies | User input |
 | `entryPrice` | `/aster/positions` → `entryPrice` | From position data |
 | `stopPrice` | User specifies or calculated from percent | User input or calculated |
@@ -1062,7 +1068,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/change-le
 ```
 Step 1: GET /club-details
    → Extract: user_wallet
-   → Check: aster_configured == true (if false, tell user to set up Aster)
+   → Check: aster_configured == true (if false, tell user to set up Aster at maxxit.ai/openclaw)
 
 Step 2: GET /aster/symbols
    → Verify the token is available on Aster
@@ -1070,20 +1076,23 @@ Step 2: GET /aster/symbols
 Step 3: GET /aster/price?token=BTC
    → Get current price, present to user
 
-Step 4: ASK the user for trade parameters
-   → "How much BTC do you want to trade? (or specify USDC collateral)"
-   → "Leverage? Long or short?"
-   → Calculate quantity if user gives collateral: quantity = collateral * leverage / price
+Step 4: ASK the user for ALL trade parameters
+   → "Which token?" (e.g. BTC, ETH, SOL)
+   → "Long or short?"
+   → "How much [TOKEN] do you want to buy/sell?" — collect answer in BASE asset units (e.g. 0.01 BTC)
+       • If user gives a USDT/collateral amount, ask them to provide token quantity instead.
+   → "Leverage? (e.g. 10x)"
+   → "Market or limit order?" — if LIMIT, also ask for the limit price
 
 Step 5: POST /aster/open-position
    → Use userAddress from Step 1
-   → Use symbol, side, quantity, leverage from Step 4
+   → Use symbol, side, quantity (base asset), leverage from Step 4
    → SAVE orderId and avgPrice from response
 
 Step 6 (if user wants TP/SL): POST /aster/set-take-profit and/or POST /aster/set-stop-loss
    → Use entryPrice = avgPrice from Step 5
    → Use side from Step 4
-   → Use takeProfitPercent/stopLossPercent from user
+   → Ask user for takeProfitPercent / stopLossPercent (or exact stopPrice)
 ```
 
 ### Aster Workflow: Close Position

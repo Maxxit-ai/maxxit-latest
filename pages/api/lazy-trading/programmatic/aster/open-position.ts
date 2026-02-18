@@ -29,7 +29,6 @@ export default async function handler(
             side,
             quantity,
             size,
-            collateral,
             leverage,
             type,
             price,
@@ -40,10 +39,10 @@ export default async function handler(
         const token = symbol || market;
         const qty = quantity || size;
 
-        if (!wallet || !token || !side || (!qty && !collateral)) {
+        if (!wallet || !token || !side || !qty) {
             return res.status(400).json({
                 success: false,
-                error: "Missing required fields: userAddress, symbol, side, and either quantity or collateral",
+                error: "Missing required fields: userAddress, symbol, side, quantity",
             });
         }
 
@@ -56,7 +55,7 @@ export default async function handler(
                 userAddress: wallet,
                 symbol: token,
                 side,
-                ...(collateral ? { collateral } : { quantity: qty }),
+                quantity: qty,
                 leverage,
                 type,
                 price,

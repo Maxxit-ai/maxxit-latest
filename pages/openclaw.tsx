@@ -73,7 +73,9 @@ const STEPS = [
   { key: "model", label: "Model" },
   { key: "telegram", label: "Telegram" },
   { key: "openai", label: "OpenAI" },
-  { key: "skills", label: "Skills" },
+  { key: "ostium", label: "Ostium" },
+  { key: "aster", label: "Aster" },
+  { key: "apikey", label: "API Key" },
   { key: "activate", label: "Launch" },
 ] as const;
 
@@ -169,7 +171,7 @@ function StepIndicator({
                   : isCompleted
                     ? "text-[var(--text-secondary)]"
                     : "text-[var(--text-muted)]"
-                  }`}
+                  } whitespace-nowrap leading-none`}
               >
                 {s.label}
               </span>
@@ -260,6 +262,8 @@ export default function OpenClawSetupPage() {
   const [llmTopUpSuccess, setLlmTopUpSuccess] = useState(false);
   const [llmBalanceRefreshKey, setLlmBalanceRefreshKey] = useState(0); // Used to trigger balance re-fetch
   const currentStepKey = STEPS[currentStepIndex]?.key;
+  const requiresApiKeyGeneration = lazyTradingSetupComplete || skillSubStep === "complete" || asterEnabled;
+  const canContinueFromApiKeyStep = !!maxxitApiKey || !requiresApiKeyGeneration;
 
   const markComplete = useCallback((key: StepKey) => {
     setCompletedSteps((prev) => new Set(prev).add(key));
@@ -347,7 +351,9 @@ export default function OpenClawSetupPage() {
       }
 
       if (inst.status === "active") {
-        markComplete("skills");
+        markComplete("ostium");
+        markComplete("aster");
+        markComplete("apikey");
         markComplete("openai");
         markComplete("telegram");
         markComplete("activate");
@@ -365,7 +371,7 @@ export default function OpenClawSetupPage() {
       }
 
       if (inst.status === "active") {
-        setCurrentStepIndex(5);
+        setCurrentStepIndex(7);
       } else if (inst.telegram.linked && inst.telegram.userId && inst.openai?.projectId) {
         setCurrentStepIndex(4);
       } else if (inst.telegram.linked && inst.telegram.userId) {
@@ -850,6 +856,30 @@ export default function OpenClawSetupPage() {
       setIsRedirecting(false);
     }
   };
+
+  const handleCreateTradingDeployment = useCallback(async () => {
+    if (!tradingAgentId || !walletAddress) return;
+    setSkillSubStep('creating-deployment');
+    setErrorMessage("");
+    try {
+      const res = await fetch("/api/openclaw/create-trading-deployment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: tradingAgentId, userWallet: walletAddress }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setHasDeployment(true);
+        setSkillSubStep('complete');
+      } else {
+        setErrorMessage(data.error || "Failed to create deployment");
+        setSkillSubStep('agent-created');
+      }
+    } catch {
+      setErrorMessage("Failed to create deployment");
+      setSkillSubStep('agent-created');
+    }
+  }, [tradingAgentId, walletAddress]);
 
   useEffect(() => {
     if (!lazyTradingEnabled || !walletAddress) return;
@@ -1430,15 +1460,15 @@ export default function OpenClawSetupPage() {
               </div>
             )}
 
-            {/* Step 5: Skills */}
-            {currentStepKey === "skills" && (
+            {/* Step 5: Ostium */}
+            {currentStepKey === "ostium" && (
               <div className="space-y-6">
                 <div className="text-center">
                   <h1 className="font-display text-2xl mb-2">
-                    Add Skills (Optional)
+                    Ostium 1-Click Trading
                   </h1>
                   <p className="text-[var(--text-secondary)]">
-                    Extend your agent&apos;s capabilities with powerful skills.
+                    Set up your trading agent to execute trades on Ostium via your OpenClaw bot.
                   </p>
                 </div>
 
@@ -1531,6 +1561,9 @@ export default function OpenClawSetupPage() {
                                   setOstiumAgentAddress(data.ostiumAgentAddress);
                                   if (data.hasDeployment) {
                                     setHasDeployment(true);
+                                    setLazyTradingSetupComplete(true);
+                                    setSkillSubStep('complete');
+                                    return;
                                   }
                                   setSkillSubStep('agent-created');
                                   // Check existing delegation/approval status
@@ -1714,35 +1747,10 @@ export default function OpenClawSetupPage() {
                               )}
                             </button>
                           ) : (
-                            /* Both complete — auto-create deployment */
-                            <button
-                              onClick={async () => {
-                                if (!tradingAgentId || !walletAddress) return;
-                                setSkillSubStep('creating-deployment');
-                                setErrorMessage("");
-                                try {
-                                  const res = await fetch("/api/openclaw/create-trading-deployment", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ agentId: tradingAgentId, userWallet: walletAddress }),
-                                  });
-                                  const data = await res.json();
-                                  if (data.success) {
-                                    setHasDeployment(true);
-                                    setSkillSubStep('complete');
-                                  } else {
-                                    setErrorMessage(data.error || "Failed to create deployment");
-                                    setSkillSubStep('agent-created');
-                                  }
-                                } catch {
-                                  setErrorMessage("Failed to create deployment");
-                                  setSkillSubStep('agent-created');
-                                }
-                              }}
-                              className="w-full py-3 bg-green-600 text-white font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-green-500 transition-colors"
-                            >
-                              <Check className="w-4 h-4" /> Create Deployment & Continue
-                            </button>
+                            /* Both complete — deployment is triggered from footer CTA */
+                            <div className="border border-green-500/40 bg-green-500/10 rounded-lg p-3 text-xs text-green-300">
+                              Ready to create deployment
+                            </div>
                           )}
 
                           <button
@@ -1766,52 +1774,13 @@ export default function OpenClawSetupPage() {
                           <span>Creating deployment...</span>
                         </div>
                       ) : skillSubStep === 'complete' || lazyTradingSetupComplete ? (
-                        /* Sub-step 4: Complete — generate API key */
+                        /* Sub-step 4: Complete */
                         <div className="space-y-3">
                           <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4 text-center">
                             <Check className="w-6 h-6 text-green-400 mx-auto mb-1" />
                             <p className="font-bold text-green-400">Trading Setup Complete</p>
-                            <p className="text-xs text-[var(--text-secondary)] mt-1">Generate an API key to connect this skill to your OpenClaw instance.</p>
+                            <p className="text-xs text-[var(--text-secondary)] mt-1">Your Ostium 1-click trading agent is ready. Continue to the next step.</p>
                           </div>
-                          <button
-                            onClick={async () => {
-                              setIsGeneratingApiKey(true);
-                              setErrorMessage("");
-                              try {
-                                const res = await fetch("/api/lazy-trading/api-key", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ userWallet: walletAddress }),
-                                });
-                                const data = await res.json();
-                                if (data.success && data.apiKey?.value) {
-                                  setMaxxitApiKey(data.apiKey.value);
-                                  await fetch("/api/openclaw/store-skill-key", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({
-                                      userWallet: walletAddress,
-                                      apiKey: data.apiKey.value,
-                                    }),
-                                  });
-                                } else {
-                                  setErrorMessage(data.message || "Failed to generate API key");
-                                }
-                              } catch {
-                                setErrorMessage("Failed to generate API key");
-                              } finally {
-                                setIsGeneratingApiKey(false);
-                              }
-                            }}
-                            disabled={isGeneratingApiKey}
-                            className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-                          >
-                            {isGeneratingApiKey ? (
-                              <Loader2 className="w-5 h-5 animate-spin" />
-                            ) : (
-                              "Generate API Key"
-                            )}
-                          </button>
                           <button
                             onClick={() => {
                               setLazyTradingEnabled(false);
@@ -1820,7 +1789,7 @@ export default function OpenClawSetupPage() {
                             }}
                             className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                           >
-                            Cancel
+                            Reset
                           </button>
                         </div>
                       ) : null}
@@ -1828,7 +1797,66 @@ export default function OpenClawSetupPage() {
                   </div>
                 </div>
 
-                {/* Aster DEX (BNB Chain) Card */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={goBack}
+                    className="px-6 py-4 border border-[var(--border)] rounded-lg font-bold flex items-center gap-2 hover:border-[var(--text-muted)] transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </button>
+                  <button
+                    onClick={() => {
+                      const isOstiumSetupDone =
+                        skillSubStep === 'complete' || lazyTradingSetupComplete || hasDeployment;
+                      const shouldCreateDeployment =
+                        lazyTradingEnabled &&
+                        skillSubStep === 'agent-created' &&
+                        delegationComplete &&
+                        allowanceComplete &&
+                        !hasDeployment;
+
+                      if (shouldCreateDeployment) {
+                        handleCreateTradingDeployment();
+                        return;
+                      }
+                      if (lazyTradingEnabled && !isOstiumSetupDone) {
+                        setErrorMessage("Complete Ostium setup and create deployment before continuing.");
+                        return;
+                      }
+                      markComplete("ostium");
+                      goNext();
+                    }}
+                    className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                  >
+                    {(skillSubStep === 'complete' || lazyTradingSetupComplete || maxxitApiKey)
+                      ? "Continue"
+                      : lazyTradingEnabled
+                        ? "Create Deployment & Continue"
+                        : "Skip & Continue"}
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                {errorMessage && (
+                  <p className="text-red-500 text-sm text-center">
+                    {errorMessage}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Step 6: Aster DEX */}
+            {currentStepKey === "aster" && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <h1 className="font-display text-2xl mb-2">
+                    Aster DEX (Optional)
+                  </h1>
+                  <p className="text-[var(--text-secondary)]">
+                    Authorize your agent wallet to also trade on Aster DEX (BNB Chain).
+                  </p>
+                </div>
+
                 <div className={`border rounded-lg p-5 transition-all ${asterEnabled
                   ? "border-[var(--accent)] bg-[var(--accent)]/5"
                   : "border-[var(--border)]"
@@ -1850,7 +1878,7 @@ export default function OpenClawSetupPage() {
 
                       {!ostiumAgentAddress ? (
                         <p className="text-xs text-[var(--text-muted)] italic">
-                          Complete the Ostium 1-click trading setup above first to create an agent wallet.
+                          Go back and complete the Ostium setup first to create an agent wallet.
                         </p>
                       ) : asterEnabled ? (
                         <div className="space-y-3">
@@ -1884,25 +1912,22 @@ export default function OpenClawSetupPage() {
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          {/* Agent address display */}
                           <div className="bg-[var(--bg-deep)] border border-[var(--border)] rounded-lg p-3">
                             <p className="text-xs text-[var(--text-muted)] mb-1">Your Agent Address</p>
                             <p className="text-sm font-mono break-all">{ostiumAgentAddress}</p>
                           </div>
 
-                          {/* Instructions */}
                           <div className="space-y-2">
                             <p className="text-sm font-medium">To enable Aster trading:</p>
                             <ol className="text-sm text-[var(--text-secondary)] list-decimal list-inside space-y-1">
                               <li>Go to Aster&apos;s API Wallet page</li>
                               <li>Click &quot;Authorize new API wallet&quot;</li>
-                              <li>Paste your agent address above as the &quot;API wallet address&quot;</li>
+                              <li>Paste your above given agent address as the &quot;API wallet address&quot;</li>
                               <li>Click &quot;Authorize&quot; to grant it trading permission</li>
                               <li>Come back here and click &quot;Enable Aster&quot;</li>
                             </ol>
                           </div>
 
-                          {/* Guide images toggle */}
                           <button
                             onClick={() => setAsterShowGuide(!asterShowGuide)}
                             className="text-xs text-[var(--accent)] hover:underline flex items-center gap-1"
@@ -1923,7 +1948,6 @@ export default function OpenClawSetupPage() {
                             </div>
                           )}
 
-                          {/* Action buttons */}
                           <div className="flex gap-3">
                             <a
                               href="https://www.asterdextestnet.com/en/api-wallet"
@@ -1981,12 +2005,12 @@ export default function OpenClawSetupPage() {
                   </button>
                   <button
                     onClick={() => {
-                      markComplete("skills");
+                      markComplete("aster");
                       goNext();
                     }}
                     className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                   >
-                    {lazyTradingEnabled && maxxitApiKey ? "Continue with Skill" : "Skip & Continue"}
+                    {asterEnabled ? "Continue" : "Skip & Continue"}
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -1998,7 +2022,131 @@ export default function OpenClawSetupPage() {
               </div>
             )}
 
-            {/* Step 6: Activate / Complete */}
+            {/* Step 7: API Key */}
+            {currentStepKey === "apikey" && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <h1 className="font-display text-2xl mb-2">
+                    Generate API Key
+                  </h1>
+                  <p className="text-[var(--text-secondary)]">
+                    Create an API key to connect the Lazy Trading skill to your OpenClaw instance.
+                  </p>
+                </div>
+
+                <div className={`border rounded-lg p-5 transition-all ${maxxitApiKey
+                  ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                  : "border-[var(--border)]"
+                  }`}>
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl">🔑</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold">Maxxit API Key</h3>
+                        {maxxitApiKey && (
+                          <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                            Generated
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[var(--text-secondary)] mb-4">
+                        This key allows your OpenClaw instance to execute trades on your behalf.
+                      </p>
+
+                      {maxxitApiKey ? (
+                        <div className="space-y-3">
+                          <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
+                            <p className="text-sm text-green-400 mb-2">
+                              <strong>API Key Generated!</strong>
+                            </p>
+                            <code className="text-xs bg-[var(--bg-card)] px-2 py-1 rounded font-mono break-all">
+                              {maxxitApiKey}
+                            </code>
+                            <p className="text-xs text-[var(--text-muted)] mt-2">
+                              This key will be securely configured in your OpenClaw instance.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            setIsGeneratingApiKey(true);
+                            setErrorMessage("");
+                            try {
+                              const res = await fetch("/api/lazy-trading/api-key", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ userWallet: walletAddress }),
+                              });
+                              const data = await res.json();
+                              if (data.success && data.apiKey?.value) {
+                                setMaxxitApiKey(data.apiKey.value);
+                                await fetch("/api/openclaw/store-skill-key", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    userWallet: walletAddress,
+                                    apiKey: data.apiKey.value,
+                                  }),
+                                });
+                              } else {
+                                setErrorMessage(data.message || "Failed to generate API key");
+                              }
+                            } catch {
+                              setErrorMessage("Failed to generate API key");
+                            } finally {
+                              setIsGeneratingApiKey(false);
+                            }
+                          }}
+                          disabled={isGeneratingApiKey}
+                          className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                        >
+                          {isGeneratingApiKey ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            "Generate API Key"
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={goBack}
+                    className="px-6 py-4 border border-[var(--border)] rounded-lg font-bold flex items-center gap-2 hover:border-[var(--text-muted)] transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!canContinueFromApiKeyStep) {
+                        setErrorMessage("Generate an API key to continue when Ostium or Aster is enabled.");
+                        return;
+                      }
+                      markComplete("apikey");
+                      goNext();
+                    }}
+                    disabled={!canContinueFromApiKeyStep}
+                    className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {requiresApiKeyGeneration
+                      ? (maxxitApiKey ? "Continue" : "Generate API Key to Continue")
+                      : (maxxitApiKey ? "Continue" : "Skip & Continue")}
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                {errorMessage && (
+                  <p className="text-red-500 text-sm text-center">
+                    {errorMessage}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Step 8: Activate / Complete */}
             {currentStepKey === "activate" && (
               <div className="space-y-6">
                 {activated ? (

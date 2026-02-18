@@ -44,6 +44,31 @@ export default async function handler(
             });
         }
 
+        if (enabled) {
+            const asterServiceUrl = process.env.ASTER_SERVICE_URL || "http://localhost:5003";
+            const verifyResponse = await fetch(`${asterServiceUrl}/balance`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userAddress: wallet }),
+            });
+
+            if (!verifyResponse.ok) {
+                let verifyError = "Aster verification failed";
+                try {
+                    const verifyData = await verifyResponse.json();
+                    verifyError = verifyData?.error || verifyData?.msg || verifyError;
+                } catch {
+                    const verifyText = await verifyResponse.text();
+                    if (verifyText) verifyError = verifyText;
+                }
+
+                return res.status(400).json({
+                    success: false,
+                    error: `Unable to verify your agent wallet on Aster. Please authorize your agent address on Aster API Wallet first. (${verifyError})`,
+                });
+            }
+        }
+
         // Update the aster_enabled flag
         await prismaClient.user_agent_addresses.update({
             where: { user_wallet: wallet },

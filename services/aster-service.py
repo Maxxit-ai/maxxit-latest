@@ -548,19 +548,16 @@ def open_position():
     """
     Open a perpetual position on Aster DEX.
     
-    Request body (provide EITHER quantity OR collateral):
+    Request body:
     {
         "userAddress": "0x...",    // User wallet (for credential lookup)
         "symbol": "BTC",          // Token or full symbol (BTCUSDT)
         "side": "long",           // "long" or "short"
-        "quantity": 0.01,         // Position size in BASE asset (e.g. 0.01 BTC)
-        "collateral": 100,        // OR position size in USDT (e.g. 100 USDT)
+        "quantity": 0.01,         // Position size in BASE asset (e.g. 0.01 BTC) — REQUIRED
         "leverage": 10,           // Leverage (optional, set before order)
-        "type": "MARKET"          // Order type (default: MARKET)
+        "type": "MARKET",         // Order type (default: MARKET)
+        "price": 95000            // Required only for LIMIT orders
     }
-    
-    When "collateral" is provided (USDT amount):
-      - Fetches current price, calculates quantity = collateral / price
     """
     try:
         data = request.json or {}
@@ -568,31 +565,22 @@ def open_position():
         token = data.get('symbol') or data.get('market')
         side = data.get('side')
         quantity = data.get('quantity') or data.get('size')
-        collateral = data.get('collateral')  # USDT amount
         leverage = data.get('leverage')
         order_type = data.get('type', 'MARKET').upper()
         price = data.get('price')  # Required for LIMIT orders
         
-        # Validate required fields — need either quantity or collateral
-        if not all([user_wallet, token, side]):
+        if not all([user_wallet, token, side, quantity]):
             return jsonify({
                 "success": False,
-                "error": "Missing required fields: userAddress, symbol, side"
-            }), 400
-        
-        if not quantity and not collateral:
-            return jsonify({
-                "success": False,
-                "error": "Either 'quantity' (base asset) or 'collateral' (USDT) is required"
+                "error": "Missing required fields: userAddress, symbol, side, quantity"
             }), 400
         
         user_address, agent_address, agent_key = get_agent_credentials(user_wallet)
         symbol = resolve_symbol(token)
         
-        # Map side
         aster_side = 'BUY' if side.lower() == 'long' else 'SELL'
         
-        # Set leverage if specified
+        # Set leverage before placing order if specified
         if leverage:
             try:
                 aster_request('POST', '/fapi/v3/leverage', {
@@ -603,55 +591,15 @@ def open_position():
             except AsterAPIError as e:
                 logger.warning(f"⚠️ Failed to set leverage: {e.msg}")
         
-        # Build order params
+        qty_precision = get_quantity_precision(symbol)
+        rounded_qty = round(float(quantity), qty_precision)
+        
         order_params = {
             'symbol': symbol,
             'side': aster_side,
             'type': order_type,
+            'quantity': str(rounded_qty),
         }
-        
-        if collateral:
-            # User specified USDT amount — convert to base asset quantity
-            usdt_amount = float(collateral)
-            
-            if order_type == 'LIMIT' and price:
-                # For LIMIT orders, use the specified price
-                current_price = float(price)
-            else:
-                # Fetch current mark price for conversion
-                try:
-                    price_resp = http_requests.get(
-                        f"{ASTER_BASE_URL}/fapi/v3/ticker/price",
-                        params={"symbol": symbol},
-                        timeout=10
-                    )
-                    if price_resp.status_code != 200:
-                        return jsonify({
-                            "success": False,
-                            "error": f"Failed to fetch price for {symbol} to convert collateral"
-                        }), 500
-                    current_price = float(price_resp.json().get('price', 0))
-                    if current_price <= 0:
-                        return jsonify({
-                            "success": False,
-                            "error": f"Invalid price returned for {symbol}"
-                        }), 500
-                except Exception as e:
-                    return jsonify({
-                        "success": False,
-                        "error": f"Failed to fetch price: {str(e)}"
-                    }), 500
-            
-            calc_qty = usdt_amount / current_price
-            qty_precision = get_quantity_precision(symbol)
-            rounded_qty = round(calc_qty, qty_precision)
-            order_params['quantity'] = str(rounded_qty)
-            logger.info(f"📊 Converted {usdt_amount} USDT → {rounded_qty} {token} @ ${current_price:,.2f}")
-        else:
-            # User specified base asset quantity
-            qty_precision = get_quantity_precision(symbol)
-            rounded_qty = round(float(quantity), qty_precision)
-            order_params['quantity'] = str(rounded_qty)
         
         # Add price for LIMIT orders
         if order_type == 'LIMIT':
@@ -668,8 +616,7 @@ def open_position():
         result = aster_request('POST', '/fapi/v3/order', order_params,
                                user_address, agent_address, agent_key)
         
-        display_size = collateral and f"{collateral} USDT" or f"{order_params.get('quantity')} {token}"
-        logger.info(f"✅ Order placed: {symbol} {aster_side} {display_size} @ {order_type}")
+        logger.info(f"✅ Order placed: {symbol} {aster_side} {rounded_qty} @ {order_type}")
         
         return jsonify({
             "success": True,
