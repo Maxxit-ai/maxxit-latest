@@ -10,6 +10,7 @@ import { TradingPreferencesForm, TradingPreferences } from './TradingPreferences
 import { getOstiumConfig } from '../lib/ostium-config';
 import { Web3CheckoutModal } from './Web3CheckoutModal';
 import { PaymentSelectorModal } from './PaymentSelectorModal';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 const pricingTiers = [
   {
@@ -46,7 +47,14 @@ interface OstiumConnectProps {
 }
 
 // Get Ostium configuration based on environment
-const { tradingContract: OSTIUM_TRADING_CONTRACT, usdcContract: USDC_TOKEN, storageContract: OSTIUM_STORAGE, chainId: ARBITRUM_CHAIN_ID } = getOstiumConfig();
+const {
+  tradingContract: OSTIUM_TRADING_CONTRACT,
+  usdcContract: USDC_TOKEN,
+  storageContract: OSTIUM_STORAGE,
+  chainId: OSTIUM_CHAIN_ID,
+  chainName: OSTIUM_CHAIN_NAME,
+  rpcUrl: OSTIUM_RPC_URL,
+} = getOstiumConfig();
 const OSTIUM_TRADING_ABI = ['function setDelegate(address delegate) external'];
 const USDC_ABI = [
   'function approve(address spender, uint256 amount) public returns (bool)',
@@ -60,6 +68,14 @@ export function OstiumConnect({
   onSuccess,
 }: OstiumConnectProps) {
   const { user, authenticated, login } = usePrivy();
+  const {
+    resolvedWalletAddress,
+    getEip1193Provider,
+    sendWalletTransaction,
+    waitForTransaction,
+    isCrossAppExecution,
+  } = useWalletProvider();
+  const walletAddress = resolvedWalletAddress || user?.wallet?.address || '';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [agentAddress, setAgentAddress] = useState<string>('');
@@ -96,15 +112,15 @@ export function OstiumConnect({
   const [isCreator, setIsCreator] = useState(false); // Track if current user is the club creator
 
   useEffect(() => {
-    if (authenticated && user?.wallet?.address) {
+    if (authenticated && walletAddress) {
       loadAgentData();
       loadCreditBalance();
     }
-  }, [authenticated, user?.wallet?.address]);
+  }, [authenticated, walletAddress]);
 
   useEffect(() => {
     // If already authenticated when component mounts, go to preferences step first
-    if (authenticated && user?.wallet?.address && step === 'connect' && !hasInitialized) {
+    if (authenticated && walletAddress && step === 'connect' && !hasInitialized) {
       setHasInitialized(true);
       // Load agent data and credit balance
       loadAgentData();
@@ -121,7 +137,7 @@ export function OstiumConnect({
       // Always show preferences as first step for new deployments
       setStep('preferences');
     }
-  }, [authenticated, user?.wallet?.address, step, hasInitialized]);
+  }, [authenticated, walletAddress, step, hasInitialized]);
 
   const loadAgentData = async () => {
     try {
@@ -131,7 +147,7 @@ export function OstiumConnect({
         setAgentData(data);
 
         // Check if current user is the club creator
-        const userWallet = user?.wallet?.address?.toLowerCase() || '';
+        const userWallet = walletAddress.toLowerCase() || '';
         const creatorWallet = (data.creator_wallet || '').toLowerCase();
         const creatorFlag = userWallet && creatorWallet && userWallet === creatorWallet;
         setIsCreator(creatorFlag);
@@ -156,9 +172,9 @@ export function OstiumConnect({
   };
 
   const loadCreditBalance = async () => {
-    if (!user?.wallet?.address) return;
+    if (!walletAddress) return;
     try {
-      const response = await fetch(`/api/user/credits/balance?wallet=${user.wallet.address}`);
+      const response = await fetch(`/api/user/credits/balance?wallet=${walletAddress}`);
       if (response.ok) {
         const data = await response.json();
         setCreditBalance(parseFloat(data.balance || '0'));
@@ -170,7 +186,7 @@ export function OstiumConnect({
   };
 
   const checkSetupStatus = async () => {
-    if (!user?.wallet?.address) return;
+    if (!walletAddress) return;
 
     // Prevent duplicate calls
     if (isCheckingRef.current) {
@@ -180,8 +196,8 @@ export function OstiumConnect({
     isCheckingRef.current = true;
 
     try {
-      console.log('[OstiumConnect] Checking setup status for wallet:', user.wallet.address);
-      const setupResponse = await fetch(`/api/user/check-setup-status?userWallet=${user.wallet.address}&agentId=${agentId}`);
+      console.log('[OstiumConnect] Checking setup status for wallet:', walletAddress);
+      const setupResponse = await fetch(`/api/user/check-setup-status?userWallet=${walletAddress}&agentId=${agentId}`);
 
       if (setupResponse.ok) {
         const setupData = await setupResponse.json();
@@ -204,7 +220,7 @@ export function OstiumConnect({
           console.log('[OstiumConnect] Wallet has existing Ostium address:', setupData.addresses.ostium);
 
           // Verify approvals are still valid on-chain
-          const approvalResponse = await fetch(`/api/ostium/check-approval-status?userWallet=${user.wallet.address}`);
+          const approvalResponse = await fetch(`/api/ostium/check-approval-status?userWallet=${walletAddress}`);
 
           if (approvalResponse.ok) {
             const approvalData = await approvalResponse.json();
@@ -281,13 +297,13 @@ export function OstiumConnect({
     setError('');
 
     try {
-      console.log('[OstiumConnect] Assigning agent for:', { agentId, userWallet: user?.wallet?.address });
+      console.log('[OstiumConnect] Assigning agent for:', { agentId, userWallet: walletAddress });
 
       const addressResponse = await fetch(`/api/agents/${agentId}/generate-deployment-address`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userWallet: user?.wallet?.address,
+          userWallet: walletAddress,
           venue: 'OSTIUM',
         }),
       });
@@ -334,7 +350,7 @@ export function OstiumConnect({
     try {
       const requestBody: Record<string, unknown> = {
         agentId,
-        userWallet: user?.wallet?.address,
+        userWallet: walletAddress,
       };
 
       // Include trading preferences if available (always use ref to avoid stale state)
@@ -392,7 +408,7 @@ export function OstiumConnect({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tierName: selectedTier.name,
-            userWallet: user?.wallet?.address
+            userWallet: walletAddress
           }),
         });
 
@@ -421,7 +437,7 @@ export function OstiumConnect({
     setError('');
 
     try {
-      if (!authenticated || !user?.wallet?.address) {
+      if (!authenticated || !walletAddress) {
         throw new Error('Please connect your wallet');
       }
 
@@ -429,41 +445,47 @@ export function OstiumConnect({
         throw new Error('Agent not assigned yet');
       }
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found. Please install MetaMask.');
-      }
+      if (!isCrossAppExecution) {
+        const provider = await getEip1193Provider();
+        await provider.request({ method: 'eth_requestAccounts' });
+        const ethersProvider = new ethers.providers.Web3Provider(provider);
+        const network = await ethersProvider.getNetwork();
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
-      const network = await ethersProvider.getNetwork();
-
-      if (network.chainId !== ARBITRUM_CHAIN_ID) {
-        try {
-          await provider.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: `0x${ARBITRUM_CHAIN_ID.toString(16)}` }],
-          });
-        } catch (switchError: any) {
-          if (switchError.code === 4902) {
-            throw new Error('Please add Arbitrum to your wallet');
+        if (network.chainId !== OSTIUM_CHAIN_ID) {
+          try {
+            await provider.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: `0x${OSTIUM_CHAIN_ID.toString(16)}` }],
+            });
+          } catch (switchError: any) {
+            if (switchError.code === 4902) {
+              throw new Error(`Please add ${OSTIUM_CHAIN_NAME} to your wallet`);
+            }
+            throw new Error(`Please switch to ${OSTIUM_CHAIN_NAME}`);
           }
-          throw new Error('Please switch to Arbitrum network');
         }
       }
 
-      const signer = ethersProvider.getSigner();
-      const contract = new ethers.Contract(OSTIUM_TRADING_CONTRACT, OSTIUM_TRADING_ABI, signer);
-
-      // Estimate gas with 50% buffer for reliability
-      const gasEstimate = await contract.estimateGas.setDelegate(agentAddress);
+      const tradingInterface = new ethers.utils.Interface(OSTIUM_TRADING_ABI);
+      const setDelegateData = tradingInterface.encodeFunctionData('setDelegate', [agentAddress]);
+      const readProvider = new ethers.providers.JsonRpcProvider(OSTIUM_RPC_URL);
+      const gasEstimate = await readProvider.estimateGas({
+        to: OSTIUM_TRADING_CONTRACT,
+        from: walletAddress,
+        data: setDelegateData,
+      });
       const gasLimit = gasEstimate.mul(150).div(100); // 50% buffer
 
       console.log(`[OstiumConnect] Gas estimate: ${gasEstimate.toString()}, with 50% buffer: ${gasLimit.toString()}`);
 
-      const tx = await contract.setDelegate(agentAddress, { gasLimit });
-      setTxHash(tx.hash);
-
-      await tx.wait();
+      const sentTxHash = await sendWalletTransaction({
+        chainId: OSTIUM_CHAIN_ID,
+        to: OSTIUM_TRADING_CONTRACT,
+        data: setDelegateData,
+        gasLimit: gasLimit.toHexString(),
+      });
+      setTxHash(sentTxHash);
+      await waitForTransaction(sentTxHash, OSTIUM_RPC_URL);
 
       console.log('[OstiumConnect] ✅ Delegate approved');
       setDelegateApproved(true);
@@ -494,27 +516,14 @@ export function OstiumConnect({
     setError('');
 
     try {
-      if (!authenticated || !user?.wallet?.address) {
+      if (!authenticated || !walletAddress) {
         throw new Error('Please connect your wallet');
       }
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found.');
-      }
+      const readProvider = new ethers.providers.JsonRpcProvider(OSTIUM_RPC_URL);
+      const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, readProvider);
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
-      await ethersProvider.send('eth_requestAccounts', []);
-
-      const network = await ethersProvider.getNetwork();
-      if (network.chainId !== ARBITRUM_CHAIN_ID) {
-        throw new Error('Please switch to Arbitrum');
-      }
-
-      const signer = ethersProvider.getSigner();
-      const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
-
-      const currentAllowanceStorage = await usdcContract.allowance(user.wallet.address, OSTIUM_STORAGE);
+      const currentAllowanceStorage = await usdcContract.allowance(walletAddress, OSTIUM_STORAGE);
       const allowanceAmount = ethers.utils.parseUnits('1000000', 6);
 
       const storageAllowance = parseFloat(ethers.utils.formatUnits(currentAllowanceStorage, 6));
@@ -549,39 +558,52 @@ export function OstiumConnect({
   };
 
   const approveUsdcTransaction = async () => {
-    if (!authenticated || !user?.wallet?.address) {
+    if (!authenticated || !walletAddress) {
       throw new Error('Please connect your wallet');
     }
 
-    const provider = (window as any).ethereum;
-    const ethersProvider = new ethers.providers.Web3Provider(provider);
-    const signer = ethersProvider.getSigner();
-    const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
+    if (!isCrossAppExecution) {
+      const provider = await getEip1193Provider();
+      await provider.request({ method: 'eth_requestAccounts' });
+      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const network = await ethersProvider.getNetwork();
+      if (network.chainId !== OSTIUM_CHAIN_ID) {
+        try {
+          await provider.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: `0x${OSTIUM_CHAIN_ID.toString(16)}` }],
+          });
+        } catch (switchError: any) {
+          if (switchError.code === 4902) {
+            throw new Error(`Please add ${OSTIUM_CHAIN_NAME} to your wallet`);
+          }
+          throw new Error(`Please switch to ${OSTIUM_CHAIN_NAME}`);
+        }
+      }
+    }
 
+    const usdcInterface = new ethers.utils.Interface(USDC_ABI);
     const allowanceAmount = ethers.utils.parseUnits('1000000', 6);
-
-    const approveData = usdcContract.interface.encodeFunctionData('approve', [OSTIUM_STORAGE, allowanceAmount]);
-    const gasEstimate = await ethersProvider.estimateGas({
+    const approveData = usdcInterface.encodeFunctionData('approve', [OSTIUM_STORAGE, allowanceAmount]);
+    const readProvider = new ethers.providers.JsonRpcProvider(OSTIUM_RPC_URL);
+    const gasEstimate = await readProvider.estimateGas({
       to: USDC_TOKEN,
-      from: user.wallet.address,
+      from: walletAddress,
       data: approveData,
     });
 
     const gasWithBuffer = gasEstimate.mul(150).div(100);
     console.log(`[OstiumConnect] USDC Storage approval - Gas estimate: ${gasEstimate.toString()}, with 50% buffer: ${gasWithBuffer.toString()}`);
 
-    const txHash = await provider.request({
-      method: 'eth_sendTransaction',
-      params: [{
-        from: user.wallet.address,
-        to: USDC_TOKEN,
-        data: approveData,
-        gas: gasWithBuffer.toHexString(),
-      }],
+    const txHash = await sendWalletTransaction({
+      chainId: OSTIUM_CHAIN_ID,
+      to: USDC_TOKEN,
+      data: approveData,
+      gasLimit: gasWithBuffer.toHexString(),
     });
 
     setTxHash(txHash);
-    await ethersProvider.waitForTransaction(txHash);
+    await waitForTransaction(txHash, OSTIUM_RPC_URL);
 
     setUsdcApproved(true);
     setUsdcAllowanceStatus(true);
@@ -595,27 +617,14 @@ export function OstiumConnect({
     setError('');
 
     try {
-      if (!authenticated || !user?.wallet?.address) {
+      if (!authenticated || !walletAddress) {
         throw new Error('Please connect your wallet');
       }
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found.');
-      }
+      const readProvider = new ethers.providers.JsonRpcProvider(OSTIUM_RPC_URL);
+      const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, readProvider);
 
-      const ethersProvider = new ethers.providers.Web3Provider(provider);
-      await ethersProvider.send('eth_requestAccounts', []);
-
-      const network = await ethersProvider.getNetwork();
-      if (network.chainId !== ARBITRUM_CHAIN_ID) {
-        throw new Error('Please switch to Arbitrum');
-      }
-
-      const signer = ethersProvider.getSigner();
-      const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
-
-      const currentAllowanceStorage = await usdcContract.allowance(user.wallet.address, OSTIUM_STORAGE);
+      const currentAllowanceStorage = await usdcContract.allowance(walletAddress, OSTIUM_STORAGE);
       // const currentAllowanceTrading = await usdcContract.allowance(user.wallet.address, OSTIUM_TRADING_CONTRACT);
       const allowanceAmount = ethers.utils.parseUnits('1000000', 6);
 
@@ -685,11 +694,11 @@ export function OstiumConnect({
   };
 
   const loadFirstDeploymentPreferences = async () => {
-    if (!user?.wallet?.address) return null;
+    if (!walletAddress) return null;
 
     try {
       const response = await fetch(
-        `/api/user/first-deployment-preferences?userWallet=${user.wallet.address}&agentId=${agentId}`
+        `/api/user/first-deployment-preferences?userWallet=${walletAddress}&agentId=${agentId}`
       );
 
       if (!response.ok) {
@@ -725,7 +734,7 @@ export function OstiumConnect({
   };
 
   const checkApprovalStatus = async (): Promise<{ isDelegated: boolean; hasApproval: boolean }> => {
-    if (!user?.wallet?.address || !agentAddress) {
+    if (!walletAddress || !agentAddress) {
       return { isDelegated: false, hasApproval: false };
     }
 
@@ -733,7 +742,7 @@ export function OstiumConnect({
     try {
       // Check delegation status
       const delegationResponse = await fetch(
-        `/api/ostium/check-delegation-status?userWallet=${user.wallet.address}&agentAddress=${agentAddress}`
+        `/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${agentAddress}`
       );
 
       let isDelegated = false;
@@ -747,7 +756,7 @@ export function OstiumConnect({
 
       // Check USDC allowance
       const allowanceResponse = await fetch(
-        `/api/ostium/check-approval-status?userWallet=${user.wallet.address}`
+        `/api/ostium/check-approval-status?userWallet=${walletAddress}`
       );
 
       let hasApproval = false;
@@ -774,7 +783,7 @@ export function OstiumConnect({
     setError('');
 
     try {
-      if (!authenticated || !user?.wallet?.address) {
+      if (!authenticated || !walletAddress) {
         throw new Error('Please connect your wallet');
       }
 
@@ -815,10 +824,10 @@ export function OstiumConnect({
 
   // Automatically assign agent when entering agent step
   useEffect(() => {
-    if (step === 'agent' && user?.wallet?.address && !agentAddress && !loading && !isAssigningRef.current) {
+    if (step === 'agent' && walletAddress && !agentAddress && !loading && !isAssigningRef.current) {
       assignAgent();
     }
-  }, [step, user?.wallet?.address, agentAddress, loading]);
+  }, [step, walletAddress, agentAddress, loading]);
 
   // When returning to preferences step within the same flow,
   // restore the last saved preferences from the ref into local state.
@@ -830,10 +839,10 @@ export function OstiumConnect({
 
   // Check approval status when entering approvals step
   useEffect(() => {
-    if (step === 'approvals' && user?.wallet?.address && agentAddress && !checkingApprovalStatus) {
+    if (step === 'approvals' && walletAddress && agentAddress && !checkingApprovalStatus) {
       checkApprovalStatus();
     }
-  }, [step, user?.wallet?.address, agentAddress]);
+  }, [step, walletAddress, agentAddress]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -1042,7 +1051,7 @@ export function OstiumConnect({
                 )}
 
                 {step === 'connect' ? (
-                  authenticated && user?.wallet?.address ? (
+                  authenticated && walletAddress ? (
                     <div className="space-y-3 sm:space-y-4">
                       <div className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-[var(--accent)]/60 bg-[var(--accent)]/5 rounded">
                         <div className="w-10 h-10 sm:w-12 sm:h-12 border border-[var(--accent)] flex items-center justify-center bg-[var(--bg-deep)] flex-shrink-0">
@@ -1051,7 +1060,7 @@ export function OstiumConnect({
                         <div className="flex-1 min-w-0">
                           <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)]">Wallet connected</p>
                           <p className="text-[10px] sm:text-xs text-[var(--text-secondary)] truncate font-mono">
-                            {user.wallet.address}
+                            {walletAddress}
                           </p>
                         </div>
                         <div className="text-[8px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 sm:py-1 border border-[var(--accent)] text-[var(--accent)] font-bold whitespace-nowrap">
@@ -1113,7 +1122,7 @@ export function OstiumConnect({
                         </div>
                       ) : (
                         <TradingPreferencesForm
-                          userWallet={user?.wallet?.address || ''}
+                          userWallet={walletAddress || ''}
                           onClose={onClose}
                           onBack={goBack}
                           localOnly={true}
@@ -1527,7 +1536,7 @@ export function OstiumConnect({
           isOpen={isWeb3ModalOpen}
           onClose={() => setIsWeb3ModalOpen(false)}
           tier={selectedTier}
-          userWallet={user?.wallet?.address}
+          userWallet={walletAddress}
           onSuccess={(hash) => {
             console.log('[OstiumConnect] Top-up success:', hash);
             setIsWeb3ModalOpen(false);

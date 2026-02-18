@@ -199,8 +199,16 @@ function StepIndicator({
 export default function OpenClawSetupPage() {
   const router = useRouter();
   const { authenticated, user, login } = usePrivy();
-  const { getEip1193Provider } = useWalletProvider();
-  const walletAddress = user?.wallet?.address;
+  const {
+    wallets,
+    getEip1193Provider,
+    resolvedWalletAddress,
+    walletSource,
+    sendWalletTransaction,
+    waitForTransaction,
+    isCrossAppExecution,
+  } = useWalletProvider();
+  const walletAddress = resolvedWalletAddress;
 
   const [showLanding, setShowLanding] = useState(true);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -286,6 +294,29 @@ export default function OpenClawSetupPage() {
     setErrorMessage("");
     setCurrentStepIndex((prev) => Math.max(prev - 1, 0));
   }, []);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    console.log("[OpenClaw Setup] Privy user wallet:", {
+      address: user?.wallet?.address || null,
+      walletClientType: user?.wallet?.walletClientType || null,
+    });
+    console.log("[OpenClaw Setup] Resolved wallet:", {
+      address: resolvedWalletAddress,
+      source: walletSource,
+    });
+    console.log(
+      "[OpenClaw Setup] Connected wallets:",
+      wallets.map((wallet) => ({
+        address: wallet.address,
+        walletClientType: wallet.walletClientType,
+        connectorType: wallet.connectorType,
+        walletIndex: wallet.walletIndex,
+        linked: wallet.linked,
+        chainId: wallet.chainId,
+      }))
+    );
+  }, [authenticated, user?.wallet?.address, user?.wallet?.walletClientType, wallets, resolvedWalletAddress, walletSource]);
 
   const checkAgentFundingStatus = useCallback(async (agentAddress: string): Promise<boolean> => {
     try {
@@ -1761,32 +1792,43 @@ export default function OpenClawSetupPage() {
                                   // Delegation
                                   if (!delegationComplete) {
                                     setSkillCurrentAction("Setting delegation...");
-                                    const provider = await getEip1193Provider();
-                                    await provider.request({ method: "eth_requestAccounts" });
-                                    const ethersProvider = new ethers.providers.Web3Provider(provider);
-                                    const network = await ethersProvider.getNetwork();
-                                    if (network.chainId !== OSTIUM_CHAIN_ID) {
-                                      try {
-                                        await provider.request({
-                                          method: "wallet_switchEthereumChain",
-                                          params: [{ chainId: `0x${OSTIUM_CHAIN_ID.toString(16)}` }],
-                                        });
-                                        await new Promise((r) => setTimeout(r, 500));
-                                      } catch (switchErr: any) {
-                                        throw new Error(
-                                          switchErr.code === 4902
-                                            ? `Please add ${OSTIUM_CHAIN_NAME} to your wallet`
-                                            : `Please switch to ${OSTIUM_CHAIN_NAME} network`
-                                        );
+                                    if (!isCrossAppExecution) {
+                                      const provider = await getEip1193Provider();
+                                      await provider.request({ method: "eth_requestAccounts" });
+                                      const ethersProvider = new ethers.providers.Web3Provider(provider);
+                                      const network = await ethersProvider.getNetwork();
+                                      if (network.chainId !== OSTIUM_CHAIN_ID) {
+                                        try {
+                                          await provider.request({
+                                            method: "wallet_switchEthereumChain",
+                                            params: [{ chainId: `0x${OSTIUM_CHAIN_ID.toString(16)}` }],
+                                          });
+                                          await new Promise((r) => setTimeout(r, 500));
+                                        } catch (switchErr: any) {
+                                          throw new Error(
+                                            switchErr.code === 4902
+                                              ? `Please add ${OSTIUM_CHAIN_NAME} to your wallet`
+                                              : `Please switch to ${OSTIUM_CHAIN_NAME} network`
+                                          );
+                                        }
                                       }
                                     }
-                                    const freshProvider = new ethers.providers.Web3Provider(provider);
-                                    const signer = freshProvider.getSigner();
-                                    const contract = new ethers.Contract(OSTIUM_TRADING_CONTRACT, OSTIUM_TRADING_ABI, signer);
-                                    const gasEstimate = await contract.estimateGas.setDelegate(ostiumAgentAddress);
-                                    const tx = await contract.setDelegate(ostiumAgentAddress, { gasLimit: gasEstimate.mul(150).div(100) });
-                                    setSkillTxHash(tx.hash);
-                                    await tx.wait();
+                                    const tradingInterface = new ethers.utils.Interface(OSTIUM_TRADING_ABI);
+                                    const delegateData = tradingInterface.encodeFunctionData("setDelegate", [ostiumAgentAddress]);
+                                    const readProvider = new ethers.providers.JsonRpcProvider(OSTIUM_RPC_URL);
+                                    const gasEstimate = await readProvider.estimateGas({
+                                      to: OSTIUM_TRADING_CONTRACT,
+                                      from: walletAddress,
+                                      data: delegateData,
+                                    });
+                                    const txHash = await sendWalletTransaction({
+                                      chainId: OSTIUM_CHAIN_ID,
+                                      to: OSTIUM_TRADING_CONTRACT,
+                                      data: delegateData,
+                                      gasLimit: gasEstimate.mul(150).div(100).toHexString(),
+                                    });
+                                    setSkillTxHash(txHash);
+                                    await waitForTransaction(txHash, OSTIUM_RPC_URL);
                                     setDelegationComplete(true);
                                     setSkillTxHash(null);
                                     await new Promise((r) => setTimeout(r, 500));
@@ -1795,20 +1837,28 @@ export default function OpenClawSetupPage() {
                                   // USDC Approval
                                   if (!allowanceComplete) {
                                     setSkillCurrentAction("Approving USDC allowance...");
-                                    const provider = await getEip1193Provider();
-                                    const ethersProvider = new ethers.providers.Web3Provider(provider);
-                                    await ethersProvider.send("eth_requestAccounts", []);
-                                    const signer = ethersProvider.getSigner();
-                                    const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
+                                    if (!isCrossAppExecution) {
+                                      const provider = await getEip1193Provider();
+                                      const ethersProvider = new ethers.providers.Web3Provider(provider);
+                                      await ethersProvider.send("eth_requestAccounts", []);
+                                    }
+                                    const usdcInterface = new ethers.utils.Interface(USDC_ABI);
                                     const allowanceAmount = ethers.utils.parseUnits("1000000", 6);
-                                    const approveData = usdcContract.interface.encodeFunctionData("approve", [OSTIUM_STORAGE, allowanceAmount]);
-                                    const gasEstimate = await ethersProvider.estimateGas({ to: USDC_TOKEN, from: walletAddress, data: approveData });
-                                    const txHash = await provider.request({
-                                      method: "eth_sendTransaction",
-                                      params: [{ from: walletAddress, to: USDC_TOKEN, data: approveData, gas: gasEstimate.mul(150).div(100).toHexString() }],
+                                    const approveData = usdcInterface.encodeFunctionData("approve", [OSTIUM_STORAGE, allowanceAmount]);
+                                    const readProvider = new ethers.providers.JsonRpcProvider(OSTIUM_RPC_URL);
+                                    const gasEstimate = await readProvider.estimateGas({
+                                      to: USDC_TOKEN,
+                                      from: walletAddress,
+                                      data: approveData,
+                                    });
+                                    const txHash = await sendWalletTransaction({
+                                      chainId: OSTIUM_CHAIN_ID,
+                                      to: USDC_TOKEN,
+                                      data: approveData,
+                                      gasLimit: gasEstimate.mul(150).div(100).toHexString(),
                                     });
                                     setSkillTxHash(txHash);
-                                    await ethersProvider.waitForTransaction(txHash);
+                                    await waitForTransaction(txHash, OSTIUM_RPC_URL);
                                     setAllowanceComplete(true);
                                     setSkillTxHash(null);
                                   }
@@ -1861,29 +1911,26 @@ export default function OpenClawSetupPage() {
                                     }
 
                                     setSkillCurrentAction("Funding agent wallet...");
-                                    const provider = await getEip1193Provider();
-                                    await provider.request({ method: "eth_requestAccounts" });
-                                    const ethersProvider = new ethers.providers.Web3Provider(provider);
-                                    const network = await ethersProvider.getNetwork();
-                                    if (network.chainId !== OSTIUM_CHAIN_ID) {
-                                      await provider.request({
-                                        method: "wallet_switchEthereumChain",
-                                        params: [{ chainId: `0x${OSTIUM_CHAIN_ID.toString(16)}` }],
-                                      });
+                                    if (!isCrossAppExecution) {
+                                      const provider = await getEip1193Provider();
+                                      await provider.request({ method: "eth_requestAccounts" });
+                                      const ethersProvider = new ethers.providers.Web3Provider(provider);
+                                      const network = await ethersProvider.getNetwork();
+                                      if (network.chainId !== OSTIUM_CHAIN_ID) {
+                                        await provider.request({
+                                          method: "wallet_switchEthereumChain",
+                                          params: [{ chainId: `0x${OSTIUM_CHAIN_ID.toString(16)}` }],
+                                        });
+                                      }
                                     }
 
-                                    const txHash = await provider.request({
-                                      method: "eth_sendTransaction",
-                                      params: [
-                                        {
-                                          from: walletAddress,
-                                          to: ostiumAgentAddress,
-                                          value: ethers.utils.parseEther(agentFundingAmountEth).toHexString(),
-                                        },
-                                      ],
+                                    const txHash = await sendWalletTransaction({
+                                      chainId: OSTIUM_CHAIN_ID,
+                                      to: ostiumAgentAddress,
+                                      value: ethers.utils.parseEther(agentFundingAmountEth).toHexString(),
                                     });
                                     setSkillTxHash(txHash);
-                                    await ethersProvider.waitForTransaction(txHash);
+                                    await waitForTransaction(txHash, OSTIUM_RPC_URL);
                                     setSkillTxHash(null);
                                     setAgentFundingComplete(true);
                                   } catch (err: any) {
