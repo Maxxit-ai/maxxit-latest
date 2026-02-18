@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Wallet, Shield, Loader2, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 import { ethers } from 'ethers';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface Web3CheckoutModalProps {
     isOpen: boolean;
@@ -48,21 +49,17 @@ export function Web3CheckoutModal({
     const [status, setStatus] = useState<'idle' | 'preparing' | 'signing' | 'pending' | 'verifying' | 'success' | 'error'>('idle');
     const [error, setError] = useState<string | null>(null);
     const [txHash, setTxHash] = useState<string | null>(null);
+    const { getEip1193Provider } = useWalletProvider();
 
     if (!isOpen || !tier) return null;
 
     const handleConfirmPayment = async () => {
-        if (!window.ethereum) {
-            setError('No wallet detected. Please install MetaMask or similar.');
-            setStatus('error');
-            return;
-        }
-
         try {
             setStatus('preparing');
             setError(null);
 
-            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            const rawProvider = await getEip1193Provider();
+            const provider = new ethers.providers.Web3Provider(rawProvider);
             const signer = provider.getSigner();
             const address = await signer.getAddress();
 
@@ -128,7 +125,7 @@ export function Web3CheckoutModal({
 
             // Use manual eth_sendTransaction to bypass ethers.js/MetaMask EIP-1559 compatibility issues
             // which are the most common cause of "Internal JSON-RPC error" on L2s.
-            const txHash = await (window as any).ethereum.request({
+            const txHash = await rawProvider.request({
                 method: 'eth_sendTransaction',
                 params: [{
                     from: address,

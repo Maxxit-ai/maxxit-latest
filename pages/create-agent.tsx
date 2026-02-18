@@ -9,6 +9,7 @@ import { Check, User, Building2, Sliders, Wallet, Eye, Rocket, Twitter, Search, 
 import { Header } from '@components/Header';
 import { usePrivy } from '@privy-io/react-auth';
 import { createProofOfIntentWithMetaMask } from '@lib/proof-of-intent';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 import { HyperliquidConnect } from '@components/HyperliquidConnect';
 import { OstiumConnect } from '@components/OstiumConnect';
 import { OstiumApproval } from '@components/OstiumApproval';
@@ -31,6 +32,7 @@ type WizardFormData = z.infer<typeof wizardSchema>;
 export default function CreateAgent() {
   const router = useRouter();
   const { authenticated, user, login } = usePrivy();
+  const { getEip1193Provider } = useWalletProvider();
   const [step, setStep] = useState(1);
   const [runJoyride, setRunJoyride] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -161,7 +163,8 @@ export default function CreateAgent() {
     setError(null);
     try {
       const tempAgentId = `temp-${Date.now()}`;
-      const proof = await createProofOfIntentWithMetaMask(tempAgentId, user.wallet.address, formData.name);
+      const eip1193Provider = await getEip1193Provider();
+      const proof = await createProofOfIntentWithMetaMask(tempAgentId, user.wallet.address, formData.name, eip1193Provider);
       setProofOfIntent({ message: proof.message, signature: proof.signature, timestamp: proof.timestamp });
     } catch (error: any) {
       if (error.message.includes('User rejected')) {

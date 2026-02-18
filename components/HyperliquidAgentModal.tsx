@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { X, Copy, Check, ExternalLink, Zap, Wallet, Shield, CheckCircle } from 'lucide-react';
 import { ethers } from 'ethers';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface HyperliquidAgentModalProps {
   agentId: string;
@@ -30,10 +31,11 @@ export function HyperliquidAgentModal({
   const [isApproved, setIsApproved] = useState(false);
   const [error, setError] = useState<string>('');
   const [step, setStep] = useState<'connect' | 'approve' | 'verified'>('connect');
+  const { getEip1193Provider } = useWalletProvider();
 
   // Default to testnet unless explicitly set to 'false'
   const isTestnet = process.env.NEXT_PUBLIC_HYPERLIQUID_TESTNET !== 'false';
-  const hyperliquidUrl = isTestnet 
+  const hyperliquidUrl = isTestnet
     ? 'https://app.hyperliquid-testnet.xyz/API'
     : 'https://app.hyperliquid.xyz/API';
 
@@ -50,7 +52,7 @@ export function HyperliquidAgentModal({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ deploymentId })
         });
-        
+
         if (genResponse.ok) {
           const genData = await genResponse.json();
           setAgentAddress(genData.agentAddress);
@@ -59,23 +61,21 @@ export function HyperliquidAgentModal({
         }
       } else {
         // Fallback to shared agent (for backwards compatibility)
-        const fixedAgentAddress = process.env.NEXT_PUBLIC_HYPERLIQUID_AGENT_ADDRESS || 
-                                  '0x0b91B5d2eB90ec3baAbd1347fF6bd69780F9E689';
+        const fixedAgentAddress = process.env.NEXT_PUBLIC_HYPERLIQUID_AGENT_ADDRESS ||
+          '0x0b91B5d2eB90ec3baAbd1347fF6bd69780F9E689';
         setAgentAddress(fixedAgentAddress);
       }
 
-      // Try to connect MetaMask and get user's address
-      if (typeof window !== 'undefined' && window.ethereum) {
-        try {
-          // Ethers v5 syntax
-          const provider = new ethers.providers.Web3Provider(window.ethereum);
-          const accounts = await provider.listAccounts();
-          if (accounts.length > 0) {
-            setUserHyperliquidAddress(accounts[0]);
-          }
-        } catch (err) {
-          console.log('MetaMask not connected:', err);
+      // Try to connect wallet and get user's address
+      try {
+        const rawProvider = await getEip1193Provider();
+        const provider = new ethers.providers.Web3Provider(rawProvider);
+        const accounts = await provider.listAccounts();
+        if (accounts.length > 0) {
+          setUserHyperliquidAddress(accounts[0]);
         }
+      } catch (err) {
+        console.log('Wallet not connected:', err);
       }
 
       // Check if user has already saved their address
@@ -101,22 +101,17 @@ export function HyperliquidAgentModal({
 
   const connectMetaMask = async () => {
     try {
-      if (!window.ethereum) {
-        setError('MetaMask not found. Please install MetaMask.');
-        return;
-      }
-
-      // Ethers v5 syntax
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const address = await signer.getAddress();
-      
+
       setUserHyperliquidAddress(address);
       setError('');
     } catch (err: any) {
-      console.error('Failed to connect MetaMask:', err);
-      setError(err.message || 'Failed to connect MetaMask');
+      console.error('Failed to connect wallet:', err);
+      setError(err.message || 'Failed to connect wallet');
     }
   };
 
@@ -173,7 +168,7 @@ export function HyperliquidAgentModal({
       // The actual verification will happen when a trade is attempted
       setIsApproved(true);
       setStep('verified');
-      
+
       // Update backend
       await fetch(`/api/agents/${agentId}/hyperliquid-setup`, {
         method: 'POST',
@@ -253,7 +248,7 @@ export function HyperliquidAgentModal({
                       Connect your MetaMask wallet. This is the same address you use on Hyperliquid.
                       We will NOT ask for your private key - ever!
                     </p>
-                    
+
                     {userHyperliquidAddress ? (
                       <div className="space-y-3">
                         <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
@@ -454,7 +449,7 @@ export function HyperliquidAgentModal({
                       {verifying ? 'Checking...' : 'I Authorized It'}
                     </button>
                   </div>
-                  
+
                   <p className="text-xs text-gray-600 dark:text-gray-400 text-center">
                     After authorizing on Hyperliquid, click "I Authorized It" to complete setup
                   </p>

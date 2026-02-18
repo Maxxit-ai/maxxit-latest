@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { X, Wallet, Copy, Check, ExternalLink, CheckCircle, AlertCircle, Settings, Activity, Zap } from 'lucide-react';
 import { ethers } from 'ethers';
 import { TradingPreferencesModal } from './TradingPreferencesModal';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface HyperliquidConnectProps {
   agentId: string;
@@ -38,9 +39,10 @@ export function HyperliquidConnect({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const { getEip1193Provider } = useWalletProvider();
 
   const isTestnet = process.env.NEXT_PUBLIC_HYPERLIQUID_TESTNET !== 'false';
-  const hyperliquidUrl = isTestnet 
+  const hyperliquidUrl = isTestnet
     ? 'https://app.hyperliquid-testnet.xyz/API'
     : 'https://app.hyperliquid.xyz/API';
 
@@ -50,14 +52,13 @@ export function HyperliquidConnect({
 
   const checkExistingConnection = async () => {
     try {
-      if (typeof window !== 'undefined' && window.ethereum) {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const accounts = await provider.listAccounts();
-        if (accounts.length > 0) {
-          const address = accounts[0];
-          setUserWallet(address);
-          await checkSetupStatus(address);
-        }
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
+      const accounts = await provider.listAccounts();
+      if (accounts.length > 0) {
+        const address = accounts[0];
+        setUserWallet(address);
+        await checkSetupStatus(address);
       }
     } catch (err) {
       console.error('Error checking existing connection:', err);
@@ -69,7 +70,7 @@ export function HyperliquidConnect({
       const response = await fetch(`/api/user/check-setup-status?userWallet=${wallet}`);
       if (response.ok) {
         const data = await response.json();
-        
+
         if (data.setupComplete) {
           if (data.addresses.hyperliquid) {
             setAgentAddress(data.addresses.hyperliquid);
@@ -93,14 +94,14 @@ export function HyperliquidConnect({
       if (response.ok) {
         const data = await response.json();
         const prefs = data.preferences;
-        
+
         const hasCustom =
           prefs.risk_tolerance !== 50 ||
           prefs.trade_frequency !== 50 ||
           prefs.social_sentiment_weight !== 50 ||
           prefs.price_momentum_focus !== 50 ||
           prefs.market_rank_priority !== 50;
-        
+
         setHasPreferences(hasCustom);
       }
     } catch (err) {
@@ -124,23 +125,19 @@ export function HyperliquidConnect({
   }, []);
 
   const connectWallet = async () => {
-    if (!window.ethereum) {
-      setError('MetaMask not found. Please install MetaMask.');
-      return;
-    }
-
     setLoading(true);
     setError('');
 
     try {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const address = await signer.getAddress();
-      
+
       setUserWallet(address);
       await checkSetupStatus(address);
-      
+
       if (step === 'connect') {
         setStep('preferences');
       }
@@ -169,7 +166,7 @@ export function HyperliquidConnect({
       }
 
       setStep('complete');
-      
+
       if (onSuccess) {
         setTimeout(() => onSuccess(), 1500);
       }
@@ -211,13 +208,13 @@ export function HyperliquidConnect({
       }
 
       const data = await response.json();
-      
+
       if (data.venue === 'MULTI') {
         setAgentAddress(data.addresses.hyperliquid.address);
       } else {
         setAgentAddress(data.address);
       }
-      
+
       setStep('whitelist');
     } catch (err: any) {
       console.error('Error generating address:', err);
@@ -266,7 +263,7 @@ export function HyperliquidConnect({
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-        <div 
+        <div
           className="bg-[var(--bg-deep)] border border-[var(--border)] max-w-lg w-full max-h-[90vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
@@ -294,14 +291,14 @@ export function HyperliquidConnect({
           </div>
 
           {/* Content - Scrollable */}
-          <div 
+          <div
             className="p-6 space-y-6 overflow-y-auto flex-1 modal-scrollable"
             style={{ overscrollBehavior: 'contain' }}
             onWheel={(e) => {
               const target = e.currentTarget;
               const isAtTop = target.scrollTop === 0;
               const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
-              
+
               if ((e.deltaY < 0 && !isAtTop) || (e.deltaY > 0 && !isAtBottom)) {
                 e.stopPropagation();
               }
@@ -326,7 +323,7 @@ export function HyperliquidConnect({
                   <p className="text-sm text-[var(--text-secondary)] mb-6">
                     Connect your trading wallet to generate a secure agent address.
                   </p>
-                  
+
                   <button
                     onClick={connectWallet}
                     disabled={loading}

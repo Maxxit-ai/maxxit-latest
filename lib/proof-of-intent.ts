@@ -50,10 +50,10 @@ export async function verifyProofOfIntent(
   try {
     // Recover the address from the signature
     const recoveredAddress = ethers.utils.verifyMessage(message, signature);
-    
+
     // Check if the recovered address matches the expected address
     const isValid = recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
-    
+
     return {
       isValid,
       recoveredAddress,
@@ -68,15 +68,18 @@ export async function verifyProofOfIntent(
 }
 
 /**
- * Create a proof of intent by signing a message with MetaMask
+ * Create a proof of intent by signing a message with the connected wallet.
+ * @param eip1193Provider Optional EIP-1193 provider (from Privy useWalletProvider hook). Falls back to window.ethereum.
  */
 export async function createProofOfIntentWithMetaMask(
   agentId: string,
   creatorWallet: string,
-  agentName: string
+  agentName: string,
+  eip1193Provider?: any
 ): Promise<ProofOfIntentData> {
-  if (!window.ethereum) {
-    throw new Error('MetaMask is not installed');
+  const provider = eip1193Provider || (typeof window !== 'undefined' && (window as any).ethereum);
+  if (!provider) {
+    throw new Error('No wallet provider found. Please connect your wallet.');
   }
 
   const timestamp = new Date();
@@ -84,7 +87,7 @@ export async function createProofOfIntentWithMetaMask(
 
   try {
     // First, request account access if not already connected
-    const accounts = await window.ethereum.request({
+    const accounts = await provider.request({
       method: 'eth_requestAccounts',
     });
 
@@ -97,8 +100,8 @@ export async function createProofOfIntentWithMetaMask(
       throw new Error(`Connected wallet (${connectedAddress}) does not match expected wallet (${creatorWallet})`);
     }
 
-    // Request signature from MetaMask
-    const signature = await window.ethereum.request({
+    // Request signature from wallet
+    const signature = await provider.request({
       method: 'personal_sign',
       params: [message, creatorWallet],
     });

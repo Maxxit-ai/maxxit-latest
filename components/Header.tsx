@@ -6,6 +6,7 @@ import { Bot, BarChart3, FileText, Copy, Check, LogOut, X, AlertCircle, Sparkles
 import { usePrivy } from '@privy-io/react-auth';
 import Image from 'next/image';
 import { ethers } from 'ethers';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 // Set this to true for testing on Sepolia, false for Mainnet
 const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET === 'true';
@@ -59,6 +60,7 @@ export function Header() {
   const tradingButtonRef = useRef<HTMLButtonElement>(null);
   const resourcesRef = useRef<HTMLDivElement>(null);
   const resourcesButtonRef = useRef<HTMLButtonElement>(null);
+  const { getEip1193Provider } = useWalletProvider();
 
   // Credit balance state
   const [creditBalance, setCreditBalance] = useState<string | null>(null);
@@ -67,31 +69,38 @@ export function Header() {
 
   // Monitor current network chain ID
   useEffect(() => {
-    if (!window.ethereum) return;
+    let providerRef: any = null;
 
     const handleChainChanged = (chainId: string) => {
       setCurrentChainId(parseInt(chainId, 16));
     };
 
-    const handleConnect = async () => {
+    const initChainMonitoring = async () => {
       try {
-        const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-        setCurrentChainId(parseInt(chainId, 16));
+        const provider = await getEip1193Provider();
+        providerRef = provider;
+        const chainId = await provider.request({ method: 'eth_chainId' });
+        setCurrentChainId(parseInt(chainId as string, 16));
+
+        // Listen for chain changes if provider supports it
+        if (provider.on) {
+          provider.on('chainChanged', handleChainChanged);
+        }
       } catch (error) {
         console.error('Failed to get chain ID:', error);
       }
     };
 
-    // Get initial chain ID
-    handleConnect();
-
-    // Listen for chain changes
-    window.ethereum.on('chainChanged', handleChainChanged);
+    if (authenticated) {
+      initChainMonitoring();
+    }
 
     return () => {
-      window.ethereum.removeListener('chainChanged', handleChainChanged);
+      if (providerRef?.removeListener) {
+        providerRef.removeListener('chainChanged', handleChainChanged);
+      }
     };
-  }, []);
+  }, [authenticated]);
 
   const isOnArbitrum = currentChainId === ACTIVE_NETWORK.chainId;
   const needsNetworkSwitch = authenticated && currentChainId !== null && !isOnArbitrum;
@@ -116,7 +125,8 @@ export function Header() {
       }
 
       // Get provider from connected wallet
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
       const contract = new ethers.Contract(ACTIVE_NETWORK.usdcAddress, USDC_ABI, provider);
 
       // Direct contract call to get balance
@@ -354,22 +364,19 @@ export function Header() {
 
   // Handle switching to correct Arbitrum network
   const handleSwitchToArbitrum = async () => {
-    if (!window.ethereum) {
-      console.error('Ethereum provider not found');
-      return;
-    }
-
     try {
       setIsSwitchingNetwork(true);
-      await window.ethereum.request({
+      const provider = await getEip1193Provider();
+      await provider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: ACTIVE_NETWORK.hexId }],
       });
     } catch (switchError: any) {
-      // This error code indicates that the chain has not been added to MetaMask
+      // This error code indicates that the chain has not been added
       if (switchError.code === 4902) {
         try {
-          await window.ethereum.request({
+          const provider = await getEip1193Provider();
+          await provider.request({
             method: 'wallet_addEthereumChain',
             params: [
               {

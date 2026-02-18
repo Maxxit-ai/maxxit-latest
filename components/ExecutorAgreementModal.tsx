@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Shield, CheckCircle, AlertCircle } from 'lucide-react';
 import { createExecutorAgreementWithMetaMask } from '@lib/executor-agreement';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface ExecutorAgreementModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export function ExecutorAgreementModal({
   signal,
   onAgreementSigned
 }: ExecutorAgreementModalProps) {
+  const { getEip1193Provider } = useWalletProvider();
   const [isSigning, setIsSigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agreement, setAgreement] = useState<any>(null);
@@ -32,19 +34,16 @@ export function ExecutorAgreementModal({
   if (!isOpen) return null;
 
   const handleSignAgreement = async () => {
-    if (!window.ethereum) {
-      setError('MetaMask is not installed or not detected.');
-      return;
-    }
-
     setIsSigning(true);
     setError(null);
 
     try {
+      const eip1193Provider = await getEip1193Provider();
+
       // Get the executor wallet address
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      const accounts = await eip1193Provider.request({ method: 'eth_accounts' });
       if (accounts.length === 0) {
-        throw new Error('No wallet connected. Please connect MetaMask.');
+        throw new Error('No wallet connected. Please connect your wallet.');
       }
 
       const executorWallet = accounts[0];
@@ -56,12 +55,13 @@ export function ExecutorAgreementModal({
         signal.tokenSymbol,
         signal.side,
         amount,
-        executorWallet
+        executorWallet,
+        eip1193Provider
       );
 
       setAgreement(agreement);
       onAgreementSigned(agreement);
-      
+
       console.log('✅ Executor agreement signed successfully');
     } catch (error: any) {
       console.error('❌ Failed to sign executor agreement:', error);
@@ -219,7 +219,7 @@ export function ExecutorAgreementModal({
                 Submit Agreement
               </button>
             )}
-            
+
             <button
               onClick={onClose}
               className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition-colors"

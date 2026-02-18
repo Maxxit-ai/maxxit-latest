@@ -15,13 +15,14 @@ export interface ExecutorAgreementData {
 export const EXECUTOR_AGREEMENT_MESSAGE_PREFIX = "I hereby agree to execute this trading signal on behalf of the agent. This signature serves as my authorization for signal ID:";
 
 /**
- * Creates an executor agreement by signing a message with MetaMask.
+ * Creates an executor agreement by signing a message with a wallet.
  * @param signalId The ID of the signal being executed.
  * @param agentId The ID of the agent that generated the signal.
  * @param tokenSymbol The token being traded.
  * @param side The side of the trade (BUY/SELL).
  * @param amount The amount being traded.
  * @param executorWallet The wallet address of the executor.
+ * @param eip1193Provider Optional EIP-1193 provider (from Privy useWalletProvider hook). Falls back to window.ethereum.
  * @returns The signed agreement data.
  */
 export async function createExecutorAgreementWithMetaMask(
@@ -30,13 +31,15 @@ export async function createExecutorAgreementWithMetaMask(
   tokenSymbol: string,
   side: string,
   amount: string,
-  executorWallet: string
+  executorWallet: string,
+  eip1193Provider?: any
 ): Promise<ExecutorAgreementData> {
-  if (typeof window === 'undefined' || !window.ethereum) {
-    throw new Error("MetaMask is not installed or not detected.");
+  const rawProvider = eip1193Provider || (typeof window !== 'undefined' && (window as any).ethereum);
+  if (!rawProvider) {
+    throw new Error("No wallet provider found. Please connect your wallet.");
   }
 
-  const provider = new ethers.providers.Web3Provider(window.ethereum);
+  const provider = new ethers.providers.Web3Provider(rawProvider);
   const signer = provider.getSigner(executorWallet);
 
   const timestamp = new Date();

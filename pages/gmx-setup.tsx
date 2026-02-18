@@ -13,6 +13,7 @@ import { ethers } from 'ethers';
 import Safe, { EthersAdapter } from '@safe-global/protocol-kit';
 import { MetaTransactionData } from '@safe-global/safe-core-sdk-types';
 import { CheckCircle } from 'lucide-react';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 const MODULE_ADDRESS = '0x07627aef95CBAD4a17381c4923Be9B9b93526d3D';
 const GMX_ROUTER = '0x7452c558d45f8afC8c83dAe62C3f8A5BE19c71f6';
@@ -23,13 +24,15 @@ export default function GMXSetup() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [setupComplete, setSetupComplete] = useState(false);
+  const { getEip1193Provider } = useWalletProvider();
 
   const checkSetupStatus = async () => {
     if (!safeAddress) return;
 
     try {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
+
       // Check module enabled
       const safeAbi = ['function isModuleEnabled(address module) view returns (bool)'];
       const safe = new ethers.Contract(safeAddress, safeAbi, provider);
@@ -68,7 +71,8 @@ export default function GMXSetup() {
 
     try {
       // Connect wallet
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const signerAddress = await signer.getAddress();
@@ -130,7 +134,7 @@ export default function GMXSetup() {
       const receipt = await executeTxResponse.transactionResponse?.wait();
 
       setStatus('✅ Setup complete! Checking status...');
-      
+
       // Wait a bit for blockchain confirmation
       setTimeout(checkSetupStatus, 3000);
 
@@ -151,7 +155,7 @@ export default function GMXSetup() {
         <p className="text-muted-foreground mb-8">
           Complete your GMX trading setup with a single transaction
         </p>
-        
+
         <div className="border border-border rounded-lg bg-card p-6 mb-6">
           <h3 className="text-lg font-semibold mb-3">What This Does:</h3>
           <ul className="space-y-2 text-sm">
@@ -184,11 +188,10 @@ export default function GMXSetup() {
 
           {status && (
             <div
-              className={`mt-4 p-4 rounded-md border ${
-                setupComplete
+              className={`mt-4 p-4 rounded-md border ${setupComplete
                   ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800'
                   : 'bg-muted border-border'
-              }`}
+                }`}
             >
               <p className="text-sm">
                 <strong>Status:</strong> {status}

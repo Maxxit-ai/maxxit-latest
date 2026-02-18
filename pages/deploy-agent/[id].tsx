@@ -4,18 +4,13 @@ import { Check, AlertCircle, Loader2, Rocket, Shield, Wallet, Zap, Sparkles, Ext
 import Safe from '@safe-global/protocol-kit';
 import { ethers } from 'ethers';
 import { ModuleSecurityDisclosure } from '@components/ModuleSecurityDisclosure';
-
-// Extend Window interface for MetaMask
-declare global {
-  interface Window {
-    ethereum?: any;
-  }
-}
+import { useWalletProvider } from '../../hooks/useWalletProvider';
 
 export default function DeployAgent() {
   const router = useRouter();
   const { id: agentId } = router.query;
-  
+
+  const { getEip1193Provider } = useWalletProvider();
   const [safeAddress, setSafeAddress] = useState("");
   const [userWallet, setUserWallet] = useState("");
   const [agentName, setAgentName] = useState("");
@@ -69,26 +64,25 @@ export default function DeployAgent() {
   // Auto-detect connected wallet
   useEffect(() => {
     const getConnectedWallet = async () => {
-      if (typeof window.ethereum !== 'undefined') {
-        try {
-          // Check if already connected
-          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-          if (accounts.length > 0) {
-            setUserWallet(accounts[0]);
-            console.log('[Deploy Agent] Auto-detected wallet:', accounts[0]);
-            return;
-          }
-
-          // Try to connect if not already connected
-          const requestedAccounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-          if (requestedAccounts.length > 0) {
-            setUserWallet(requestedAccounts[0]);
-            console.log('[Deploy Agent] Connected wallet:', requestedAccounts[0]);
-          }
-        } catch (error) {
-          console.error('[Deploy Agent] Failed to connect wallet:', error);
-          // Don't show alert here, let user manually enter if needed
+      try {
+        const provider = await getEip1193Provider();
+        // Check if already connected
+        const accounts = await provider.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          setUserWallet(accounts[0]);
+          console.log('[Deploy Agent] Auto-detected wallet:', accounts[0]);
+          return;
         }
+
+        // Try to connect if not already connected
+        const requestedAccounts = await provider.request({ method: 'eth_requestAccounts' });
+        if (requestedAccounts.length > 0) {
+          setUserWallet(requestedAccounts[0]);
+          console.log('[Deploy Agent] Connected wallet:', requestedAccounts[0]);
+        }
+      } catch (error) {
+        console.error('[Deploy Agent] Failed to connect wallet:', error);
+        // Don't show alert here, let user manually enter if needed
       }
     };
 
@@ -114,9 +108,10 @@ export default function DeployAgent() {
     try {
       console.log('[DeploySafe] Starting Safe deployment...');
       console.log('[DeploySafe] Module address:', moduleAddress);
-      
-      // Connect to MetaMask
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+
+      // Connect wallet
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
 
@@ -125,7 +120,7 @@ export default function DeployAgent() {
       // STEP 1: Deploy Safe using Safe SDK v5
       const safeVersion = '1.4.1';
       const chainId = await provider.getNetwork().then(n => n.chainId);
-      
+
       const safeAccountConfig = {
         owners: [userWallet],
         threshold: 1,
@@ -133,7 +128,7 @@ export default function DeployAgent() {
 
       // Initialize Safe SDK to get predicted address
       const safeSdk = await Safe.init({
-        provider: window.ethereum,
+        provider: rawProvider,
         signer: userWallet,
         predictedSafe: {
           safeAccountConfig,
@@ -157,28 +152,28 @@ export default function DeployAgent() {
         console.log('[DeploySafe] Skipping deployment, using existing Safe');
       } else {
         console.log('[DeploySafe] Safe not deployed yet, deploying now...');
-        
+
         // Deploy the Safe
         const deploymentTransaction = await safeSdk.createSafeDeploymentTransaction();
-        
+
         // Add from address to the transaction
         const txWithFrom = {
           ...deploymentTransaction,
           from: userWallet,
         };
-        
+
         console.log('[DeploySafe] Sending deployment transaction...');
-        
+
         // Send via ethers provider
         const tx = await signer.sendTransaction(txWithFrom);
-        
+
         console.log('[DeploySafe] Deployment TX:', tx.hash);
-        
+
         // Wait for deployment
         const receipt = await tx.wait();
         console.log('[DeploySafe] Deployment confirmed!');
       }
-      
+
       console.log('[DeploySafe] ✅ Safe address:', deployedSafeAddress);
 
       // Wait a moment for deployment to settle
@@ -188,7 +183,7 @@ export default function DeployAgent() {
 
       // STEP 2: Connect to the deployed Safe
       const connectedSafeSdk = await Safe.init({
-        provider: window.ethereum,
+        provider: rawProvider,
         signer: userWallet,
         safeAddress: deployedSafeAddress,
       });
@@ -201,7 +196,7 @@ export default function DeployAgent() {
       const USDC_ADDRESS = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'; // Arbitrum USDC
       const ERC20_ABI = ['function approve(address spender, uint256 amount) external returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)'];
       const usdcInterface = new ethers.utils.Interface(ERC20_ABI);
-      
+
       // Check if USDC is already approved FOR THE MODULE
       const usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
       const currentAllowance = await usdc.allowance(deployedSafeAddress, moduleAddress);
@@ -215,7 +210,7 @@ export default function DeployAgent() {
         const SAFE_ABI = ['function enableModule(address module) external'];
         const safeInterface = new ethers.utils.Interface(SAFE_ABI);
         const enableModuleData = safeInterface.encodeFunctionData('enableModule', [moduleAddress]);
-        
+
         transactions.push({
           to: deployedSafeAddress,
           value: '0',
@@ -229,7 +224,7 @@ export default function DeployAgent() {
           moduleAddress,  // Approve for MODULE, not Uniswap
           ethers.constants.MaxUint256
         ]);
-        
+
         transactions.push({
           to: USDC_ADDRESS,
           value: '0',
@@ -252,12 +247,12 @@ export default function DeployAgent() {
         });
 
         console.log('[DeploySafe] Executing batched transaction...');
-        
+
         // Execute the batched transaction
         const txResponse = await connectedSafeSdk.executeTransaction(batchedTx);
-        
+
         console.log('[DeploySafe] Transaction sent:', txResponse.hash);
-        
+
         // Wait for confirmation
         const batchReceipt = await provider.waitForTransaction(txResponse.hash);
         console.log('[DeploySafe] ✅ Transaction confirmed! Block:', batchReceipt.blockNumber);
@@ -272,7 +267,7 @@ export default function DeployAgent() {
 
         console.log('[DeploySafe] ✅ Setup complete!');
       }
-      
+
       console.log('[DeploySafe] ⚠️  Capital will be auto-initialized when Safe is funded & first trade executes');
 
       // Update state
@@ -317,7 +312,7 @@ export default function DeployAgent() {
       const response = await fetch(
         `/api/safe/status?safeAddress=${safeAddress}&chainId=${chainId}`
       );
-      
+
       const data = await response.json();
 
       if (data.valid) {
@@ -386,7 +381,7 @@ export default function DeployAgent() {
         const errorType = !data.moduleEnabled ? 'MODULE_NOT_ENABLED' : 'USDC_NOT_APPROVED';
         setValidationError({
           type: errorType,
-          message: !data.moduleEnabled 
+          message: !data.moduleEnabled
             ? 'Trading module is not enabled on this Safe wallet'
             : 'USDC approval required for trading',
           nextSteps: {
@@ -429,7 +424,7 @@ export default function DeployAgent() {
 
     try {
       console.log('[AutoInit] Checking if capital needs initialization...');
-      
+
       const response = await fetch('/api/safe/auto-initialize-capital', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -491,9 +486,9 @@ export default function DeployAgent() {
       const chainPrefix = 'arb1';
       const txBuilderAppUrl = 'https://apps-portal.safe.global/tx-builder';
       const safeUrl = `https://app.safe.global/apps/open?safe=${chainPrefix}:${safeAddress}&appUrl=${encodeURIComponent(txBuilderAppUrl)}`;
-      
+
       const safeWindow = window.open(safeUrl, '_blank');
-      
+
       if (!safeWindow) {
         throw new Error('Please allow pop-ups to open Safe Transaction Builder');
       }
@@ -521,16 +516,17 @@ export default function DeployAgent() {
 
     try {
       console.log('[SetupExistingSafe] Starting setup for:', safeAddress);
-      
-      // Connect to MetaMask
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+
+      // Connect wallet
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const chainId = await provider.getNetwork().then(n => n.chainId);
 
       // Connect to the existing Safe
       const connectedSafeSdk = await Safe.init({
-        provider: window.ethereum,
+        provider: rawProvider,
         signer: userWallet,
         safeAddress: safeAddress,
       });
@@ -542,13 +538,13 @@ export default function DeployAgent() {
       console.log('[SetupExistingSafe] Module already enabled:', isModuleAlreadyEnabled);
 
       // Prepare USDC approval data
-      const USDC_ADDRESS = chainId === 42161 
+      const USDC_ADDRESS = chainId === 42161
         ? '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' // Arbitrum
         : '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'; // Sepolia
-      
+
       const ERC20_ABI = ['function approve(address spender, uint256 amount) external returns (bool)', 'function allowance(address owner, address spender) view returns (uint256)'];
       const usdcInterface = new ethers.utils.Interface(ERC20_ABI);
-      
+
       // Check if USDC is already approved FOR THE MODULE
       const usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
       const currentAllowance = await usdc.allowance(safeAddress, moduleAddress);
@@ -562,7 +558,7 @@ export default function DeployAgent() {
         const SAFE_ABI = ['function enableModule(address module) external'];
         const safeInterface = new ethers.utils.Interface(SAFE_ABI);
         const enableModuleData = safeInterface.encodeFunctionData('enableModule', [moduleAddress]);
-        
+
         transactions.push({
           to: safeAddress,
           value: '0',
@@ -577,7 +573,7 @@ export default function DeployAgent() {
           moduleAddress,  // Approve for MODULE, not Uniswap
           ethers.constants.MaxUint256
         ]);
-        
+
         transactions.push({
           to: USDC_ADDRESS,
           value: '0',
@@ -603,12 +599,12 @@ export default function DeployAgent() {
         });
 
         console.log('[SetupExistingSafe] Executing batched transaction...');
-        
+
         // Execute the batched transaction
         const txResponse = await connectedSafeSdk.executeTransaction(batchedTx);
-        
+
         console.log('[SetupExistingSafe] Transaction sent:', txResponse.hash);
-        
+
         // Wait for confirmation
         const batchReceipt = await provider.waitForTransaction(txResponse.hash);
         console.log('[SetupExistingSafe] ✅ Transaction confirmed! Block:', batchReceipt.blockNumber);
@@ -622,7 +618,7 @@ export default function DeployAgent() {
         }
 
         console.log('[SetupExistingSafe] ✅ Setup complete!');
-        
+
         // Update state
         setModuleStatus({
           checking: false,
@@ -668,7 +664,7 @@ export default function DeployAgent() {
         const txData = data.transactionData || '';
         setModuleAddress(moduleAddr);
         setTransactionData(txData);
-      
+
         // Copy transaction data to clipboard
         try {
           await navigator.clipboard.writeText(txData);
@@ -681,9 +677,9 @@ export default function DeployAgent() {
         const chainPrefix = 'arb1'; // Arbitrum One
         const txBuilderAppUrl = 'https://apps-portal.safe.global/tx-builder';
         const safeUrl = `https://app.safe.global/apps/open?safe=${chainPrefix}:${safeAddress}&appUrl=${encodeURIComponent(txBuilderAppUrl)}`;
-        
+
         const safeWindow = window.open(safeUrl, '_blank');
-        
+
         if (!safeWindow) {
           throw new Error('Please allow pop-ups to open Safe Transaction Builder');
         }
@@ -723,7 +719,7 @@ export default function DeployAgent() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('[HandleDeploy] Deployment failed:', errorData);
-        
+
         // Handle structured validation errors
         if (errorData.error === 'MODULE_NOT_ENABLED' || errorData.error === 'USDC_NOT_APPROVED') {
           setValidationError({
@@ -980,7 +976,7 @@ export default function DeployAgent() {
                   <p className="text-xs text-muted-foreground mb-3">
                     ℹ️ Both operations will be batched in a single Safe transaction
                   </p>
-                  
+
                   <button
                     onClick={setupExistingSafe}
                     disabled={setupInProgress}
@@ -1033,292 +1029,292 @@ export default function DeployAgent() {
               return agentVenue === 'GMX' ? (
                 // GMX: Batch Transaction Setup
                 <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-md">
-                <div className="flex items-start gap-3 mb-3">
-                  <Zap className="h-4 w-4 text-orange-600 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-orange-700 dark:text-orange-400">
-                      GMX Trading Setup Required
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      One-time setup: Enable trading module (gas sponsored)
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={enableModuleGMXStep1}
-                    disabled={enablingModule}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {enablingModule ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="h-4 w-4" />
-                        Enable GMX Trading
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={checkModuleStatus}
-                    disabled={moduleStatus.checking}
-                    className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md font-medium hover:bg-secondary/90 disabled:opacity-50"
-                  >
-                    {moduleStatus.checking ? 'Checking...' : 'Recheck Status'}
-                  </button>
-                </div>
-
-                {/* GMX Instructions Panel */}
-                {showInstructions && (
-                  <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                    <div className="flex items-start justify-between mb-3">
-                      <h4 className="font-semibold text-blue-900 dark:text-blue-100">📋 GMX Setup Instructions</h4>
-                      <button
-                        onClick={() => setShowInstructions(false)}
-                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
-                      >
-                        ✕
-                      </button>
+                  <div className="flex items-start gap-3 mb-3">
+                    <Zap className="h-4 w-4 text-orange-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-orange-700 dark:text-orange-400">
+                        GMX Trading Setup Required
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        One-time setup: Enable trading module (gas sponsored)
+                      </p>
                     </div>
-                    
-                    <div className="space-y-4 text-sm">
-                      <div>
-                        <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">✅ Transaction data copied to clipboard!</p>
-                        <p className="text-blue-700 dark:text-blue-300 mb-3">Safe Transaction Builder opened - follow these steps:</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={enableModuleGMXStep1}
+                      disabled={enablingModule}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {enablingModule ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="h-4 w-4" />
+                          Enable GMX Trading
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={checkModuleStatus}
+                      disabled={moduleStatus.checking}
+                      className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md font-medium hover:bg-secondary/90 disabled:opacity-50"
+                    >
+                      {moduleStatus.checking ? 'Checking...' : 'Recheck Status'}
+                    </button>
+                  </div>
+
+                  {/* GMX Instructions Panel */}
+                  {showInstructions && (
+                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="flex items-start justify-between mb-3">
+                        <h4 className="font-semibold text-blue-900 dark:text-blue-100">📋 GMX Setup Instructions</h4>
+                        <button
+                          onClick={() => setShowInstructions(false)}
+                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                        >
+                          ✕
+                        </button>
                       </div>
 
-                      <div className="space-y-3">
-                        <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded border border-orange-300 dark:border-orange-700">
-                          <p className="font-semibold text-orange-900 dark:text-orange-100 mb-2">Enable GMX Trading Module</p>
-                          
-                          <div className="space-y-2">
-                            <div>
-                              <p className="font-medium text-blue-900 dark:text-blue-100 mb-1 text-xs">1. Enter Address (your Safe):</p>
-                              <div className="flex gap-2">
-                                <input
-                                  readOnly
-                                  value={safeAddress}
-                                  className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded font-mono text-xs"
-                                />
-                                <button
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(safeAddress);
-                                    alert('✅ Safe address copied!');
-                                  }}
-                                  className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
-                                >
-                                  Copy
-                                </button>
+                      <div className="space-y-4 text-sm">
+                        <div>
+                          <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">✅ Transaction data copied to clipboard!</p>
+                          <p className="text-blue-700 dark:text-blue-300 mb-3">Safe Transaction Builder opened - follow these steps:</p>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded border border-orange-300 dark:border-orange-700">
+                            <p className="font-semibold text-orange-900 dark:text-orange-100 mb-2">Enable GMX Trading Module</p>
+
+                            <div className="space-y-2">
+                              <div>
+                                <p className="font-medium text-blue-900 dark:text-blue-100 mb-1 text-xs">1. Enter Address (your Safe):</p>
+                                <div className="flex gap-2">
+                                  <input
+                                    readOnly
+                                    value={safeAddress}
+                                    className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded font-mono text-xs"
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(safeAddress);
+                                      alert('✅ Safe address copied!');
+                                    }}
+                                    className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
                               </div>
-                            </div>
 
-                            <div>
-                              <p className="font-medium text-blue-900 dark:text-blue-100 mb-1 text-xs">2. Choose "Use custom data (hex encoded)"</p>
-                            </div>
-
-                            <div>
-                              <p className="font-medium text-blue-900 dark:text-blue-100 mb-1 text-xs">3. Paste transaction data (already copied!):</p>
-                              <div className="flex gap-2">
-                                <input
-                                  readOnly
-                                  value={transactionData || 'Loading...'}
-                                  className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded font-mono text-xs overflow-hidden text-ellipsis"
-                                />
-                                <button
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(transactionData);
-                                    alert('✅ Transaction data copied!');
-                                  }}
-                                  className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs whitespace-nowrap"
-                                >
-                                  Copy
-                                </button>
+                              <div>
+                                <p className="font-medium text-blue-900 dark:text-blue-100 mb-1 text-xs">2. Choose "Use custom data (hex encoded)"</p>
                               </div>
-                            </div>
 
-                            <p className="text-xs text-orange-600 dark:text-orange-400">✅ Then click "Create Batch", "Send Batch", and "Execute"</p>
-                            <p className="text-xs text-green-600 dark:text-green-400 mt-2">💡 Note: GMX V2 doesn't require separate authorization!</p>
+                              <div>
+                                <p className="font-medium text-blue-900 dark:text-blue-100 mb-1 text-xs">3. Paste transaction data (already copied!):</p>
+                                <div className="flex gap-2">
+                                  <input
+                                    readOnly
+                                    value={transactionData || 'Loading...'}
+                                    className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded font-mono text-xs overflow-hidden text-ellipsis"
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(transactionData);
+                                      alert('✅ Transaction data copied!');
+                                    }}
+                                    className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs whitespace-nowrap"
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                              </div>
+
+                              <p className="text-xs text-orange-600 dark:text-orange-400">✅ Then click "Create Batch", "Send Batch", and "Execute"</p>
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-2">💡 Note: GMX V2 doesn't require separate authorization!</p>
+                            </div>
+                          </div>
+
+                          {/* Final Steps */}
+                          <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
+                            <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">Final Steps:</p>
+                            <ul className="text-blue-700 dark:text-blue-300 text-xs space-y-1 ml-4">
+                              <li>• Click "Create Batch"</li>
+                              <li>• Click "Send Batch"</li>
+                              <li>• Click "Continue" and "Sign txn"</li>
+                              <li>• Go to Transactions → Click "Execute"</li>
+                              <li>• Sign again in wallet (gas sponsored)</li>
+                              <li>• Wait for confirmation ⏳</li>
+                            </ul>
                           </div>
                         </div>
 
-                        {/* Final Steps */}
-                        <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
-                          <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">Final Steps:</p>
-                          <ul className="text-blue-700 dark:text-blue-300 text-xs space-y-1 ml-4">
-                            <li>• Click "Create Batch"</li>
-                            <li>• Click "Send Batch"</li>
-                            <li>• Click "Continue" and "Sign txn"</li>
-                            <li>• Go to Transactions → Click "Execute"</li>
-                            <li>• Sign again in wallet (gas sponsored)</li>
-                            <li>• Wait for confirmation ⏳</li>
-                          </ul>
+                        <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded p-3 mt-4">
+                          <p className="text-green-800 dark:text-green-200 font-medium">⏳ After execution (~30 sec):</p>
+                          <p className="text-green-700 dark:text-green-300 text-xs mt-1">
+                            Click "Recheck Status" button above to verify setup is complete
+                          </p>
                         </div>
                       </div>
-
-                      <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded p-3 mt-4">
-                        <p className="text-green-800 dark:text-green-200 font-medium">⏳ After execution (~30 sec):</p>
-                        <p className="text-green-700 dark:text-green-300 text-xs mt-1">
-                          Click "Recheck Status" button above to verify setup is complete
-                        </p>
-                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // SPOT: Old Manual Setup
+                <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                  <div className="flex items-start gap-3 mb-3">
+                    <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-yellow-700 dark:text-yellow-400">
+                        Trading Module Setup Required (SPOT Mode - Venue: {agentVenue || 'empty'})
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        One-time setup: Enable the trading module to allow your agent to execute trades on your behalf.
+                      </p>
                     </div>
                   </div>
-                )}
-              </div>
-            ) : (
-              // SPOT: Old Manual Setup
-            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-              <div className="flex items-start gap-3 mb-3">
-                <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-yellow-700 dark:text-yellow-400">
-                      Trading Module Setup Required (SPOT Mode - Venue: {agentVenue || 'empty'})
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    One-time setup: Enable the trading module to allow your agent to execute trades on your behalf.
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={enableModule}
-                  disabled={enablingModule}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {enablingModule ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Shield className="h-4 w-4" />
-                      Enable Module
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={checkModuleStatus}
-                  disabled={moduleStatus.checking}
-                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md font-medium hover:bg-secondary/90 disabled:opacity-50"
-                >
-                  {moduleStatus.checking ? 'Checking...' : 'Recheck Status'}
-                </button>
-                <button
-                  onClick={() => {
-                    console.log('[CheckModule] Force refresh clicked');
-                    checkModuleStatus();
-                  }}
-                  disabled={moduleStatus.checking}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md font-medium hover:bg-blue-600 disabled:opacity-50"
-                >
-                  Force Refresh
-                </button>
-              </div>
-
-              {/* Instructions Panel */}
-              {showInstructions && (
-                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <div className="flex items-start justify-between mb-3">
-                    <h4 className="font-semibold text-blue-900 dark:text-blue-100">📋 Module Setup Instructions</h4>
+                  <div className="flex gap-2">
                     <button
-                      onClick={() => setShowInstructions(false)}
-                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                      onClick={enableModule}
+                      disabled={enablingModule}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
-                      ✕
+                      {enablingModule ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="h-4 w-4" />
+                          Enable Module
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={checkModuleStatus}
+                      disabled={moduleStatus.checking}
+                      className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md font-medium hover:bg-secondary/90 disabled:opacity-50"
+                    >
+                      {moduleStatus.checking ? 'Checking...' : 'Recheck Status'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        console.log('[CheckModule] Force refresh clicked');
+                        checkModuleStatus();
+                      }}
+                      disabled={moduleStatus.checking}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-md font-medium hover:bg-blue-600 disabled:opacity-50"
+                    >
+                      Force Refresh
                     </button>
                   </div>
-                  
-                  <div className="space-y-4 text-sm">
-                    <div>
-                      <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">✅ Transaction data copied to clipboard!</p>
-                      <p className="text-blue-700 dark:text-blue-300 mb-3">Safe Transaction Builder opened - follow these simple steps:</p>
-                    </div>
 
-                    <div className="space-y-3">
-                      <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
-                        <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">1️⃣ Enter Address (your Safe):</p>
-                        <div className="flex gap-2">
-                          <input
-                            readOnly
-                            value={safeAddress}
-                            className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded font-mono text-xs"
-                          />
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(safeAddress);
-                              alert('✅ Safe address copied!');
-                            }}
-                            className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
-                          >
-                            Copy
-                          </button>
+                  {/* Instructions Panel */}
+                  {showInstructions && (
+                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="flex items-start justify-between mb-3">
+                        <h4 className="font-semibold text-blue-900 dark:text-blue-100">📋 Module Setup Instructions</h4>
+                        <button
+                          onClick={() => setShowInstructions(false)}
+                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 text-sm">
+                        <div>
+                          <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">✅ Transaction data copied to clipboard!</p>
+                          <p className="text-blue-700 dark:text-blue-300 mb-3">Safe Transaction Builder opened - follow these simple steps:</p>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
+                            <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">1️⃣ Enter Address (your Safe):</p>
+                            <div className="flex gap-2">
+                              <input
+                                readOnly
+                                value={safeAddress}
+                                className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded font-mono text-xs"
+                              />
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(safeAddress);
+                                  alert('✅ Safe address copied!');
+                                }}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
+                            <p className="font-medium text-blue-900 dark:text-blue-100 mb-1">2️⃣ Choose "Use custom data (hex encoded)"</p>
+                            <p className="text-blue-700 dark:text-blue-300 text-xs">(Skip the ABI option)</p>
+                          </div>
+
+                          <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
+                            <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">3️⃣ Paste transaction data (already copied!):</p>
+                            <div className="flex gap-2">
+                              <input
+                                readOnly
+                                value={transactionData || 'Loading...'}
+                                className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded font-mono text-xs overflow-hidden text-ellipsis"
+                              />
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(transactionData);
+                                  alert('✅ Transaction data copied!');
+                                }}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs whitespace-nowrap"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              💡 This includes the module address ({moduleAddress.substring(0, 10)}...) - no manual entry needed!
+                            </p>
+                          </div>
+
+                          <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
+                            <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">4️⃣ Batch & Sign:</p>
+                            <ul className="text-blue-700 dark:text-blue-300 text-xs space-y-1 ml-4">
+                              <li>• Click "Add new txn"</li>
+                              <li>• Click "Create Batch"</li>
+                              <li>• Click "Send Batch"</li>
+                              <li>• Click "Continue" on confirmation</li>
+                              <li>• Click "Sign txn"</li>
+                            </ul>
+                          </div>
+
+                          <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
+                            <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">5️⃣ Execute:</p>
+                            <ul className="text-blue-700 dark:text-blue-300 text-xs space-y-1 ml-4">
+                              <li>• Go back to Transactions</li>
+                              <li>• Click "Execute"</li>
+                              <li>• Click "Continue"</li>
+                              <li>• Sign again in wallet</li>
+                              <li>• Wait for confirmation ⏳</li>
+                            </ul>
+                          </div>
+                        </div>
+
+                        <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded p-3 mt-4">
+                          <p className="text-green-800 dark:text-green-200 font-medium">⏳ After execution (~30 sec):</p>
+                          <p className="text-green-700 dark:text-green-300 text-xs mt-1">Come back here and click "Recheck Status" button above</p>
                         </div>
                       </div>
-
-                      <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
-                        <p className="font-medium text-blue-900 dark:text-blue-100 mb-1">2️⃣ Choose "Use custom data (hex encoded)"</p>
-                        <p className="text-blue-700 dark:text-blue-300 text-xs">(Skip the ABI option)</p>
-                      </div>
-
-                      <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
-                        <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">3️⃣ Paste transaction data (already copied!):</p>
-                        <div className="flex gap-2">
-                          <input
-                            readOnly
-                            value={transactionData || 'Loading...'}
-                            className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded font-mono text-xs overflow-hidden text-ellipsis"
-                          />
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(transactionData);
-                              alert('✅ Transaction data copied!');
-                            }}
-                            className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs whitespace-nowrap"
-                          >
-                            Copy
-                          </button>
-                        </div>
-                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                          💡 This includes the module address ({moduleAddress.substring(0, 10)}...) - no manual entry needed!
-                        </p>
-                      </div>
-
-                      <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
-                        <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">4️⃣ Batch & Sign:</p>
-                        <ul className="text-blue-700 dark:text-blue-300 text-xs space-y-1 ml-4">
-                          <li>• Click "Add new txn"</li>
-                          <li>• Click "Create Batch"</li>
-                          <li>• Click "Send Batch"</li>
-                          <li>• Click "Continue" on confirmation</li>
-                          <li>• Click "Sign txn"</li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-white dark:bg-gray-900 p-3 rounded border border-blue-200 dark:border-blue-800">
-                        <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">5️⃣ Execute:</p>
-                        <ul className="text-blue-700 dark:text-blue-300 text-xs space-y-1 ml-4">
-                          <li>• Go back to Transactions</li>
-                          <li>• Click "Execute"</li>
-                          <li>• Click "Continue"</li>
-                          <li>• Sign again in wallet</li>
-                          <li>• Wait for confirmation ⏳</li>
-                        </ul>
-                      </div>
                     </div>
-
-                    <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded p-3 mt-4">
-                      <p className="text-green-800 dark:text-green-200 font-medium">⏳ After execution (~30 sec):</p>
-                      <p className="text-green-700 dark:text-green-300 text-xs mt-1">Come back here and click "Recheck Status" button above</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-            );
+              );
             })()
           )}
 

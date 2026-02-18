@@ -7,35 +7,29 @@ import { useState } from 'react';
 import { Settings, Loader2, CheckCircle } from 'lucide-react';
 import Safe from '@safe-global/protocol-kit';
 import { ethers } from 'ethers';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface SPOTSetupButtonProps {
   safeAddress: string;
   onSetupComplete?: () => void;
 }
 
-declare global {
-  interface Window {
-    ethereum?: any;
-  }
-}
-
 export function SPOTSetupButton({ safeAddress, onSetupComplete }: SPOTSetupButtonProps) {
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const { getEip1193Provider } = useWalletProvider();
 
   const setupModule = async () => {
     setIsSettingUp(true);
     setError(null);
 
     try {
-      if (!window.ethereum) {
-        throw new Error('Please install MetaMask to continue');
-      }
+      const rawProvider = await getEip1193Provider();
 
       console.log('[SPOTSetup] Starting module setup...');
-      
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+
+      const provider = new ethers.providers.Web3Provider(rawProvider);
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const userWallet = await signer.getAddress();
@@ -45,7 +39,7 @@ export function SPOTSetupButton({ safeAddress, onSetupComplete }: SPOTSetupButto
 
       // Connect to the Safe
       const safeSdk = await Safe.init({
-        provider: window.ethereum,
+        provider: rawProvider,
         signer: userWallet,
         safeAddress: safeAddress,
       });
@@ -62,7 +56,7 @@ export function SPOTSetupButton({ safeAddress, onSetupComplete }: SPOTSetupButto
         'function approve(address spender, uint256 amount) external returns (bool)',
         'function allowance(address owner, address spender) view returns (uint256)'
       ];
-      
+
       const usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
       const currentAllowance = await usdc.allowance(safeAddress, UNISWAP_V3_ROUTER);
       const isAlreadyApproved = currentAllowance.gt(ethers.utils.parseUnits('1000000', 6));
@@ -75,7 +69,7 @@ export function SPOTSetupButton({ safeAddress, onSetupComplete }: SPOTSetupButto
         const SAFE_ABI = ['function enableModule(address module) external'];
         const safeInterface = new ethers.utils.Interface(SAFE_ABI);
         const enableModuleData = safeInterface.encodeFunctionData('enableModule', [MODULE_ADDRESS]);
-        
+
         transactions.push({
           to: safeAddress,
           value: '0',
@@ -91,7 +85,7 @@ export function SPOTSetupButton({ safeAddress, onSetupComplete }: SPOTSetupButto
           UNISWAP_V3_ROUTER,
           ethers.constants.MaxUint256
         ]);
-        
+
         transactions.push({
           to: USDC_ADDRESS,
           value: '0',
@@ -118,12 +112,12 @@ export function SPOTSetupButton({ safeAddress, onSetupComplete }: SPOTSetupButto
 
       console.log('[SPOTSetup] Executing transaction...');
       const txResponse = await safeSdk.executeTransaction(batchedTx);
-      
+
       console.log('[SPOTSetup] Transaction sent:', txResponse.hash);
-      
+
       // Wait for confirmation
       await provider.waitForTransaction(txResponse.hash);
-      
+
       console.log('[SPOTSetup] ✅ Setup complete!');
       setSuccess(true);
 

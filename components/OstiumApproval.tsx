@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { ethers } from 'ethers';
 import { getOstiumConfig } from '../lib/ostium-config';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface OstiumApprovalProps {
   deploymentId: string;
@@ -27,6 +28,7 @@ export function OstiumApproval({
   onClose,
 }: OstiumApprovalProps) {
   const { authenticated, user } = usePrivy();
+  const { getEip1193Provider } = useWalletProvider();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -46,11 +48,8 @@ export function OstiumApproval({
       console.log('   User:', userWallet);
       console.log('   Agent:', agentAddress);
 
-      // Get provider from Privy
-      const provider = await (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found. Please install MetaMask or connect wallet.');
-      }
+      // Get provider from Privy/embedded wallet or MetaMask
+      const provider = await getEip1193Provider();
 
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       const signer = ethersProvider.getSigner();
@@ -75,7 +74,7 @@ export function OstiumApproval({
       console.log('[Ostium Approval] Confirmed! Block:', receipt.blockNumber);
 
       setApproved(true);
-      
+
       // Call completion callback after a short delay
       setTimeout(() => {
         onApprovalComplete();
@@ -83,7 +82,7 @@ export function OstiumApproval({
 
     } catch (err: any) {
       console.error('[Ostium Approval] Error:', err);
-      
+
       if (err.code === 4001) {
         setError('Transaction rejected by user');
       } else if (err.code === -32603) {
@@ -117,7 +116,7 @@ export function OstiumApproval({
 
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <p className="text-sm text-yellow-900">
-                  <strong>⚠️ Important:</strong> You will sign a transaction with your wallet to approve this agent. 
+                  <strong>⚠️ Important:</strong> You will sign a transaction with your wallet to approve this agent.
                   The agent will then be able to:
                 </p>
                 <ul className="text-sm text-yellow-800 mt-2 space-y-1 list-disc list-inside">
@@ -179,7 +178,7 @@ export function OstiumApproval({
               <p className="text-lg text-gray-700">
                 Agent approved successfully! Your Ostium agent can now trade on your behalf.
               </p>
-              
+
               {txHash && (
                 <a
                   href={`https://sepolia.arbiscan.io/tx/${txHash}`}

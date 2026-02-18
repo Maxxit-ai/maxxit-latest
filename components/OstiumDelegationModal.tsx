@@ -7,6 +7,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { X, Wallet, CheckCircle, AlertCircle, Activity, ExternalLink } from 'lucide-react';
 import { ethers } from 'ethers';
 import { getOstiumConfig } from '../lib/ostium-config';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface OstiumDelegationModalProps {
   agentAddress: string;
@@ -24,6 +25,7 @@ export function OstiumDelegationModal({
   onSuccess,
 }: OstiumDelegationModalProps) {
   const { authenticated, user, login } = usePrivy();
+  const { getEip1193Provider } = useWalletProvider();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -49,10 +51,7 @@ export function OstiumDelegationModal({
         throw new Error('Agent address not available');
       }
 
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        throw new Error('No wallet provider found. Please install MetaMask.');
-      }
+      const provider = await getEip1193Provider();
 
       const ethersProvider = new ethers.providers.Web3Provider(provider);
       const network = await ethersProvider.getNetwork();

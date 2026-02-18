@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Zap, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import Safe from '@safe-global/protocol-kit';
 import { ethers } from 'ethers';
+import { useWalletProvider } from '../hooks/useWalletProvider';
 
 interface HyperliquidSetupButtonProps {
   safeAddress: string;
@@ -24,6 +25,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [setupSteps, setSetupSteps] = useState<string[]>([]);
+  const { getEip1193Provider } = useWalletProvider();
 
   const addStep = (step: string) => {
     setSetupSteps(prev => [...prev, step]);
@@ -35,13 +37,11 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
     setSetupSteps([]);
 
     try {
-      if (!window.ethereum) {
-        throw new Error('Please install MetaMask to continue');
-      }
+      const rawProvider = await getEip1193Provider();
 
       addStep('Connecting wallet...');
-      
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+
+      const provider = new ethers.providers.Web3Provider(rawProvider);
       await provider.send('eth_requestAccounts', []);
       const signer = provider.getSigner();
       const userWallet = await signer.getAddress();
@@ -52,7 +52,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
       // Connect to the Safe
       addStep('Initializing Safe...');
       const safeSdk = await Safe.init({
-        provider: window.ethereum,
+        provider: rawProvider,
         signer: userWallet,
         safeAddress: safeAddress,
       });
@@ -71,14 +71,14 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
         'function allowance(address owner, address spender) view returns (uint256)',
         'function balanceOf(address owner) view returns (uint256)'
       ];
-      
+
       const usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
-      
+
       // Check USDC balance
       const usdcBalance = await usdc.balanceOf(safeAddress);
       const usdcBalanceFormatted = ethers.utils.formatUnits(usdcBalance, 6);
       console.log('[HyperliquidSetup] USDC balance:', usdcBalanceFormatted);
-      
+
       // Check bridge allowance
       const bridgeAllowance = await usdc.allowance(safeAddress, HL_BRIDGE);
       const isBridgeApproved = bridgeAllowance.gt(ethers.utils.parseUnits('1000000', 6));
@@ -92,7 +92,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
         const SAFE_ABI = ['function enableModule(address module) external'];
         const safeInterface = new ethers.utils.Interface(SAFE_ABI);
         const enableModuleData = safeInterface.encodeFunctionData('enableModule', [MODULE_ADDRESS]);
-        
+
         transactions.push({
           to: safeAddress,
           value: '0',
@@ -109,7 +109,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
           HL_BRIDGE,
           ethers.constants.MaxUint256
         ]);
-        
+
         transactions.push({
           to: USDC_ADDRESS,
           value: '0',
@@ -139,16 +139,16 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
       addStep('Please approve the transaction in your wallet...');
       console.log('[HyperliquidSetup] Executing transaction...');
       const txResponse = await safeSdk.executeTransaction(batchedTx);
-      
+
       console.log('[HyperliquidSetup] Transaction sent:', txResponse.hash);
       addStep('Transaction submitted! Waiting for confirmation...');
-      
+
       // Wait for confirmation
       await provider.waitForTransaction(txResponse.hash);
-      
+
       console.log('[HyperliquidSetup] ✅ Setup complete!');
       addStep('✅ Setup complete! Your Safe is ready for Hyperliquid trading.');
-      
+
       // Register agent wallet for Hyperliquid trading
       addStep('Registering agent wallet...');
       try {
@@ -157,7 +157,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ safeAddress }),
         });
-        
+
         if (registerResponse.ok) {
           const data = await registerResponse.json();
           addStep(`✅ Agent wallet registered: ${data.agentAddress?.substring(0, 10)}...`);
@@ -166,7 +166,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
         console.error('[HyperliquidSetup] Agent registration error:', regError);
         addStep('⚠️ Agent wallet registration failed (you can retry later)');
       }
-      
+
       setSuccess(true);
 
       // Trigger refresh
@@ -220,7 +220,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
           </>
         )}
       </button>
-      
+
       {setupSteps.length > 0 && !error && (
         <div className="text-xs text-muted-foreground space-y-1 max-h-32 overflow-y-auto p-2 bg-muted rounded">
           {setupSteps.map((step, i) => (
@@ -228,7 +228,7 @@ export function HyperliquidSetupButton({ safeAddress, onSetupComplete }: Hyperli
           ))}
         </div>
       )}
-      
+
       {error && (
         <div className="flex items-start gap-2 p-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
