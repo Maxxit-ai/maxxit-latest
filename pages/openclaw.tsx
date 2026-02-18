@@ -22,12 +22,17 @@ import {
 import welcomeImage from "../public/openclaw_welcome.png";
 import { ethers } from "ethers";
 import { getOstiumConfig } from "../lib/ostium-config";
+import { useWalletProvider } from "../hooks/useWalletProvider";
 
 // Ostium contract configuration
 const {
   tradingContract: OSTIUM_TRADING_CONTRACT,
   usdcContract: USDC_TOKEN,
   storageContract: OSTIUM_STORAGE,
+  chainId: OSTIUM_CHAIN_ID,
+  chainName: OSTIUM_CHAIN_NAME,
+  rpcUrl: OSTIUM_RPC_URL,
+  blockExplorerUrl: OSTIUM_BLOCK_EXPLORER_URL,
 } = getOstiumConfig();
 const OSTIUM_TRADING_ABI = ["function setDelegate(address delegate) external"];
 const USDC_ABI = [
@@ -194,6 +199,7 @@ function StepIndicator({
 export default function OpenClawSetupPage() {
   const router = useRouter();
   const { authenticated, user, login } = usePrivy();
+  const { getEip1193Provider } = useWalletProvider();
   const walletAddress = user?.wallet?.address;
 
   const [showLanding, setShowLanding] = useState(true);
@@ -232,6 +238,8 @@ export default function OpenClawSetupPage() {
   const [ostiumAgentAddress, setOstiumAgentAddress] = useState<string | null>(null);
   const [delegationComplete, setDelegationComplete] = useState(false);
   const [allowanceComplete, setAllowanceComplete] = useState(false);
+  const [agentFundingComplete, setAgentFundingComplete] = useState(false);
+  const [agentFundingAmountEth, setAgentFundingAmountEth] = useState("0.005");
   const [skillTxHash, setSkillTxHash] = useState<string | null>(null);
   const [skillCurrentAction, setSkillCurrentAction] = useState("");
   const [enablingTrading, setEnablingTrading] = useState(false);
@@ -277,6 +285,20 @@ export default function OpenClawSetupPage() {
   const goBack = useCallback(() => {
     setErrorMessage("");
     setCurrentStepIndex((prev) => Math.max(prev - 1, 0));
+  }, []);
+
+  const checkAgentFundingStatus = useCallback(async (agentAddress: string): Promise<boolean> => {
+    try {
+      const provider = new ethers.providers.JsonRpcProvider(OSTIUM_RPC_URL);
+      const agentBalance = await provider.getBalance(agentAddress);
+      const isFunded = agentBalance.gt(0);
+      setAgentFundingComplete(isFunded);
+      return isFunded;
+    } catch (error) {
+      console.error("[OpenClaw] Failed to check agent funding status:", error);
+      setAgentFundingComplete(false);
+      return false;
+    }
   }, []);
 
   const loadExistingProgress = useCallback(async () => {
@@ -882,8 +904,13 @@ export default function OpenClawSetupPage() {
   }, [tradingAgentId, walletAddress]);
 
   useEffect(() => {
+    if (!ostiumAgentAddress || skillSubStep !== "agent-created") return;
+    checkAgentFundingStatus(ostiumAgentAddress);
+  }, [ostiumAgentAddress, skillSubStep, checkAgentFundingStatus]);
+
+  useEffect(() => {
     if (!lazyTradingEnabled || !walletAddress) return;
-    if (lazyTradingSetupComplete || maxxitApiKey) return;
+    if (maxxitApiKey) return;
 
     (async () => {
       setIsCheckingLazyTradingSetup(true);
@@ -891,8 +918,26 @@ export default function OpenClawSetupPage() {
         const res = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.success && data.hasSetup && data.step === "complete") {
-            setLazyTradingSetupComplete(true);
+          if (data.success && data.hasSetup) {
+            const existingAgentAddress = data.ostiumAgentAddress || null;
+            const hasExistingDeployment = !!data.deployment?.id;
+            if (existingAgentAddress) {
+              setOstiumAgentAddress(existingAgentAddress);
+              setTradingAgentId(data.agent?.id || null);
+              setDelegationComplete(data.isDelegatedToAgent === true);
+              setAllowanceComplete(data.hasUsdcApproval === true);
+              setHasDeployment(hasExistingDeployment);
+              const isAgentFunded = await checkAgentFundingStatus(existingAgentAddress);
+              const isFullyComplete =
+                hasExistingDeployment &&
+                data.isDelegatedToAgent === true &&
+                data.hasUsdcApproval === true &&
+                isAgentFunded;
+              setLazyTradingSetupComplete(isFullyComplete);
+              setSkillSubStep(isFullyComplete ? "complete" : "agent-created");
+            } else {
+              setLazyTradingSetupComplete(false);
+            }
           }
         }
       } catch (err) {
@@ -901,7 +946,7 @@ export default function OpenClawSetupPage() {
         setIsCheckingLazyTradingSetup(false);
       }
     })();
-  }, [lazyTradingEnabled, walletAddress, lazyTradingSetupComplete, maxxitApiKey]);
+  }, [lazyTradingEnabled, walletAddress, maxxitApiKey, checkAgentFundingStatus]);
 
   if (initialLoading) {
     return (
@@ -1521,6 +1566,8 @@ export default function OpenClawSetupPage() {
                               setOstiumAgentAddress(null);
                               setDelegationComplete(false);
                               setAllowanceComplete(false);
+                              setAgentFundingComplete(false);
+                              setAgentFundingAmountEth("0.005");
                               setHasDeployment(false);
                             }}
                             className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
@@ -1539,14 +1586,29 @@ export default function OpenClawSetupPage() {
                               setSkillSubStep('creating-agent');
                               setErrorMessage("");
                               try {
-                                // First check if setup is already done
+                                // First check if setup already exists
                                 const statusRes = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
                                 if (statusRes.ok) {
                                   const statusData = await statusRes.json();
-                                  if (statusData.success && statusData.hasSetup && statusData.step === "complete") {
-                                    setLazyTradingSetupComplete(true);
-                                    setSkillSubStep('complete');
-                                    return;
+                                  if (statusData.success && statusData.hasSetup) {
+                                    const existingAgentAddress = statusData.ostiumAgentAddress || null;
+                                    const hasExistingDeployment = !!statusData.deployment?.id;
+                                    if (existingAgentAddress) {
+                                      setOstiumAgentAddress(existingAgentAddress);
+                                      setTradingAgentId(statusData.agent?.id || null);
+                                      setDelegationComplete(statusData.isDelegatedToAgent === true);
+                                      setAllowanceComplete(statusData.hasUsdcApproval === true);
+                                      setHasDeployment(hasExistingDeployment);
+                                      const isAgentFunded = await checkAgentFundingStatus(existingAgentAddress);
+                                      const isFullyComplete =
+                                        hasExistingDeployment &&
+                                        statusData.isDelegatedToAgent === true &&
+                                        statusData.hasUsdcApproval === true &&
+                                        isAgentFunded;
+                                      setLazyTradingSetupComplete(isFullyComplete);
+                                      setSkillSubStep(isFullyComplete ? 'complete' : 'agent-created');
+                                      return;
+                                    }
                                   }
                                 }
 
@@ -1559,10 +1621,12 @@ export default function OpenClawSetupPage() {
                                 if (data.success) {
                                   setTradingAgentId(data.agent.id);
                                   setOstiumAgentAddress(data.ostiumAgentAddress);
+                                  setAgentFundingComplete(false);
                                   if (data.hasDeployment) {
                                     setHasDeployment(true);
-                                    setLazyTradingSetupComplete(true);
-                                    setSkillSubStep('complete');
+                                    const isAgentFunded = await checkAgentFundingStatus(data.ostiumAgentAddress);
+                                    setLazyTradingSetupComplete(isAgentFunded);
+                                    setSkillSubStep(isAgentFunded ? 'complete' : 'agent-created');
                                     return;
                                   }
                                   setSkillSubStep('agent-created');
@@ -1580,6 +1644,7 @@ export default function OpenClawSetupPage() {
                                       const a = await approvalRes.json();
                                       if (a.hasApproval) setAllowanceComplete(true);
                                     }
+                                    await checkAgentFundingStatus(data.ostiumAgentAddress);
                                   } catch { }
                                 } else {
                                   setErrorMessage(data.error || "Failed to create trading agent");
@@ -1656,6 +1721,25 @@ export default function OpenClawSetupPage() {
                                 </p>
                               </div>
                             </div>
+
+                            <div className={`flex items-center gap-3 p-3 rounded-lg border ${agentFundingComplete
+                              ? "border-green-500/50 bg-green-500/5"
+                              : "border-[var(--border)]"
+                              }`}>
+                              {agentFundingComplete ? (
+                                <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full border-2 border-[var(--text-muted)] flex-shrink-0" />
+                              )}
+                              <div>
+                                <p className="text-sm font-bold">
+                                  {agentFundingComplete ? "Agent Funded" : "Fund Your Agent"}
+                                </p>
+                                <p className="text-xs text-[var(--text-muted)]">
+                                  Send ETH to your agent wallet for transaction gas
+                                </p>
+                              </div>
+                            </div>
                           </div>
 
                           {/* Transaction status */}
@@ -1677,23 +1761,26 @@ export default function OpenClawSetupPage() {
                                   // Delegation
                                   if (!delegationComplete) {
                                     setSkillCurrentAction("Setting delegation...");
-                                    const provider = (window as any).ethereum;
-                                    if (!provider) throw new Error("No wallet provider found. Please install MetaMask.");
+                                    const provider = await getEip1193Provider();
                                     await provider.request({ method: "eth_requestAccounts" });
                                     const ethersProvider = new ethers.providers.Web3Provider(provider);
                                     const network = await ethersProvider.getNetwork();
-                                    if (network.chainId !== 42161) {
+                                    if (network.chainId !== OSTIUM_CHAIN_ID) {
                                       try {
                                         await provider.request({
                                           method: "wallet_switchEthereumChain",
-                                          params: [{ chainId: "0xa4b1" }],
+                                          params: [{ chainId: `0x${OSTIUM_CHAIN_ID.toString(16)}` }],
                                         });
                                         await new Promise((r) => setTimeout(r, 500));
                                       } catch (switchErr: any) {
-                                        throw new Error(switchErr.code === 4902 ? "Please add Arbitrum to your wallet" : "Please switch to Arbitrum network");
+                                        throw new Error(
+                                          switchErr.code === 4902
+                                            ? `Please add ${OSTIUM_CHAIN_NAME} to your wallet`
+                                            : `Please switch to ${OSTIUM_CHAIN_NAME} network`
+                                        );
                                       }
                                     }
-                                    const freshProvider = new ethers.providers.Web3Provider((window as any).ethereum);
+                                    const freshProvider = new ethers.providers.Web3Provider(provider);
                                     const signer = freshProvider.getSigner();
                                     const contract = new ethers.Contract(OSTIUM_TRADING_CONTRACT, OSTIUM_TRADING_ABI, signer);
                                     const gasEstimate = await contract.estimateGas.setDelegate(ostiumAgentAddress);
@@ -1708,8 +1795,7 @@ export default function OpenClawSetupPage() {
                                   // USDC Approval
                                   if (!allowanceComplete) {
                                     setSkillCurrentAction("Approving USDC allowance...");
-                                    const provider = (window as any).ethereum;
-                                    if (!provider) throw new Error("No wallet provider found.");
+                                    const provider = await getEip1193Provider();
                                     const ethersProvider = new ethers.providers.Web3Provider(provider);
                                     await ethersProvider.send("eth_requestAccounts", []);
                                     const signer = ethersProvider.getSigner();
@@ -1746,6 +1832,86 @@ export default function OpenClawSetupPage() {
                                 <><Shield className="w-4 h-4" /> Enable 1-Click Trading</>
                               )}
                             </button>
+                          ) : !agentFundingComplete ? (
+                            <div className="space-y-3 border border-[var(--border)] rounded-lg p-4">
+                              <p className="text-sm text-[var(--text-secondary)]">
+                                Add ETH to your agent wallet so it can submit on-chain actions.
+                              </p>
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.001"
+                                  value={agentFundingAmountEth}
+                                  onChange={(e) => setAgentFundingAmountEth(e.target.value)}
+                                  className="flex-1 bg-[var(--bg-deep)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm"
+                                  placeholder="0.005"
+                                />
+                                <span className="text-sm text-[var(--text-muted)]">ETH</span>
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  if (!walletAddress || !ostiumAgentAddress) return;
+                                  setEnablingTrading(true);
+                                  setErrorMessage("");
+                                  try {
+                                    const amount = Number(agentFundingAmountEth);
+                                    if (!Number.isFinite(amount) || amount <= 0) {
+                                      throw new Error("Enter a valid ETH amount greater than 0.");
+                                    }
+
+                                    setSkillCurrentAction("Funding agent wallet...");
+                                    const provider = await getEip1193Provider();
+                                    await provider.request({ method: "eth_requestAccounts" });
+                                    const ethersProvider = new ethers.providers.Web3Provider(provider);
+                                    const network = await ethersProvider.getNetwork();
+                                    if (network.chainId !== OSTIUM_CHAIN_ID) {
+                                      await provider.request({
+                                        method: "wallet_switchEthereumChain",
+                                        params: [{ chainId: `0x${OSTIUM_CHAIN_ID.toString(16)}` }],
+                                      });
+                                    }
+
+                                    const txHash = await provider.request({
+                                      method: "eth_sendTransaction",
+                                      params: [
+                                        {
+                                          from: walletAddress,
+                                          to: ostiumAgentAddress,
+                                          value: ethers.utils.parseEther(agentFundingAmountEth).toHexString(),
+                                        },
+                                      ],
+                                    });
+                                    setSkillTxHash(txHash);
+                                    await ethersProvider.waitForTransaction(txHash);
+                                    setSkillTxHash(null);
+                                    setAgentFundingComplete(true);
+                                  } catch (err: any) {
+                                    if (err.code === 4001 || err.message?.includes("rejected")) {
+                                      setErrorMessage("Transaction rejected");
+                                    } else {
+                                      setErrorMessage(err.message || "Failed to fund agent wallet");
+                                    }
+                                  } finally {
+                                    setEnablingTrading(false);
+                                    setSkillCurrentAction("");
+                                  }
+                                }}
+                                disabled={enablingTrading}
+                                className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                              >
+                                {enablingTrading ? (
+                                  <><Loader2 className="w-5 h-5 animate-spin" /> {skillCurrentAction || "Processing..."}</>
+                                ) : (
+                                  "Fund Agent Wallet"
+                                )}
+                              </button>
+                              {ostiumAgentAddress && (
+                                <p className="text-xs text-[var(--text-muted)] break-all">
+                                  Agent wallet: <code>{ostiumAgentAddress}</code>
+                                </p>
+                              )}
+                            </div>
                           ) : (
                             /* Both complete — deployment is triggered from footer CTA */
                             <div className="border border-green-500/40 bg-green-500/10 rounded-lg p-3 text-xs text-green-300">
@@ -1761,6 +1927,8 @@ export default function OpenClawSetupPage() {
                               setOstiumAgentAddress(null);
                               setDelegationComplete(false);
                               setAllowanceComplete(false);
+                              setAgentFundingComplete(false);
+                              setAgentFundingAmountEth("0.005");
                             }}
                             className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                           >
@@ -1773,7 +1941,7 @@ export default function OpenClawSetupPage() {
                           <Loader2 className="w-5 h-5 animate-spin" />
                           <span>Creating deployment...</span>
                         </div>
-                      ) : skillSubStep === 'complete' || lazyTradingSetupComplete ? (
+                      ) : (skillSubStep === 'complete' || lazyTradingSetupComplete || hasDeployment) && agentFundingComplete ? (
                         /* Sub-step 4: Complete */
                         <div className="space-y-3">
                           <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4 text-center">
@@ -1786,6 +1954,12 @@ export default function OpenClawSetupPage() {
                               setLazyTradingEnabled(false);
                               setSkillSubStep('idle');
                               setLazyTradingSetupComplete(false);
+                              setTradingAgentId(null);
+                              setOstiumAgentAddress(null);
+                              setDelegationComplete(false);
+                              setAllowanceComplete(false);
+                              setAgentFundingComplete(false);
+                              setAgentFundingAmountEth("0.005");
                             }}
                             className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                           >
@@ -1808,12 +1982,13 @@ export default function OpenClawSetupPage() {
                   <button
                     onClick={() => {
                       const isOstiumSetupDone =
-                        skillSubStep === 'complete' || lazyTradingSetupComplete || hasDeployment;
+                        (skillSubStep === 'complete' || lazyTradingSetupComplete || hasDeployment) && agentFundingComplete;
                       const shouldCreateDeployment =
                         lazyTradingEnabled &&
                         skillSubStep === 'agent-created' &&
                         delegationComplete &&
                         allowanceComplete &&
+                        agentFundingComplete &&
                         !hasDeployment;
 
                       if (shouldCreateDeployment) {
@@ -1829,7 +2004,7 @@ export default function OpenClawSetupPage() {
                     }}
                     className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                   >
-                    {(skillSubStep === 'complete' || lazyTradingSetupComplete || maxxitApiKey)
+                    {(((skillSubStep === 'complete' || lazyTradingSetupComplete || hasDeployment) && agentFundingComplete) || maxxitApiKey)
                       ? "Continue"
                       : lazyTradingEnabled
                         ? "Create Deployment & Continue"
@@ -1840,6 +2015,18 @@ export default function OpenClawSetupPage() {
                 {errorMessage && (
                   <p className="text-red-500 text-sm text-center">
                     {errorMessage}
+                  </p>
+                )}
+                {skillTxHash && OSTIUM_BLOCK_EXPLORER_URL && (
+                  <p className="text-xs text-center">
+                    <a
+                      href={`${OSTIUM_BLOCK_EXPLORER_URL}/tx/${skillTxHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--accent)] hover:underline"
+                    >
+                      View transaction on explorer
+                    </a>
                   </p>
                 )}
               </div>

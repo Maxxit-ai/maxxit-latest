@@ -3,50 +3,49 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { Home, Wallet, User, Plus, TrendingUp, Menu, BookOpen, ChevronDown, Activity, Coins, Trophy, Terminal } from 'lucide-react';
 import { Bot, BarChart3, FileText, Copy, Check, LogOut, X, AlertCircle, Sparkles, BookMarked } from 'lucide-react';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import Image from 'next/image';
 import { ethers } from 'ethers';
 import { useWalletProvider } from '../hooks/useWalletProvider';
+import { getOstiumConfig } from '../lib/ostium-config';
 
-// Set this to true for testing on Sepolia, false for Mainnet
-const IS_TESTNET = process.env.NEXT_PUBLIC_USE_TESTNET === 'true';
-
-const NETWORKS = {
-  MAINNET: {
-    chainId: 42161,
-    chainName: 'Arbitrum One',
-    usdcAddress: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-    explorer: 'https://arbiscan.io',
-    rpc: 'https://arb1.arbitrum.io/rpc',
-    hexId: '0xa4b1'
-  },
-  TESTNET: {
-    chainId: 421614,
-    chainName: 'Arbitrum Sepolia',
-    usdcAddress: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
-    explorer: 'https://sepolia.arbiscan.io',
-    rpc: 'https://sepolia-rollup.arbitrum.io/rpc',
-    hexId: '0x66eee' // 421614 in hex
-  }
+const ostiumConfig = getOstiumConfig();
+const ACTIVE_NETWORK = {
+  chainId: ostiumConfig.chainId,
+  chainName: ostiumConfig.chainName,
+  usdcAddress: ostiumConfig.usdcContract,
+  explorer: ostiumConfig.blockExplorerUrl,
+  rpc: ostiumConfig.rpcUrl,
+  hexId: `0x${ostiumConfig.chainId.toString(16)}`,
 };
-
-const ACTIVE_NETWORK = IS_TESTNET ? NETWORKS.TESTNET : NETWORKS.MAINNET;
 const USDC_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
   'function decimals() external view returns (uint8)',
+  'function transfer(address to, uint256 amount) external returns (bool)',
 ];
 
 export function Header() {
   const router = useRouter();
-  const { ready, authenticated, user, login, logout } = usePrivy();
+  const { ready, authenticated, user, login, logout, exportWallet: exportPrivyWallet } = usePrivy();
+  const { wallets } = useWallets();
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [currentChainId, setCurrentChainId] = useState<number | null>(null);
+  const [ethBalance, setEthBalance] = useState<string | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [isInitialBalanceLoad, setIsInitialBalanceLoad] = useState(true);
+  const [transferAsset, setTransferAsset] = useState<'ETH' | 'USDC'>('ETH');
+  const [transferAddress, setTransferAddress] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
+  const [transferTxHash, setTransferTxHash] = useState<string | null>(null);
+  const [isExportingWallet, setIsExportingWallet] = useState(false);
+  const [exportWalletError, setExportWalletError] = useState<string | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -104,10 +103,14 @@ export function Header() {
 
   const isOnArbitrum = currentChainId === ACTIVE_NETWORK.chainId;
   const needsNetworkSwitch = authenticated && currentChainId !== null && !isOnArbitrum;
+  const isEmailLoginUser = Boolean(user?.email?.address);
+  const embeddedPrivyWallet = wallets.find((wallet) => wallet.walletClientType === 'privy');
+  const shouldShowEmbeddedWalletTools = authenticated && Boolean(embeddedPrivyWallet) && isEmailLoginUser;
 
   useEffect(() => {
     if (!authenticated || !isOnArbitrum) {
       setIsInitialBalanceLoad(true);
+      setEthBalance(null);
       setUsdcBalance(null);
     }
   }, [authenticated, isOnArbitrum]);
@@ -127,6 +130,8 @@ export function Header() {
       // Get provider from connected wallet
       const rawProvider = await getEip1193Provider();
       const provider = new ethers.providers.Web3Provider(rawProvider);
+      const nativeBalance = await provider.getBalance(walletAddress);
+      setEthBalance(parseFloat(ethers.utils.formatEther(nativeBalance)).toFixed(4));
       const contract = new ethers.Contract(ACTIVE_NETWORK.usdcAddress, USDC_ABI, provider);
 
       // Direct contract call to get balance
@@ -136,6 +141,7 @@ export function Header() {
       setUsdcBalance(parseFloat(formattedBalance).toFixed(2));
     } catch (error) {
       console.error('Failed to fetch USDC balance:', error);
+      setEthBalance(null);
       setUsdcBalance(null);
     } finally {
       if (showLoadingState) {
@@ -399,6 +405,79 @@ export function Header() {
       console.error('Failed to switch network:', switchError);
     } finally {
       setIsSwitchingNetwork(false);
+    }
+  };
+
+  const handleTransferSubmit = async () => {
+    if (!user?.wallet?.address) {
+      setTransferError('Wallet address not available.');
+      return;
+    }
+
+    if (!ethers.utils.isAddress(transferAddress)) {
+      setTransferError('Enter a valid recipient wallet address.');
+      return;
+    }
+
+    const parsedAmount = Number(transferAmount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setTransferError('Enter an amount greater than 0.');
+      return;
+    }
+
+    try {
+      setIsSubmittingTransfer(true);
+      setTransferError(null);
+      setTransferSuccess(null);
+      setTransferTxHash(null);
+
+      const rawProvider = await getEip1193Provider();
+      const provider = new ethers.providers.Web3Provider(rawProvider);
+      await provider.send('eth_requestAccounts', []);
+      const signer = provider.getSigner();
+
+      let tx: ethers.providers.TransactionResponse;
+      if (transferAsset === 'ETH') {
+        tx = await signer.sendTransaction({
+          to: transferAddress,
+          value: ethers.utils.parseEther(transferAmount),
+        });
+      } else {
+        const usdcContract = new ethers.Contract(ACTIVE_NETWORK.usdcAddress, USDC_ABI, signer);
+        tx = await usdcContract.transfer(transferAddress, ethers.utils.parseUnits(transferAmount, 6));
+      }
+
+      setTransferTxHash(tx.hash);
+      await tx.wait();
+
+      setTransferSuccess(`${transferAsset} sent successfully.`);
+      setTransferAmount('');
+      fetchUsdcBalance(user.wallet.address, false);
+    } catch (error: any) {
+      if (error?.code === 4001 || error?.message?.toLowerCase().includes('rejected')) {
+        setTransferError('Transaction rejected.');
+      } else {
+        setTransferError(error?.message || `Failed to send ${transferAsset}.`);
+      }
+    } finally {
+      setIsSubmittingTransfer(false);
+    }
+  };
+
+  const handleExportEmbeddedWallet = async () => {
+    if (!embeddedPrivyWallet) {
+      setExportWalletError('No embedded wallet found to export.');
+      return;
+    }
+
+    try {
+      setIsExportingWallet(true);
+      setExportWalletError(null);
+      await exportPrivyWallet({ address: embeddedPrivyWallet.address });
+    } catch (error: any) {
+      setExportWalletError(error?.message || 'Failed to open wallet export flow.');
+    } finally {
+      setIsExportingWallet(false);
     }
   };
 
@@ -690,6 +769,10 @@ export function Header() {
                                     {user?.wallet?.address || 'No address'}
                                   </p>
                                   <div className="text-xs text-[var(--text-secondary)]">
+                                    <p className="mb-1">ETH Balance</p>
+                                    <p className="font-mono text-sm font-bold text-[var(--text-primary)] mb-2">
+                                      {isLoadingBalance ? 'Loading...' : (ethBalance ? `${ethBalance} ETH` : '0.0000 ETH')}
+                                    </p>
                                     <p className="mb-1">USDC Balance</p>
                                     <p className="font-mono text-sm font-bold text-[var(--text-primary)]">
                                       {isLoadingBalance ? 'Loading...' : (usdcBalance ? `$${usdcBalance}` : '$0.00')}
@@ -715,6 +798,91 @@ export function Header() {
                                 </button>
                               </div>
                             </div>
+
+                            {shouldShowEmbeddedWalletTools && (
+                              <div className="p-3 bg-[var(--bg-elevated)] border border-[var(--border)] space-y-3">
+                                <div>
+                                  <p className="data-label mb-1">EMBEDDED WALLET TOOLS</p>
+                                  <p className="text-xs text-[var(--text-secondary)]">
+                                    Send funds like a wallet app, or export your embedded wallet when supported.
+                                  </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                    onClick={() => setTransferAsset('ETH')}
+                                    className={`px-3 py-2 text-xs font-bold border transition-colors ${transferAsset === 'ETH'
+                                      ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                                      : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
+                                      }`}
+                                  >
+                                    ETH
+                                  </button>
+                                  <button
+                                    onClick={() => setTransferAsset('USDC')}
+                                    className={`px-3 py-2 text-xs font-bold border transition-colors ${transferAsset === 'USDC'
+                                      ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                                      : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
+                                      }`}
+                                  >
+                                    USDC
+                                  </button>
+                                </div>
+
+                                <input
+                                  type="text"
+                                  value={transferAddress}
+                                  onChange={(e) => setTransferAddress(e.target.value)}
+                                  placeholder="Recipient address (0x...)"
+                                  className="w-full px-3 py-2 text-xs font-mono border border-[var(--border)] bg-[var(--bg-surface)] focus:outline-none focus:border-[var(--accent)]"
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step={transferAsset === 'ETH' ? '0.0001' : '0.01'}
+                                  value={transferAmount}
+                                  onChange={(e) => setTransferAmount(e.target.value)}
+                                  placeholder={`Amount in ${transferAsset}`}
+                                  className="w-full px-3 py-2 text-xs border border-[var(--border)] bg-[var(--bg-surface)] focus:outline-none focus:border-[var(--accent)]"
+                                />
+
+                                <button
+                                  onClick={handleTransferSubmit}
+                                  disabled={isSubmittingTransfer}
+                                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 border border-[var(--accent)] text-[var(--accent)] text-xs font-bold hover:bg-[var(--accent)]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {isSubmittingTransfer ? `Sending ${transferAsset}...` : `Send ${transferAsset}`}
+                                </button>
+
+                                {transferError && (
+                                  <p className="text-xs text-[var(--danger)]">{transferError}</p>
+                                )}
+                                {transferSuccess && (
+                                  <p className="text-xs text-green-400">{transferSuccess}</p>
+                                )}
+                                {transferTxHash && (
+                                  <a
+                                    href={`${ACTIVE_NETWORK.explorer}/tx/${transferTxHash}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-block text-xs text-[var(--accent)] hover:underline break-all"
+                                  >
+                                    View transaction
+                                  </a>
+                                )}
+
+                                <button
+                                  onClick={handleExportEmbeddedWallet}
+                                  disabled={isExportingWallet}
+                                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 border border-[var(--border)] text-[var(--text-primary)] text-xs font-bold hover:bg-[var(--bg-deep)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {isExportingWallet ? 'Opening export...' : 'Export Embedded Wallet'}
+                                </button>
+                                {exportWalletError && (
+                                  <p className="text-xs text-[var(--danger)]">{exportWalletError}</p>
+                                )}
+                              </div>
+                            )}
 
                             {/* Sign Out Button */}
                             <button
@@ -846,6 +1014,10 @@ export function Header() {
                               {user?.wallet?.address || 'No address'}
                             </div>
                             <div className="text-xs text-[var(--text-secondary)] mb-3">
+                              <p className="mb-1">ETH Balance</p>
+                              <p className="font-mono text-sm font-bold text-[var(--text-primary)] mb-2">
+                                {isLoadingBalance ? 'Loading...' : (ethBalance ? `${ethBalance} ETH` : '0.0000 ETH')}
+                              </p>
                               <p className="mb-1">USDC Balance</p>
                               <p className="font-mono text-sm font-bold text-[var(--text-primary)]">
                                 {isLoadingBalance ? 'Loading...' : (usdcBalance ? `$${usdcBalance}` : '$0.00')}
