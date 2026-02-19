@@ -1,6 +1,7 @@
 import '../styles/globals.css';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
+import type { LoginMethodOrderOption } from '@privy-io/react-auth';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import Lenis from 'lenis';
@@ -10,6 +11,14 @@ import { Analytics } from '@vercel/analytics/next';
 
 export default function App({ Component, pageProps }: AppProps) {
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  const crossAppProviderId = process.env.NEXT_PUBLIC_PRIVY_PROVIDER_APP_ID;
+  const primaryLoginMethods: [LoginMethodOrderOption, ...LoginMethodOrderOption[]] = ['email', 'detected_ethereum_wallets'];
+  if (crossAppProviderId) {
+    primaryLoginMethods.push(`privy:${crossAppProviderId}`);
+  }
+  const loginMethodsAndOrder = {
+    primary: primaryLoginMethods,
+  };
   const isBuildTime = typeof window === 'undefined' && !privyAppId;
 
   // During build-time prerendering without Privy app ID, skip PrivyProvider
@@ -102,7 +111,7 @@ export default function App({ Component, pageProps }: AppProps) {
     <PrivyProvider
       appId={privyAppId || ''}
       config={{
-        loginMethods: ['wallet', 'email'],
+        loginMethodsAndOrder,
         appearance: {
           theme: 'dark',
           accentColor: '#22c55e',
