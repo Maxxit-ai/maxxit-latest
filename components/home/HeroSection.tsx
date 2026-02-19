@@ -183,6 +183,37 @@ const HeroSection = memo(
         </div>
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative z-10">
+          {/* OpenClaw Announcement Banner */}
+          <style>{`
+            @keyframes oc-shimmer {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(100%); }
+            }
+          `}</style>
+          <a
+            href="https://openclaw-maxxit.vercel.app"
+            className="group inline-flex items-center gap-3 mb-6 sm:mb-8 px-4 sm:px-6 py-2.5 sm:py-3 border border-[var(--accent)] bg-[rgba(1,107,56,0.08)] hover:bg-[rgba(1,107,56,0.15)] transition-all duration-300 hover:shadow-[0_0_20px_rgba(1,107,56,0.15)] relative overflow-hidden"
+          >
+            <span
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: 'linear-gradient(90deg, transparent 0%, rgba(0,255,136,0.08) 50%, transparent 100%)',
+                animation: 'oc-shimmer 3s ease-in-out infinite',
+              }}
+            />
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-60"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
+            </span>
+            <span className="text-xs sm:text-sm font-mono tracking-wider text-[var(--accent)]">
+              🦞 NEW
+            </span>
+            <span className="text-xs sm:text-sm font-mono tracking-wide text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
+              OpenClaw — Autonomous Agentic Trading is Live
+            </span>
+            <span className="text-[var(--accent)] text-sm group-hover:translate-x-1 transition-transform">→</span>
+          </a>
+
           <p className="text-xs sm:text-sm text-accent mb-4 sm:mb-6 tracking-widest font-mono">
             THE DECENTRALIZED TRADING ECONOMY
           </p>
