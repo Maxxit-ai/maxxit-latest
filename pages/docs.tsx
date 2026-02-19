@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Header } from '@components/Header';
 import FooterSection from '@components/home/FooterSection';
 
 export default function DocsPage() {
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState('overview');
 
   const sections = [
@@ -26,8 +28,48 @@ export default function DocsPage() {
     { id: 'risks', title: 'Risks & Disclaimers', icon: AlertTriangle },
   ];
 
+  // Flag to prevent scroll spy from overwriting hash during initial navigation
+  const isHashScrolling = useRef(false);
+
+  const scrollToSection = useCallback((id: string) => {
+    setActiveSection(id);
+    window.history.replaceState(null, '', `#${id}`);
+    const element = document.getElementById(id);
+    if (element) {
+      const header = document.querySelector('header');
+      const headerHeight = header ? header.offsetHeight + 20 : 120;
+      const elementTop = element.getBoundingClientRect().top + window.pageYOffset;
+      const offsetPosition = elementTop - headerHeight;
+      window.scrollTo({
+        top: Math.max(0, offsetPosition),
+        behavior: 'smooth'
+      });
+    }
+  }, []);
+
+  // Scroll to hash section on initial page load
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash) {
+      // Block scroll spy while we navigate to the hash
+      isHashScrolling.current = true;
+      const timer = setTimeout(() => {
+        scrollToSection(hash);
+        // Release the lock after scroll animation settles
+        setTimeout(() => { isHashScrolling.current = false; }, 800);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [scrollToSection]);
+
+  // Scroll spy — sync active section + URL hash on scroll
   useEffect(() => {
     const handleScroll = () => {
+      // Don't override hash while navigating to an initial hash target
+      if (isHashScrolling.current) return;
+      // Only update hash when on the docs page
+      if (window.location.pathname !== '/docs') return;
+
       const header = document.querySelector('header');
       const headerHeight = header ? header.offsetHeight + 40 : 140;
 
@@ -40,12 +82,10 @@ export default function DocsPage() {
           const rect = element.getBoundingClientRect();
           const distanceFromTop = rect.top - headerHeight;
 
-          // Find the section that's closest to or just past the top threshold
           if (distanceFromTop <= 0 && Math.abs(distanceFromTop) < minDistance) {
             minDistance = Math.abs(distanceFromTop);
             currentSection = id;
           } else if (distanceFromTop > 0 && distanceFromTop < 100 && minDistance === Infinity) {
-            // If no section has passed the threshold yet, use the first one approaching
             currentSection = id;
             break;
           }
@@ -53,12 +93,17 @@ export default function DocsPage() {
       }
 
       setActiveSection(currentSection);
+      // Silently update hash as user scrolls
+      if (window.location.hash !== `#${currentSection}`) {
+        window.history.replaceState(null, '', `/docs#${currentSection}`);
+      }
     };
 
-    // Initial check
-    handleScroll();
+    // Only run initial check if no hash scroll is pending
+    if (!isHashScrolling.current) {
+      handleScroll();
+    }
 
-    // Add scroll listener with throttling for performance
     let ticking = false;
     const scrollListener = () => {
       if (!ticking) {
@@ -73,28 +118,6 @@ export default function DocsPage() {
     window.addEventListener('scroll', scrollListener, { passive: true });
     return () => window.removeEventListener('scroll', scrollListener);
   }, []);
-
-  const scrollToSection = (id: string) => {
-    setActiveSection(id);
-    console.log("Scrolling to section: ", id);
-    const element = document.getElementById(id);
-    if (element) {
-      // Get the header height (sticky header)
-      const header = document.querySelector('header');
-      const headerHeight = header ? header.offsetHeight + 20 : 120; // Add 20px padding
-
-      // Get element position relative to document
-      const elementTop = element.getBoundingClientRect().top + window.pageYOffset;
-
-      // Calculate scroll position accounting for header
-      const offsetPosition = elementTop - headerHeight;
-
-      window.scrollTo({
-        top: Math.max(0, offsetPosition),
-        behavior: 'smooth'
-      });
-    }
-  };
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] border border-[var(--border)]">
