@@ -1135,49 +1135,61 @@ def cancel_order():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/history', methods=['POST'])
-def get_trade_history():
+@app.route('/all-orders', methods=['POST'])
+def get_all_orders():
     """
-    Get trade history for a symbol.
+    Get all order history for a symbol (active, canceled, and filled orders).
     
     Request body:
     {
         "userAddress": "0x...",
         "symbol": "BTC",
-        "limit": 50
+        "limit": 50,
+        "orderId": 12345,           // optional
+        "startTime": 1709251200000, // optional (ms)
+        "endTime": 1709856000000    // optional (ms)
     }
     """
     try:
         data = request.json or {}
         user_wallet = data.get('userAddress') or data.get('address')
         token = data.get('symbol') or data.get('market')
-        limit = data.get('limit', 50)
-        
+
         if not all([user_wallet, token]):
             return jsonify({
                 "success": False,
                 "error": "Missing required fields: userAddress, symbol"
             }), 400
-        
+
         user_address, agent_address, agent_key = get_agent_credentials(user_wallet)
         symbol = resolve_symbol(token)
-        
-        result = aster_request('GET', '/fapi/v3/userTrades', {
-            'symbol': symbol,
-            'limit': int(limit),
-        }, user_address, agent_address, agent_key)
-        
+
+        params = {'symbol': symbol}
+
+        if data.get('orderId') is not None:
+            params['orderId'] = int(data.get('orderId'))
+        if data.get('startTime') is not None:
+            params['startTime'] = int(data.get('startTime'))
+        if data.get('endTime') is not None:
+            params['endTime'] = int(data.get('endTime'))
+        if data.get('limit') is not None:
+            params['limit'] = int(data.get('limit'))
+
+        result = aster_request('GET', '/fapi/v3/allOrders', params,
+                               user_address, agent_address, agent_key)
+
         return jsonify({
             "success": True,
-            "trades": result,
-            "count": len(result)
+            "orders": result,
+            "count": len(result),
+            "symbol": symbol
         })
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), 400
     except AsterAPIError as e:
         return jsonify({"success": False, "error": e.msg}), e.status_code
     except Exception as e:
-        logger.error(f"Error getting trade history: {e}\n{traceback.format_exc()}")
+        logger.error(f"Error getting all orders: {e}\n{traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
