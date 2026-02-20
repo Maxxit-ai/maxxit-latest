@@ -113,6 +113,10 @@ async function callEigenAI(prompt: string): Promise<{
 
   const data = (await response.json()) as any;
 
+  console.log("[OpenPosition callEigenAI] EigenAI API raw response keys:", Object.keys(data));
+  console.log("[OpenPosition callEigenAI] data.signature:", data.signature ? `${data.signature.slice(0, 30)}...` : "MISSING");
+  console.log("[OpenPosition callEigenAI] data.model:", data.model);
+
   if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
     throw new Error("EigenAI API response missing 'choices' array");
   }
@@ -357,17 +361,44 @@ export default async function handler(
     // Build and store the full prompt so it can be persisted for audit
     let eigenFullPrompt: string | null = null;
     let eigenRawOutput: string | null = null;
+    let modelForStorage: string = EIGENAI_MODEL;
+    let chainIdForStorage: number = 1;
 
     try {
       const userPrompt = buildTradeAnalysisPrompt(requestBody, lunarCrushData);
 
       // Concatenate system + user message — same pattern as llm-classifier.ts L96-98
       // This ensures what we store in DB is the *exact* payload that EigenAI signs
-      eigenFullPrompt = EIGENAI_SYSTEM_MESSAGE + "\n" + userPrompt;
+      eigenFullPrompt = EIGENAI_SYSTEM_MESSAGE + userPrompt;
 
+      console.log("[OpenPosition] ========== EIGENAI FLOW START ==========");
+      console.log("[OpenPosition] EIGENAI_SYSTEM_MESSAGE length:", EIGENAI_SYSTEM_MESSAGE.length);
+      console.log("[OpenPosition] EIGENAI_SYSTEM_MESSAGE first 80 chars:", JSON.stringify(EIGENAI_SYSTEM_MESSAGE.slice(0, 80)));
+      console.log("[OpenPosition] userPrompt length:", userPrompt.length);
+      console.log("[OpenPosition] eigenFullPrompt length:", eigenFullPrompt.length);
+      console.log("[OpenPosition] eigenFullPrompt first 120 chars:", JSON.stringify(eigenFullPrompt.slice(0, 120)));
+      console.log("[OpenPosition] eigenFullPrompt last 120 chars:", JSON.stringify(eigenFullPrompt.slice(-120)));
       console.log("[OpenPosition] Calling EigenAI for trade analysis...");
       const eigenResponse = await callEigenAI(userPrompt);
       eigenRawOutput = eigenResponse.rawOutput ?? null;
+
+      console.log("[OpenPosition] EigenAI response:", {
+        contentLength: eigenResponse.content?.length,
+        rawOutputLength: eigenResponse.rawOutput?.length,
+        hasSignature: !!eigenResponse.signature,
+        signaturePrefix: eigenResponse.signature?.slice(0, 20),
+        model: eigenResponse.model,
+        chainId: eigenResponse.chainId,
+      });
+      console.log("[OpenPosition] rawOutput first 120 chars:", JSON.stringify(eigenResponse.rawOutput?.slice(0, 120)));
+      console.log("[OpenPosition] rawOutput last 120 chars:", JSON.stringify(eigenResponse.rawOutput?.slice(-120)));
+
+      // Use request model when API omits it (EigenAI signs with the model used)
+      modelForStorage = eigenResponse.model || EIGENAI_MODEL;
+      chainIdForStorage = eigenResponse.chainId ?? 1;
+      if (!eigenResponse.model) {
+        console.warn("[OpenPosition] EigenAI response missing model, using request model:", EIGENAI_MODEL);
+      }
 
       // Parse the EigenAI JSON response
       const jsonMatch = eigenResponse.content.match(/\{[\s\S]*\}/);
@@ -377,9 +408,14 @@ export default async function handler(
           reasoning: eigenParsed!.reasoning || "No reasoning provided by LLM",
           llmSignature: eigenResponse.signature || eigenParsed!.llmSignature || "EIGENAI_UNSIGNED",
           rawOutput: eigenResponse.rawOutput,
-          model: eigenResponse.model,
-          chainId: eigenResponse.chainId,
+          model: modelForStorage,
+          chainId: chainIdForStorage,
         };
+        console.log("[OpenPosition] eigenAIAnalysis for DB:", {
+          llmSignature: eigenAIAnalysis.llmSignature?.slice(0, 30),
+          model: eigenAIAnalysis.model,
+          chainId: eigenAIAnalysis.chainId,
+        });
         console.log("[OpenPosition] ✅ EigenAI analysis complete");
       } else {
         console.warn("[OpenPosition] ⚠️ Could not parse EigenAI response as JSON");
@@ -392,27 +428,37 @@ export default async function handler(
     }
 
     // ── Fire-and-forget: persist EigenAI verification record ─────────────
+    const verificationData = {
+      agent_address: (eigenParsed ?? requestBody).agentAddress ?? null,
+      user_address: (eigenParsed ?? requestBody).userAddress ?? null,
+      market: (eigenParsed ?? requestBody).market ?? null,
+      side: (eigenParsed ?? requestBody).side ?? null,
+      deployment_id: (eigenParsed ?? requestBody).deploymentId ?? null,
+      signal_id: (eigenParsed ?? requestBody).signalId ?? null,
+      llm_full_prompt: eigenFullPrompt,
+      llm_raw_output: eigenRawOutput,
+      llm_reasoning: eigenAIAnalysis?.reasoning ?? null,
+      llm_signature: eigenAIAnalysis?.llmSignature ?? null,
+      llm_model_used: eigenAIAnalysis?.model ?? modelForStorage,
+      llm_chain_id: eigenAIAnalysis?.chainId ?? chainIdForStorage,
+    };
+    console.log("[OpenPosition] Persisting verification record with lengths:", {
+      llm_full_prompt_length: verificationData.llm_full_prompt?.length,
+      llm_raw_output_length: verificationData.llm_raw_output?.length,
+      llm_signature_length: verificationData.llm_signature?.length,
+      llm_model_used: verificationData.llm_model_used,
+      llm_chain_id: verificationData.llm_chain_id,
+    });
+    console.log("[OpenPosition] Stored llm_full_prompt first 120:", JSON.stringify(verificationData.llm_full_prompt?.slice(0, 120)));
+    console.log("[OpenPosition] Stored llm_raw_output first 120:", JSON.stringify(verificationData.llm_raw_output?.slice(0, 120)));
     prismaClient.openclaw_eigen_verification
       .create({
-        data: {
-          // Trade parameters (from the EigenAI-returned object, or raw body)
-          agent_address: (eigenParsed ?? requestBody).agentAddress ?? null,
-          user_address: (eigenParsed ?? requestBody).userAddress ?? null,
-          market: (eigenParsed ?? requestBody).market ?? null,
-          side: (eigenParsed ?? requestBody).side ?? null,
-          deployment_id: (eigenParsed ?? requestBody).deploymentId ?? null,
-          signal_id: (eigenParsed ?? requestBody).signalId ?? null,
-
-          // EigenAI audit trail
-          llm_full_prompt: eigenFullPrompt,
-          llm_raw_output: eigenRawOutput,
-          llm_reasoning: eigenAIAnalysis?.reasoning ?? null,
-          llm_signature: eigenAIAnalysis?.llmSignature ?? null,
-          llm_model_used: eigenAIAnalysis?.model ?? null,
-          llm_chain_id: eigenAIAnalysis?.chainId ?? null,
-        },
+        data: verificationData,
       })
-      .then(() => console.log("[OpenPosition] ✅ EigenAI verification record saved"))
+      .then(() => {
+        console.log("[OpenPosition] ✅ EigenAI verification record saved");
+        console.log("[OpenPosition] ========== EIGENAI FLOW END ==========");
+      })
       .catch((err: any) =>
         console.warn("[OpenPosition] ⚠️ Failed to save EigenAI verification record:", err.message)
       );
