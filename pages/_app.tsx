@@ -21,7 +21,7 @@ export default function App({ Component, pageProps }: AppProps) {
           <meta name="description" content="Maxxit is a non-custodial AI trading platform that turns benchmarked alpha into automated execution." />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <link rel="icon" href="/favicon.ico" />
-          
+
           {/* Open Graph & Twitter Card Meta Tags */}
           <meta property="og:type" content="website" />
           <meta property="og:site_name" content="Maxxit" />
@@ -31,7 +31,7 @@ export default function App({ Component, pageProps }: AppProps) {
           <meta property="og:image" content="https://maxxit.ai/maxxit-og-image.png" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
-          
+
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="Maxxit - Agentic DeFi Trading Platform" />
           <meta name="twitter:description" content="Discover and join AI-powered trading agents with proven alpha. Non-custodial, automated, transparent." />
@@ -102,16 +102,11 @@ export default function App({ Component, pageProps }: AppProps) {
     <PrivyProvider
       appId={privyAppId || ''}
       config={{
-        loginMethods: ['wallet', 'email'],
+        loginMethods: ['wallet'],
         appearance: {
           theme: 'dark',
           accentColor: '#22c55e',
           logo: undefined,
-        },
-        embeddedWallets: {
-          ethereum: {
-            createOnLogin: 'users-without-wallets',
-          }
         },
       }}
     >
@@ -121,7 +116,7 @@ export default function App({ Component, pageProps }: AppProps) {
           <meta name="description" content="Maxxit is a non-custodial AI trading platform that turns benchmarked alpha into automated execution." />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <link rel="icon" href="/favicon.ico" />
-          
+
           {/* Open Graph & Twitter Card Meta Tags */}
           <meta property="og:type" content="website" />
           <meta property="og:site_name" content="Maxxit" />
@@ -131,7 +126,7 @@ export default function App({ Component, pageProps }: AppProps) {
           <meta property="og:image" content="https://maxxit.ai/maxxit-og-image.png" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
-          
+
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="Maxxit - Agentic DeFi Trading Platform" />
           <meta name="twitter:description" content="Discover and join AI-powered trading agents with proven alpha. Non-custodial, automated, transparent." />

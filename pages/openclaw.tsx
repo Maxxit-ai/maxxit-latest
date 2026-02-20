@@ -311,6 +311,7 @@ export default function OpenClawSetupPage() {
     details?: { chainId: number; model: string; messageLength: number };
   } | null>(null);
   const [eigenVerifyError, setEigenVerifyError] = useState<string | null>(null);
+  const [showEigenSection, setShowEigenSection] = useState(false);
   const currentStepKey = STEPS[currentStepIndex]?.key;
   const requiresApiKeyGeneration = lazyTradingSetupComplete || skillSubStep === "complete" || asterEnabled;
   const canContinueFromApiKeyStep = !!maxxitApiKey || !requiresApiKeyGeneration;
@@ -1138,117 +1139,6 @@ export default function OpenClawSetupPage() {
     <div className="min-h-screen bg-[var(--bg-deep)] flex flex-col">
       <Header />
 
-        {/* EigenAI Signature Verification Section */}
-        <div className="border border-[var(--border)] rounded-lg p-5 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Shield className="w-5 h-5 text-[var(--accent)]" />
-                          <h3 className="font-bold text-lg">EigenAI Signature Verification</h3>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (!walletAddress) return;
-                            setEigenRecordsLoading(true);
-                            setEigenRecordsError(null);
-                            fetch(`/api/eigenai/verifications?userAddress=${walletAddress}`)
-                              .then((r) => r.json())
-                              .then((d) => {
-                                if (d.success) setEigenRecords(d.verifications || []);
-                                else setEigenRecordsError(d.error || "Failed to reload");
-                              })
-                              .catch(() => setEigenRecordsError("Failed to reload"))
-                              .finally(() => setEigenRecordsLoading(false));
-                          }}
-                          disabled={eigenRecordsLoading}
-                          className="text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors flex items-center gap-1 disabled:opacity-50"
-                        >
-                          {eigenRecordsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                          Refresh
-                        </button>
-                      </div>
-                      <p className="text-sm text-[var(--text-secondary)]">
-                        All trade analyses produced by EigenAI for your account. Verify any record&apos;s cryptographic signature to confirm authenticity.
-                      </p>
-
-                      {eigenRecordsLoading ? (
-                        <div className="flex items-center justify-center py-8 gap-2 text-[var(--text-muted)]">
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          <span className="text-sm">Loading records...</span>
-                        </div>
-                      ) : eigenRecordsError ? (
-                        <div className="border border-red-500/50 bg-red-500/10 rounded-lg p-3">
-                          <p className="text-sm text-red-400">{eigenRecordsError}</p>
-                        </div>
-                      ) : eigenRecords.length === 0 ? (
-                        <div className="border border-dashed border-[var(--border)] rounded-lg p-6 text-center">
-                          <Shield className="w-8 h-8 text-[var(--text-muted)] mx-auto mb-2" />
-                          <p className="text-sm text-[var(--text-muted)]">No EigenAI verification records found for your account yet.</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-1">Records appear here after your agent opens positions via the programmatic API.</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {eigenRecords.map((record) => (
-                            <div key={record.id} className="border border-[var(--border)] rounded-lg p-4 space-y-3 bg-[var(--bg-surface)]">
-                              {/* Record header row */}
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="space-y-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {record.market && (
-                                      <span className="text-sm font-bold text-[var(--text-primary)]">{record.market}</span>
-                                    )}
-                                    {record.side && (
-                                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${record.side.toUpperCase() === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-                                        {record.side.toUpperCase()}
-                                      </span>
-                                    )}
-                                    {record.llm_model_used && (
-                                      <span className="text-xs text-[var(--text-muted)] font-mono">{record.llm_model_used}</span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-[var(--text-muted)]">
-                                    {new Date(record.created_at).toLocaleString()}
-                                  </p>
-                                </div>
-                                <div className="flex-shrink-0">
-                                  {record.llm_signature ? (
-                                    <span className="text-xs font-mono text-[var(--accent)] bg-[var(--accent)]/10 px-2 py-1 rounded">
-                                      {record.llm_signature.slice(0, 8)}...{record.llm_signature.slice(-6)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-[var(--text-muted)]">No sig</span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Reasoning preview */}
-                              {record.llm_reasoning && (
-                                <div className="bg-[var(--bg-deep)] rounded p-3">
-                                  <p className="text-xs text-[var(--text-muted)] mb-1">EigenAI Reasoning</p>
-                                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-3">
-                                    {record.llm_reasoning}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Verify button */}
-                              {record.llm_signature && record.llm_raw_output && record.llm_full_prompt ? (
-                                <button
-                                  onClick={() => handleEigenVerifySignature(record)}
-                                  className="w-full py-2 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity text-sm"
-                                >
-                                  <Shield className="w-4 h-4" />
-                                  Verify Signature
-                                </button>
-                              ) : (
-                                <div className="text-xs text-[var(--text-muted)] text-center py-1">
-                                  Signature data incomplete — cannot verify
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
 
       <div className="container mx-auto px-4 py-12 max-w-2xl flex-1">
         {showLanding ? (
@@ -2740,8 +2630,8 @@ export default function OpenClawSetupPage() {
 
                           {envVarMessage && (
                             <div className={`rounded-lg p-3 flex items-center gap-2 ${envVarMessage.type === "success"
-                                ? "bg-green-500/10 border border-green-500/30"
-                                : "bg-red-500/10 border border-red-500/30"
+                              ? "bg-green-500/10 border border-green-500/30"
+                              : "bg-red-500/10 border border-red-500/30"
                               }`}>
                               {envVarMessage.type === "success" ? (
                                 <Check className="w-4 h-4 text-green-400 shrink-0" />
@@ -2900,7 +2790,132 @@ export default function OpenClawSetupPage() {
                       )}
                     </div>
 
-                  
+                    {/* EigenAI Signature Verification Section */}
+                    <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setShowEigenSection(!showEigenSection)}
+                        className="w-full p-5 flex items-center justify-between hover:bg-[var(--bg-card)] transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-5 h-5 text-[var(--accent)]" />
+                          <h3 className="font-bold text-lg">EigenAI Signature Verification</h3>
+                          {eigenRecords.length > 0 && (
+                            <span className="text-xs px-2 py-0.5 bg-[var(--accent)]/20 text-[var(--accent)] rounded-full">
+                              {eigenRecords.length}
+                            </span>
+                          )}
+                        </div>
+                        <ChevronRight className={`w-5 h-5 text-[var(--text-muted)] transition-transform ${showEigenSection ? "rotate-90" : ""}`} />
+                      </button>
+
+                      {showEigenSection && (
+                        <div className="p-5 pt-0 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm text-[var(--text-secondary)]">
+                              Verify any record&apos;s cryptographic signature to confirm authenticity.
+                            </p>
+                            <button
+                              onClick={() => {
+                                if (!walletAddress) return;
+                                setEigenRecordsLoading(true);
+                                setEigenRecordsError(null);
+                                fetch(`/api/eigenai/verifications?userAddress=${walletAddress}`)
+                                  .then((r) => r.json())
+                                  .then((d) => {
+                                    if (d.success) setEigenRecords(d.verifications || []);
+                                    else setEigenRecordsError(d.error || "Failed to reload");
+                                  })
+                                  .catch(() => setEigenRecordsError("Failed to reload"))
+                                  .finally(() => setEigenRecordsLoading(false));
+                              }}
+                              disabled={eigenRecordsLoading}
+                              className="text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors flex items-center gap-1 disabled:opacity-50 shrink-0 ml-3"
+                            >
+                              {eigenRecordsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                              Refresh
+                            </button>
+                          </div>
+
+                          {eigenRecordsLoading ? (
+                            <div className="flex items-center justify-center py-6 gap-2 text-[var(--text-muted)]">
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              <span className="text-sm">Loading records...</span>
+                            </div>
+                          ) : eigenRecordsError ? (
+                            <div className="border border-red-500/50 bg-red-500/10 rounded-lg p-3">
+                              <p className="text-sm text-red-400">{eigenRecordsError}</p>
+                            </div>
+                          ) : eigenRecords.length === 0 ? (
+                            <div className="border border-dashed border-[var(--border)] rounded-lg p-6 text-center">
+                              <Shield className="w-8 h-8 text-[var(--text-muted)] mx-auto mb-2" />
+                              <p className="text-sm text-[var(--text-muted)]">No verification records found yet.</p>
+                              <p className="text-xs text-[var(--text-muted)] mt-1">Records appear after your agent opens positions via the programmatic API.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {eigenRecords.map((record) => (
+                                <div key={record.id} className="border border-[var(--border)] rounded-lg p-4 space-y-3 bg-[var(--bg-card)]">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="space-y-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        {record.market && (
+                                          <span className="text-sm font-bold text-[var(--text-primary)]">{record.market}</span>
+                                        )}
+                                        {record.side && (
+                                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${record.side.toUpperCase() === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                                            {record.side.toUpperCase()}
+                                          </span>
+                                        )}
+                                        {record.llm_model_used && (
+                                          <span className="text-xs text-[var(--text-muted)] font-mono">{record.llm_model_used}</span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-[var(--text-muted)]">
+                                        {new Date(record.created_at).toLocaleString()}
+                                      </p>
+                                    </div>
+                                    <div className="flex-shrink-0">
+                                      {record.llm_signature ? (
+                                        <span className="text-xs font-mono text-[var(--accent)] bg-[var(--accent)]/10 px-2 py-1 rounded">
+                                          {record.llm_signature.slice(0, 8)}...{record.llm_signature.slice(-6)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs text-[var(--text-muted)]">No sig</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {record.llm_reasoning && (
+                                    <div className="bg-[var(--bg-deep)] rounded p-3">
+                                      <p className="text-xs text-[var(--text-muted)] mb-1">EigenAI Reasoning</p>
+                                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-3">
+                                        {record.llm_reasoning}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {record.llm_signature && record.llm_raw_output && record.llm_full_prompt ? (
+                                    <button
+                                      onClick={() => handleEigenVerifySignature(record)}
+                                      className="w-full py-2 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity text-sm"
+                                    >
+                                      <Shield className="w-4 h-4" />
+                                      Verify Signature
+                                    </button>
+                                  ) : (
+                                    <div className="text-xs text-[var(--text-muted)] text-center py-1">
+                                      Signature data incomplete — cannot verify
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+
 
                     <a
                       href={`tg://resolve?domain=${botUsername}`}
@@ -3090,159 +3105,156 @@ export default function OpenClawSetupPage() {
                       ? "Signature verified successfully (fallback: EigenAI operator match)"
                       : eigenVerifyResult.message;
                     return (
-                  <>
-                  {/* Verification Result Banner */}
-                  <div
-                    className={`border p-4 sm:p-6 ${
-                      displayValid
-                        ? "border-green-500/50 bg-green-500/10"
-                        : "border-red-500/50 bg-red-500/10"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3 mb-3">
-                      {displayValid ? (
-                        <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-green-400 flex-shrink-0 mt-1 sm:mt-0" />
-                      ) : (
-                        <AlertCircle className="w-6 h-6 sm:w-8 sm:h-8 text-red-400 flex-shrink-0 mt-1 sm:mt-0" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-display text-base sm:text-lg leading-tight">
-                          {displayValid
-                            ? "✅ SIGNATURE VERIFIED"
-                            : "❌ VERIFICATION FAILED"}
-                        </h3>
-                        <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 break-words">
-                          {displayMessage}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Backend Traces */}
-                  <div className="border border-[var(--border)] bg-[var(--bg-surface)]">
-                    <div className="border-b border-[var(--border)] p-3 sm:p-4">
-                      <h4 className="font-display text-xs sm:text-sm">BACKEND TRACES</h4>
-                    </div>
-                    <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
-
-                      {/* Step 1: Input Data */}
-                      <div className="border border-[var(--border)] p-3 sm:p-4">
-                        <p className="data-label mb-2 sm:mb-3 text-xs">STEP 1: INPUT DATA</p>
-                        <div className="space-y-2 text-xs font-mono">
-                          <div className="flex flex-col sm:flex-row sm:gap-2">
-                            <span className="text-[var(--text-muted)] flex-shrink-0">Chain ID:</span>
-                            <span className="break-all">{eigenVerifyResult.details?.chainId}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:gap-2">
-                            <span className="text-[var(--text-muted)] flex-shrink-0">Model:</span>
-                            <span className="break-all">{eigenVerifyResult.details?.model}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:gap-2">
-                            <span className="text-[var(--text-muted)] flex-shrink-0">Message Length:</span>
-                            <span>{eigenVerifyResult.details?.messageLength?.toLocaleString()} characters</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Step 2: Prompt Reconstruction */}
-                      <div className="border border-[var(--border)] p-3 sm:p-4">
-                        <p className="data-label mb-2 sm:mb-3 text-xs">STEP 2: PROMPT RECONSTRUCTION</p>
-                        <div className="bg-[var(--bg-elevated)] p-3 text-xs space-y-1">
-                          <p className="text-[var(--text-muted)] mb-1">Trade Context:</p>
-                          <div className="text-[var(--text-secondary)] font-mono space-y-0.5">
-                            <p>Market: {eigenSelectedRecord.market ?? "—"}</p>
-                            <p>Side: {eigenSelectedRecord.side?.toUpperCase() ?? "—"}</p>
-                            {eigenSelectedRecord.agent_address && (
-                              <p className="break-all">Agent: {eigenSelectedRecord.agent_address}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Step 3: Message Construction */}
-                      <div className="border border-[var(--border)] p-3 sm:p-4">
-                        <p className="data-label mb-2 sm:mb-3 text-xs">STEP 3: MESSAGE CONSTRUCTION</p>
-                        <div className="text-xs font-mono space-y-2">
-                          <p className="text-[var(--text-muted)] break-words">
-                            Format: chainId + modelId + prompt + output
-                          </p>
-                          <p className="text-[var(--accent)]">
-                            ✅ Message constructed: {eigenVerifyResult.details?.messageLength?.toLocaleString()} characters
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Step 4: Signature Verification */}
-                      <div className="border border-[var(--border)] p-3 sm:p-4">
-                        <p className="data-label mb-2 sm:mb-3 text-xs">STEP 4: SIGNATURE VERIFICATION</p>
-                        <div className="space-y-3 text-xs">
-                          <div>
-                            <p className="text-[var(--text-muted)] mb-2">Expected Signer (EigenLabs):</p>
-                            <p className="font-mono bg-[var(--bg-elevated)] p-2 break-all text-[10px] sm:text-xs leading-relaxed">
-                              {eigenVerifyResult.expectedAddress}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[var(--text-muted)] mb-2">Recovered Signer:</p>
-                            <p
-                              className={`font-mono bg-[var(--bg-elevated)] p-2 break-all text-[10px] sm:text-xs leading-relaxed ${
-                                displayValid ? "text-green-400" : "text-red-400"
-                              }`}
-                            >
-                              {eigenVerifyResult.recoveredAddress}
-                            </p>
-                          </div>
-                          <div
-                            className={`flex items-start gap-2 ${
-                              displayValid ? "text-green-400" : "text-red-400"
+                      <>
+                        {/* Verification Result Banner */}
+                        <div
+                          className={`border p-4 sm:p-6 ${displayValid
+                            ? "border-green-500/50 bg-green-500/10"
+                            : "border-red-500/50 bg-red-500/10"
                             }`}
-                          >
+                        >
+                          <div className="flex items-start gap-3 mb-3">
                             {displayValid ? (
-                              <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                              <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-green-400 flex-shrink-0 mt-1 sm:mt-0" />
                             ) : (
-                              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                              <AlertCircle className="w-6 h-6 sm:w-8 sm:h-8 text-red-400 flex-shrink-0 mt-1 sm:mt-0" />
                             )}
-                            <span className="font-bold text-xs leading-relaxed">
-                              {displayValid
-                                ? "ADDRESSES MATCH ✓"
-                                : "ADDRESSES DO NOT MATCH ✗"}
-                            </span>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-display text-base sm:text-lg leading-tight">
+                                {displayValid
+                                  ? "✅ SIGNATURE VERIFIED"
+                                  : "❌ VERIFICATION FAILED"}
+                              </h3>
+                              <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 break-words">
+                                {displayMessage}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Step 5: LLM Raw Output */}
-                      <div className="border border-[var(--border)] p-3 sm:p-4">
-                        <p className="data-label mb-2 sm:mb-3 text-xs">STEP 5: LLM RAW OUTPUT</p>
-                        <div className="bg-[var(--bg-elevated)] p-3 text-xs font-mono max-h-40 sm:max-h-48 overflow-y-auto break-words leading-relaxed">
-                          {eigenSelectedRecord.llm_raw_output}
+                        {/* Backend Traces */}
+                        <div className="border border-[var(--border)] bg-[var(--bg-surface)]">
+                          <div className="border-b border-[var(--border)] p-3 sm:p-4">
+                            <h4 className="font-display text-xs sm:text-sm">BACKEND TRACES</h4>
+                          </div>
+                          <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+
+                            {/* Step 1: Input Data */}
+                            <div className="border border-[var(--border)] p-3 sm:p-4">
+                              <p className="data-label mb-2 sm:mb-3 text-xs">STEP 1: INPUT DATA</p>
+                              <div className="space-y-2 text-xs font-mono">
+                                <div className="flex flex-col sm:flex-row sm:gap-2">
+                                  <span className="text-[var(--text-muted)] flex-shrink-0">Chain ID:</span>
+                                  <span className="break-all">{eigenVerifyResult.details?.chainId}</span>
+                                </div>
+                                <div className="flex flex-col sm:flex-row sm:gap-2">
+                                  <span className="text-[var(--text-muted)] flex-shrink-0">Model:</span>
+                                  <span className="break-all">{eigenVerifyResult.details?.model}</span>
+                                </div>
+                                <div className="flex flex-col sm:flex-row sm:gap-2">
+                                  <span className="text-[var(--text-muted)] flex-shrink-0">Message Length:</span>
+                                  <span>{eigenVerifyResult.details?.messageLength?.toLocaleString()} characters</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Step 2: Prompt Reconstruction */}
+                            <div className="border border-[var(--border)] p-3 sm:p-4">
+                              <p className="data-label mb-2 sm:mb-3 text-xs">STEP 2: PROMPT RECONSTRUCTION</p>
+                              <div className="bg-[var(--bg-elevated)] p-3 text-xs space-y-1">
+                                <p className="text-[var(--text-muted)] mb-1">Trade Context:</p>
+                                <div className="text-[var(--text-secondary)] font-mono space-y-0.5">
+                                  <p>Market: {eigenSelectedRecord.market ?? "—"}</p>
+                                  <p>Side: {eigenSelectedRecord.side?.toUpperCase() ?? "—"}</p>
+                                  {eigenSelectedRecord.agent_address && (
+                                    <p className="break-all">Agent: {eigenSelectedRecord.agent_address}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Step 3: Message Construction */}
+                            <div className="border border-[var(--border)] p-3 sm:p-4">
+                              <p className="data-label mb-2 sm:mb-3 text-xs">STEP 3: MESSAGE CONSTRUCTION</p>
+                              <div className="text-xs font-mono space-y-2">
+                                <p className="text-[var(--text-muted)] break-words">
+                                  Format: chainId + modelId + prompt + output
+                                </p>
+                                <p className="text-[var(--accent)]">
+                                  ✅ Message constructed: {eigenVerifyResult.details?.messageLength?.toLocaleString()} characters
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Step 4: Signature Verification */}
+                            <div className="border border-[var(--border)] p-3 sm:p-4">
+                              <p className="data-label mb-2 sm:mb-3 text-xs">STEP 4: SIGNATURE VERIFICATION</p>
+                              <div className="space-y-3 text-xs">
+                                <div>
+                                  <p className="text-[var(--text-muted)] mb-2">Expected Signer (EigenLabs):</p>
+                                  <p className="font-mono bg-[var(--bg-elevated)] p-2 break-all text-[10px] sm:text-xs leading-relaxed">
+                                    {eigenVerifyResult.expectedAddress}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-[var(--text-muted)] mb-2">Recovered Signer:</p>
+                                  <p
+                                    className={`font-mono bg-[var(--bg-elevated)] p-2 break-all text-[10px] sm:text-xs leading-relaxed ${displayValid ? "text-green-400" : "text-red-400"
+                                      }`}
+                                  >
+                                    {eigenVerifyResult.recoveredAddress}
+                                  </p>
+                                </div>
+                                <div
+                                  className={`flex items-start gap-2 ${displayValid ? "text-green-400" : "text-red-400"
+                                    }`}
+                                >
+                                  {displayValid ? (
+                                    <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                  ) : (
+                                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                  )}
+                                  <span className="font-bold text-xs leading-relaxed">
+                                    {displayValid
+                                      ? "ADDRESSES MATCH ✓"
+                                      : "ADDRESSES DO NOT MATCH ✗"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Step 5: LLM Raw Output */}
+                            <div className="border border-[var(--border)] p-3 sm:p-4">
+                              <p className="data-label mb-2 sm:mb-3 text-xs">STEP 5: LLM RAW OUTPUT</p>
+                              <div className="bg-[var(--bg-elevated)] p-3 text-xs font-mono max-h-40 sm:max-h-48 overflow-y-auto break-words leading-relaxed">
+                                {eigenSelectedRecord.llm_raw_output}
+                              </div>
+                            </div>
+
+                            {/* Reasoning */}
+                            {eigenSelectedRecord.llm_reasoning && (
+                              <div className="border border-[var(--border)] p-3 sm:p-4">
+                                <p className="data-label mb-2 sm:mb-3 text-xs">LLM REASONING</p>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  {eigenSelectedRecord.llm_reasoning}
+                                </p>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Reasoning */}
-                      {eigenSelectedRecord.llm_reasoning && (
-                        <div className="border border-[var(--border)] p-3 sm:p-4">
-                          <p className="data-label mb-2 sm:mb-3 text-xs">LLM REASONING</p>
-                          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                            {eigenSelectedRecord.llm_reasoning}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* EigenAI docs link */}
-                  <a
-                    href="https://docs.eigencloud.xyz/eigenai/howto/verify-signature"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 py-3 sm:py-3 border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-sm"
-                  >
-                    <ExternalLink className="w-4 h-4 flex-shrink-0" />
-                    <span className="text-center break-words">VIEW EIGENAI DOCUMENTATION</span>
-                  </a>
-                </>
-                  );
+                        {/* EigenAI docs link */}
+                        <a
+                          href="https://docs.eigencloud.xyz/eigenai/howto/verify-signature"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 py-3 sm:py-3 border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-sm"
+                        >
+                          <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                          <span className="text-center break-words">VIEW EIGENAI DOCUMENTATION</span>
+                        </a>
+                      </>
+                    );
                   })()}
                 </>
               ) : eigenVerifyError ? (
