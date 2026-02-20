@@ -34,6 +34,14 @@ export default async function handler(
         if (!apiKeyRecord) {
             return res.status(401).json({ error: "Invalid API key" });
         }
+        const requesterWallet = (apiKeyRecord.user_wallet || "")
+            .toString()
+            .trim()
+            .toLowerCase();
+        const isRequesterWallet = (wallet?: string | null) =>
+            !!requesterWallet &&
+            !!wallet &&
+            wallet.toString().trim().toLowerCase() === requesterWallet;
 
         // Parse query params
         const source = (req.query.source as string) || "all";
@@ -92,31 +100,33 @@ export default async function handler(
                 orderBy: { name: "asc" },
             });
 
-            openclawTraders = agents.map((agent) => {
-                const deployment = agent.agent_deployments[0] || null;
-                return {
-                    agentId: agent.id,
-                    agentName: agent.name,
-                    creatorWallet: agent.creator_wallet,
-                    venue: agent.venue,
-                    status: agent.status,
-                    isCopyTradeClub: agent.is_copy_trade_club,
-                    performance: {
-                        apr30d: agent.apr_30d,
-                        apr90d: agent.apr_90d,
-                        aprSinceInception: agent.apr_si,
-                        sharpe30d: agent.sharpe_30d,
-                    },
-                    deployment: deployment
-                        ? {
-                            id: deployment.id,
-                            status: deployment.status,
-                            safeWallet: deployment.safe_wallet,
-                            isTestnet: deployment.is_testnet,
-                        }
-                        : null,
-                };
-            });
+            openclawTraders = agents
+                .map((agent) => {
+                    const deployment = agent.agent_deployments[0] || null;
+                    return {
+                        agentId: agent.id,
+                        agentName: agent.name,
+                        creatorWallet: agent.creator_wallet,
+                        venue: agent.venue,
+                        status: agent.status,
+                        isCopyTradeClub: agent.is_copy_trade_club,
+                        performance: {
+                            apr30d: agent.apr_30d,
+                            apr90d: agent.apr_90d,
+                            aprSinceInception: agent.apr_si,
+                            sharpe30d: agent.sharpe_30d,
+                        },
+                        deployment: deployment
+                            ? {
+                                id: deployment.id,
+                                status: deployment.status,
+                                safeWallet: deployment.safe_wallet,
+                                isTestnet: deployment.is_testnet,
+                            }
+                            : null,
+                    };
+                })
+                .filter((agent) => !isRequesterWallet(agent.creatorWallet));
         }
 
         // =====================================================================
@@ -137,34 +147,36 @@ export default async function handler(
                 take: limit,
             });
 
-            topTraders = traders.map((trader) => {
-                const totalTrades =
-                    trader.total_profit_trades + trader.total_loss_trades;
-                const winRate =
-                    totalTrades > 0
-                        ? trader.total_profit_trades / totalTrades
-                        : 0;
+            topTraders = traders
+                .map((trader) => {
+                    const totalTrades =
+                        trader.total_profit_trades + trader.total_loss_trades;
+                    const winRate =
+                        totalTrades > 0
+                            ? trader.total_profit_trades / totalTrades
+                            : 0;
 
-                return {
-                    walletAddress: trader.wallet_address,
-                    totalVolume: trader.total_volume.toString(),
-                    totalClosedVolume: trader.total_closed_volume.toString(),
-                    totalPnl: trader.total_pnl.toString(),
-                    totalProfitTrades: trader.total_profit_trades,
-                    totalLossTrades: trader.total_loss_trades,
-                    totalTrades: trader.total_trades,
-                    winRate: Math.round(winRate * 100) / 100,
-                    lastActiveAt: trader.last_active_at.toISOString(),
-                    scores: {
-                        edgeScore: trader.edge_score,
-                        consistencyScore: trader.consistency_score,
-                        stakeScore: trader.stake_score,
-                        freshnessScore: trader.freshness_score,
-                        impactFactor: trader.impact_factor,
-                    },
-                    updatedAt: trader.updated_at.toISOString(),
-                };
-            });
+                    return {
+                        walletAddress: trader.wallet_address,
+                        totalVolume: trader.total_volume.toString(),
+                        totalClosedVolume: trader.total_closed_volume.toString(),
+                        totalPnl: trader.total_pnl.toString(),
+                        totalProfitTrades: trader.total_profit_trades,
+                        totalLossTrades: trader.total_loss_trades,
+                        totalTrades: trader.total_trades,
+                        winRate: Math.round(winRate * 100) / 100,
+                        lastActiveAt: trader.last_active_at.toISOString(),
+                        scores: {
+                            edgeScore: trader.edge_score,
+                            consistencyScore: trader.consistency_score,
+                            stakeScore: trader.stake_score,
+                            freshnessScore: trader.freshness_score,
+                            impactFactor: trader.impact_factor,
+                        },
+                        updatedAt: trader.updated_at.toISOString(),
+                    };
+                })
+                .filter((trader) => !isRequesterWallet(trader.walletAddress));
         }
 
         // Track API key usage

@@ -15,8 +15,11 @@ import {
   Loader2,
   MessageSquare,
   Orbit,
+  Plus,
+  Settings,
   Shield,
   Sparkles,
+  Trash2,
   Zap,
 } from "lucide-react";
 import welcomeImage from "../public/openclaw_welcome.png";
@@ -107,7 +110,7 @@ const MODEL_OPTIONS: ModelOption[] = [
     speedLabel: "Fast & efficient",
   },
   {
-    id: "gpt-5-nano",
+    id: "gpt-5-mini",
     name: "GPT-5 Nano",
     minPlan: "starter",
     costLabel: "$0.05 in / $0.40 out per 1M tokens",
@@ -261,6 +264,18 @@ export default function OpenClawSetupPage() {
   const [selectedTopUpAmount, setSelectedTopUpAmount] = useState<number>(1000); // Default to $10.00 in cents
   const [llmTopUpSuccess, setLlmTopUpSuccess] = useState(false);
   const [llmBalanceRefreshKey, setLlmBalanceRefreshKey] = useState(0); // Used to trigger balance re-fetch
+
+  // Environment Variables state
+  const [envVars, setEnvVars] = useState<{ key: string; value: string }[]>([]);
+  const [isLoadingEnvVars, setIsLoadingEnvVars] = useState(false);
+  const [isAddingEnvVar, setIsAddingEnvVar] = useState(false);
+  const [newEnvKey, setNewEnvKey] = useState("");
+  const [newEnvValue, setNewEnvValue] = useState("");
+  const [envVarMessage, setEnvVarMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showEnvVarsSection, setShowEnvVarsSection] = useState(false);
+  const [revealedEnvVars, setRevealedEnvVars] = useState<Set<string>>(new Set());
+  const [deletingEnvKey, setDeletingEnvKey] = useState<string | null>(null);
+
   const currentStepKey = STEPS[currentStepIndex]?.key;
   const requiresApiKeyGeneration = lazyTradingSetupComplete || skillSubStep === "complete" || asterEnabled;
   const canContinueFromApiKeyStep = !!maxxitApiKey || !requiresApiKeyGeneration;
@@ -278,6 +293,62 @@ export default function OpenClawSetupPage() {
     setErrorMessage("");
     setCurrentStepIndex((prev) => Math.max(prev - 1, 0));
   }, []);
+
+  const handleSetupTradingAgent = useCallback(async () => {
+    setSkillSubStep('creating-agent');
+    setErrorMessage("");
+    try {
+      // First check if setup is already done
+      const statusRes = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.success && statusData.hasSetup && statusData.step === "complete") {
+          setLazyTradingSetupComplete(true);
+          setSkillSubStep('complete');
+          return;
+        }
+      }
+
+      const res = await fetch("/api/openclaw/create-trading-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userWallet: walletAddress }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTradingAgentId(data.agent.id);
+        setOstiumAgentAddress(data.ostiumAgentAddress);
+        if (data.hasDeployment) {
+          setHasDeployment(true);
+          setLazyTradingSetupComplete(true);
+          setSkillSubStep('complete');
+          return;
+        }
+        setSkillSubStep('agent-created');
+        // Check existing delegation/approval status
+        try {
+          const [delegRes, approvalRes] = await Promise.all([
+            fetch(`/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${data.ostiumAgentAddress}`),
+            fetch(`/api/ostium/check-approval-status?userWallet=${walletAddress}`),
+          ]);
+          if (delegRes.ok) {
+            const d = await delegRes.json();
+            if (d.isDelegatedToAgent) setDelegationComplete(true);
+          }
+          if (approvalRes.ok) {
+            const a = await approvalRes.json();
+            if (a.hasApproval) setAllowanceComplete(true);
+          }
+        } catch { }
+      } else {
+        setErrorMessage(data.error || "Failed to create trading agent");
+        setSkillSubStep('idle');
+      }
+    } catch {
+      setErrorMessage("Failed to create trading agent");
+      setSkillSubStep('idle');
+    }
+  }, [walletAddress]);
 
   const loadExistingProgress = useCallback(async () => {
     if (!walletAddress) return;
@@ -601,6 +672,28 @@ export default function OpenClawSetupPage() {
 
     fetchLlmBalance();
   }, [walletAddress, authenticated, llmBalanceRefreshKey]);
+
+  // Fetch env vars when instance is active and ready
+  useEffect(() => {
+    if (!walletAddress || !activated || instanceStatusPhase !== "ready") return;
+
+    const fetchEnvVars = async () => {
+      setIsLoadingEnvVars(true);
+      try {
+        const res = await fetch(`/api/openclaw/env-vars?userWallet=${walletAddress}`);
+        if (res.ok) {
+          const data = await res.json();
+          setEnvVars(data.envVars || []);
+        }
+      } catch (error) {
+        console.error("Error fetching env vars:", error);
+      } finally {
+        setIsLoadingEnvVars(false);
+      }
+    };
+
+    fetchEnvVars();
+  }, [walletAddress, activated, instanceStatusPhase]);
 
   const handleGetStarted = () => {
     setErrorMessage("");
@@ -1535,68 +1628,14 @@ export default function OpenClawSetupPage() {
                             We&apos;ll create a dedicated trading agent and set up on-chain permissions.
                           </p>
                           <button
-                            onClick={async () => {
-                              setSkillSubStep('creating-agent');
-                              setErrorMessage("");
-                              try {
-                                // First check if setup is already done
-                                const statusRes = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
-                                if (statusRes.ok) {
-                                  const statusData = await statusRes.json();
-                                  if (statusData.success && statusData.hasSetup && statusData.step === "complete") {
-                                    setLazyTradingSetupComplete(true);
-                                    setSkillSubStep('complete');
-                                    return;
-                                  }
-                                }
-
-                                const res = await fetch("/api/openclaw/create-trading-agent", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ userWallet: walletAddress }),
-                                });
-                                const data = await res.json();
-                                if (data.success) {
-                                  setTradingAgentId(data.agent.id);
-                                  setOstiumAgentAddress(data.ostiumAgentAddress);
-                                  if (data.hasDeployment) {
-                                    setHasDeployment(true);
-                                    setLazyTradingSetupComplete(true);
-                                    setSkillSubStep('complete');
-                                    return;
-                                  }
-                                  setSkillSubStep('agent-created');
-                                  // Check existing delegation/approval status
-                                  try {
-                                    const [delegRes, approvalRes] = await Promise.all([
-                                      fetch(`/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${data.ostiumAgentAddress}`),
-                                      fetch(`/api/ostium/check-approval-status?userWallet=${walletAddress}`),
-                                    ]);
-                                    if (delegRes.ok) {
-                                      const d = await delegRes.json();
-                                      if (d.isDelegatedToAgent) setDelegationComplete(true);
-                                    }
-                                    if (approvalRes.ok) {
-                                      const a = await approvalRes.json();
-                                      if (a.hasApproval) setAllowanceComplete(true);
-                                    }
-                                  } catch { }
-                                } else {
-                                  setErrorMessage(data.error || "Failed to create trading agent");
-                                  setSkillSubStep('idle');
-                                }
-                              } catch {
-                                setErrorMessage("Failed to create trading agent");
-                                setSkillSubStep('idle');
-                              }
-                            }}
+                            onClick={handleSetupTradingAgent}
                             disabled={skillSubStep === 'creating-agent'}
                             className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
                           >
                             {skillSubStep === 'creating-agent' ? (
                               <><Loader2 className="w-5 h-5 animate-spin" /> Creating Agent...</>
                             ) : (
-                              <><Zap className="w-4 h-4" /> Set Up Trading Agent</>
+                              <><Zap className="w-4 h-4" /> Setup Trading Agent</>
                             )}
                           </button>
                           <button
@@ -1877,9 +1916,22 @@ export default function OpenClawSetupPage() {
                       </p>
 
                       {!ostiumAgentAddress ? (
-                        <p className="text-xs text-[var(--text-muted)] italic">
-                          Go back and complete the Ostium setup first to create an agent wallet.
-                        </p>
+                        <div className="space-y-3">
+                          <p className="text-xs text-[var(--text-muted)]">
+                            You need a trading agent wallet before enabling Aster.
+                          </p>
+                          <button
+                            onClick={handleSetupTradingAgent}
+                            disabled={skillSubStep === 'creating-agent'}
+                            className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                          >
+                            {skillSubStep === 'creating-agent' ? (
+                              <><Loader2 className="w-5 h-5 animate-spin" /> Creating Agent...</>
+                            ) : (
+                              <><Zap className="w-4 h-4" /> Setup Trading Agent</>
+                            )}
+                          </button>
+                        </div>
                       ) : asterEnabled ? (
                         <div className="space-y-3">
                           <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
@@ -1923,7 +1975,8 @@ export default function OpenClawSetupPage() {
                               <li>Go to Aster&apos;s API Wallet page</li>
                               <li>Click &quot;Authorize new API wallet&quot;</li>
                               <li>Paste your above given agent address as the &quot;API wallet address&quot;</li>
-                              <li>Click &quot;Authorize&quot; to grant it trading permission</li>
+                              <li>Select API options: <strong>Read</strong>, <strong>Perps trading</strong>, and <strong>Spot trading</strong></li>
+                              <li>Click &quot;Authorize&quot; to grant those permissions</li>
                               <li>Come back here and click &quot;Enable Aster&quot;</li>
                             </ol>
                           </div>
@@ -1938,19 +1991,19 @@ export default function OpenClawSetupPage() {
                           {asterShowGuide && (
                             <div className="space-y-3">
                               <div className="rounded-lg overflow-hidden border border-[var(--border)]">
-                                <img src="/aster-finance/aster-wallet-api.png" alt="Authorize API wallet on Aster" className="w-full" />
-                                <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">Step 1: Enter your agent address and click Authorize</p>
+                                <img src="/aster-finance/aster-wallet-mainnet-api.png" alt="Authorize API wallet on Aster mainnet with permissions selected" className="w-full" />
+                                <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">Step 1: Enter your agent address and select Read, Perps trading, and Spot trading</p>
                               </div>
                               <div className="rounded-lg overflow-hidden border border-[var(--border)]">
-                                <img src="/aster-finance/aster-wallet-api-2.png" alt="Authorized agent wallet on Aster" className="w-full" />
-                                <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">Step 2: Your agent wallet should appear in the list</p>
+                                <img src="/aster-finance/aster-wallet-mainnet-api-2.png" alt="Authorized API wallet listed on Aster mainnet" className="w-full" />
+                                <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">Step 2: Confirm your wallet appears with Read, Perp Trade, and Spot Trade permissions</p>
                               </div>
                             </div>
                           )}
 
                           <div className="flex gap-3">
                             <a
-                              href="https://www.asterdextestnet.com/en/api-wallet"
+                              href="https://www.asterdex.com/en/api-wallet"
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex-1 py-2.5 text-center border border-[var(--border)] rounded-lg text-sm hover:border-[var(--accent)] transition-colors"
@@ -2419,6 +2472,192 @@ export default function OpenClawSetupPage() {
                         </>
                       ) : (
                         <p className="text-sm text-[var(--text-muted)] text-center">No credit data available</p>
+                      )}
+                    </div>
+
+                    {/* Environment Variables Section */}
+                    <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setShowEnvVarsSection(!showEnvVarsSection)}
+                        className="w-full p-5 flex items-center justify-between hover:bg-[var(--bg-card)] transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Settings className="w-5 h-5 text-[var(--accent)]" />
+                          <h3 className="font-bold text-lg">Environment Variables</h3>
+                          {envVars.length > 0 && (
+                            <span className="text-xs px-2 py-0.5 bg-[var(--accent)]/20 text-[var(--accent)] rounded-full">
+                              {envVars.length}
+                            </span>
+                          )}
+                        </div>
+                        <ChevronRight className={`w-5 h-5 text-[var(--text-muted)] transition-transform ${showEnvVarsSection ? "rotate-90" : ""}`} />
+                      </button>
+
+                      {showEnvVarsSection && (
+                        <div className="p-5 pt-0 space-y-4">
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            Add custom environment variables to your OpenClaw instance. They&apos;ll be written to your instance&apos;s <code className="px-1.5 py-0.5 bg-[var(--bg-card)] rounded text-xs font-mono">.env</code> file and applied immediately.
+                          </p>
+
+                          {envVarMessage && (
+                            <div className={`rounded-lg p-3 flex items-center gap-2 ${envVarMessage.type === "success"
+                                ? "bg-green-500/10 border border-green-500/30"
+                                : "bg-red-500/10 border border-red-500/30"
+                              }`}>
+                              {envVarMessage.type === "success" ? (
+                                <Check className="w-4 h-4 text-green-400 shrink-0" />
+                              ) : (
+                                <span className="text-red-400 shrink-0">⚠️</span>
+                              )}
+                              <p className={`text-sm ${envVarMessage.type === "success" ? "text-green-400" : "text-red-400"}`}>
+                                {envVarMessage.text}
+                              </p>
+                            </div>
+                          )}
+
+                          {isLoadingEnvVars ? (
+                            <div className="flex items-center justify-center py-4">
+                              <Loader2 className="w-5 h-5 animate-spin text-[var(--text-muted)]" />
+                            </div>
+                          ) : envVars.length > 0 ? (
+                            <div className="space-y-2">
+                              {envVars.map((envVar) => (
+                                <div key={envVar.key} className="flex items-center gap-2 bg-[var(--bg-card)] rounded-lg p-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-mono font-bold truncate">{envVar.key}</p>
+                                    <p className="text-xs font-mono text-[var(--text-muted)] truncate">
+                                      {revealedEnvVars.has(envVar.key) ? envVar.value : "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setRevealedEnvVars((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(envVar.key)) next.delete(envVar.key);
+                                        else next.add(envVar.key);
+                                        return next;
+                                      });
+                                    }}
+                                    className="text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors px-2 py-1"
+                                  >
+                                    {revealedEnvVars.has(envVar.key) ? "Hide" : "Show"}
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      setDeletingEnvKey(envVar.key);
+                                      setEnvVarMessage(null);
+                                      try {
+                                        const res = await fetch("/api/openclaw/env-vars", {
+                                          method: "DELETE",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ userWallet: walletAddress, key: envVar.key }),
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) {
+                                          setEnvVars((prev) => prev.filter((v) => v.key !== envVar.key));
+                                          setRevealedEnvVars((prev) => {
+                                            const next = new Set(prev);
+                                            next.delete(envVar.key);
+                                            return next;
+                                          });
+                                          setEnvVarMessage({ type: "success", text: data.message });
+                                        } else {
+                                          setEnvVarMessage({ type: "error", text: data.error || "Failed to delete" });
+                                        }
+                                      } catch {
+                                        setEnvVarMessage({ type: "error", text: "Failed to delete environment variable" });
+                                      } finally {
+                                        setDeletingEnvKey(null);
+                                      }
+                                    }}
+                                    disabled={deletingEnvKey === envVar.key}
+                                    className="text-[var(--text-muted)] hover:text-red-400 transition-colors p-1 disabled:opacity-50"
+                                  >
+                                    {deletingEnvKey === envVar.key ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-[var(--text-muted)] text-center py-2">
+                              No custom environment variables set.
+                            </p>
+                          )}
+
+                          <div className="border border-[var(--border)] rounded-lg p-4 space-y-3">
+                            <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Add new variable</p>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={newEnvKey}
+                                onChange={(e) => setNewEnvKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
+                                placeholder="KEY_NAME"
+                                className="flex-1 px-3 py-2 bg-[var(--bg-deep)] border border-[var(--border)] rounded-lg text-sm font-mono focus:border-[var(--accent)] focus:outline-none transition-colors"
+                              />
+                              <input
+                                type="text"
+                                value={newEnvValue}
+                                onChange={(e) => setNewEnvValue(e.target.value)}
+                                placeholder="value"
+                                className="flex-[2] px-3 py-2 bg-[var(--bg-deep)] border border-[var(--border)] rounded-lg text-sm font-mono focus:border-[var(--accent)] focus:outline-none transition-colors"
+                              />
+                            </div>
+                            <button
+                              onClick={async () => {
+                                if (!newEnvKey.trim() || !newEnvValue.trim()) return;
+                                setIsAddingEnvVar(true);
+                                setEnvVarMessage(null);
+                                try {
+                                  const res = await fetch("/api/openclaw/env-vars", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      userWallet: walletAddress,
+                                      key: newEnvKey.trim(),
+                                      value: newEnvValue.trim(),
+                                    }),
+                                  });
+                                  const data = await res.json();
+                                  if (data.success) {
+                                    setEnvVars((prev) => {
+                                      const existing = prev.findIndex((v) => v.key === newEnvKey.trim());
+                                      if (existing >= 0) {
+                                        const updated = [...prev];
+                                        updated[existing] = { key: newEnvKey.trim(), value: newEnvValue.trim() };
+                                        return updated;
+                                      }
+                                      return [...prev, { key: newEnvKey.trim(), value: newEnvValue.trim() }];
+                                    });
+                                    setNewEnvKey("");
+                                    setNewEnvValue("");
+                                    setEnvVarMessage({ type: "success", text: data.message });
+                                  } else {
+                                    setEnvVarMessage({ type: "error", text: data.error || "Failed to add variable" });
+                                  }
+                                } catch {
+                                  setEnvVarMessage({ type: "error", text: "Failed to add environment variable" });
+                                } finally {
+                                  setIsAddingEnvVar(false);
+                                }
+                              }}
+                              disabled={isAddingEnvVar || !newEnvKey.trim() || !newEnvValue.trim()}
+                              className="w-full py-2.5 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
+                            >
+                              {isAddingEnvVar ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <>
+                                  <Plus className="w-4 h-4" />
+                                  Add Variable
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
 

@@ -699,6 +699,8 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/price?token=BTC&
 Discover other OpenClaw Traders and top-performing traders to potentially copy-trade. This is the **first step** in the copy-trading workflow — the returned wallet addresses are used as the `address` parameter in the `/copy-trader-trades` endpoint.
 
 > **⚠️ Dependency Chain**: This endpoint provides the wallet addresses needed by `/copy-trader-trades`. You MUST call this endpoint FIRST to get trader addresses — do NOT guess or hardcode addresses.
+>
+> **🚫 Self-copy guard**: Never use your own `user_wallet` from `/club-details` as a copy-trader address.
 
 ```bash
 # Get all traders (OpenClaw + Leaderboard)
@@ -777,6 +779,7 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-traders?sou
 **Key fields to use in next steps:**
 - `openclawTraders[].creatorWallet` → use as `address` in `/copy-trader-trades`
 - `topTraders[].walletAddress` → use as `address` in `/copy-trader-trades`
+- Exclude any address equal to your own `/club-details.user_wallet`
 
 ### Get Trader's Recent Trades (Copy Trading — Step 2)
 
@@ -965,6 +968,7 @@ Step 4 (optional): GET /market-data
 Step 1: GET /copy-traders?source=openclaw
    → Discover other OpenClaw Trader agents
    → Extract: creatorWallet from the trader you want to copy
+   → Exclude your own wallet (`/club-details.user_wallet`) if it appears
    → IMPORTANT: This is a REQUIRED first step — you cannot call
      /copy-trader-trades without an address from this endpoint
 

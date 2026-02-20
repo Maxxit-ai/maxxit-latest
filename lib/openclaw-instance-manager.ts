@@ -73,7 +73,7 @@ export interface DetailedInstanceStatus {
 }
 
 const MODEL_TO_OPENCLAW_ID: Record<string, { primary: string; provider: string }> = {
-  "gpt-5-nano": { primary: "openai/gpt-5-nano", provider: "openai" },
+  "gpt-5-mini": { primary: "openai/gpt-5-mini", provider: "openai" },
   "gpt-4o-mini": { primary: "openai/gpt-4o-mini", provider: "openai" },
   "gpt-4o": { primary: "openai/gpt-4o", provider: "openai" },
 };
@@ -523,6 +523,51 @@ export async function terminateInstance(instanceId: string): Promise<void> {
   } catch (error) {
     throw new Error(
       `Failed to terminate instance: ${error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+/**
+ * Run shell commands on a running EC2 instance via SSM Run Command.
+ * Requires SSM Agent to be installed and running on the instance,
+ * and the instance's IAM role to have ssm:SendCommand permissions.
+ */
+export async function runCommandOnInstance(
+  instanceId: string,
+  commands: string[]
+): Promise<{ commandId: string }> {
+  const { SSMClient, SendCommandCommand } = await import("@aws-sdk/client-ssm");
+
+  const ssmClient = new SSMClient({
+    region: process.env.AWS_REGION || "us-east-1",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+    },
+  });
+
+  try {
+    const response = await ssmClient.send(
+      new SendCommandCommand({
+        InstanceIds: [instanceId],
+        DocumentName: "AWS-RunShellScript",
+        Parameters: {
+          commands,
+        },
+        TimeoutSeconds: 60,
+      })
+    );
+
+    const commandId = response.Command?.CommandId;
+    if (!commandId) {
+      throw new Error("No command ID returned from SSM SendCommand");
+    }
+
+    return { commandId };
+  } catch (error) {
+    throw new Error(
+      `Failed to run command on instance ${instanceId}: ${error instanceof Error ? error.message : String(error)
       }`
     );
   }

@@ -2,6 +2,7 @@ import {
   SSMClient,
   PutParameterCommand,
   GetParameterCommand,
+  GetParametersByPathCommand,
   DeleteParameterCommand,
   ParameterNotFound,
 } from "@aws-sdk/client-ssm";
@@ -21,6 +22,10 @@ const SSM_PATHS = {
     `/openclaw/users/${sanitizeWallet(wallet)}/maxxit-api-key`,
   userOpenAIApiKey: (wallet: string) =>
     `/openclaw/users/${sanitizeWallet(wallet)}/openai-api-key`,
+  userEnvVarPrefix: (wallet: string) =>
+    `/openclaw/users/${sanitizeWallet(wallet)}/env/`,
+  userEnvVar: (wallet: string, key: string) =>
+    `/openclaw/users/${sanitizeWallet(wallet)}/env/${key}`,
   zaiApiKey: "/openclaw/global/zai-api-key",
   openaiApiKey: "/openclaw/global/openai-api-key",
 } as const;
@@ -222,6 +227,82 @@ export async function deleteUserOpenAIApiKey(
       userWallet,
       error
     );
+    throw error;
+  }
+}
+
+export async function storeUserEnvVar(
+  userWallet: string,
+  key: string,
+  value: string
+): Promise<void> {
+  try {
+    await ssmClient.send(
+      new PutParameterCommand({
+        Name: SSM_PATHS.userEnvVar(userWallet, key),
+        Value: value,
+        Type: "SecureString",
+        Overwrite: true,
+      })
+    );
+  } catch (error) {
+    console.error("[SSM] Failed to store env var", key, "for wallet", userWallet, error);
+    throw error;
+  }
+}
+
+export async function getUserEnvVars(
+  userWallet: string
+): Promise<{ key: string; value: string }[]> {
+  try {
+    const prefix = SSM_PATHS.userEnvVarPrefix(userWallet);
+    const results: { key: string; value: string }[] = [];
+    let nextToken: string | undefined;
+
+    do {
+      const response = await ssmClient.send(
+        new GetParametersByPathCommand({
+          Path: prefix,
+          WithDecryption: true,
+          MaxResults: 10,
+          NextToken: nextToken,
+        })
+      );
+
+      if (response.Parameters) {
+        for (const param of response.Parameters) {
+          if (param.Name && param.Value) {
+            const key = param.Name.replace(prefix, "");
+            results.push({ key, value: param.Value });
+          }
+        }
+      }
+
+      nextToken = response.NextToken;
+    } while (nextToken);
+
+    return results;
+  } catch (error) {
+    console.error("[SSM] Failed to get env vars for wallet", userWallet, error);
+    throw error;
+  }
+}
+
+export async function deleteUserEnvVar(
+  userWallet: string,
+  key: string
+): Promise<void> {
+  try {
+    await ssmClient.send(
+      new DeleteParameterCommand({
+        Name: SSM_PATHS.userEnvVar(userWallet, key),
+      })
+    );
+  } catch (error) {
+    if (error instanceof ParameterNotFound) {
+      return;
+    }
+    console.error("[SSM] Failed to delete env var", key, "for wallet", userWallet, error);
     throw error;
   }
 }
