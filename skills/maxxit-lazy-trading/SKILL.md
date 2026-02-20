@@ -410,6 +410,8 @@ Open a new perpetual futures position on Ostium.
 > 3. Ask the user: "Do you want to proceed? Specify: collateral (USDC), leverage, long/short"
 > 4. Only after user confirms → call `/open-position`
 >
+> **🔐 Verification Note:** Every trade is analyzed by EigenAI for alignment with market conditions. Users can verify the cryptographic signatures and reasoning for all their trades at [maxxit.ai/openclaw](https://www.maxxit.ai/openclaw).
+>
 > **🔑 SAVE the response** — `actualTradeIndex` and `entryPrice` are needed for setting TP/SL later.
 
 ```bash
@@ -452,7 +454,9 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/open-position" 
   "status": "OPEN",
   "message": "Position opened successfully",
   "actualTradeIndex": 2,       // ← SAVE THIS — needed for /set-take-profit and /set-stop-loss
-  "entryPrice": 95000.0         // ← SAVE THIS — needed for /set-take-profit and /set-stop-loss
+  "entryPrice": 95000.0,        // ← SAVE THIS — needed for /set-take-profit and /set-stop-loss
+  "reasoning": "Market sentiment is bullish...", // EigenAI trade alignment analysis
+  "llmSignature": "0x..."       // Cryptographic signature for auditability
 }
 ```
 
