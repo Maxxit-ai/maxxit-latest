@@ -986,3 +986,32 @@ enum llm_credit_entry_t {
   PLAN_GRANT    // Monthly grant from subscription
   ADJUSTMENT    // Manual adjustment
 }
+
+/// EigenAI trade verification audit log
+/// Stores the full prompt + raw output for every EigenAI call made by open-position
+model openclaw_eigen_verification {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  // Trade identifiers
+  agent_address    String?
+  user_address     String?
+  market           String?
+  side             String?
+  deployment_id    String?
+  signal_id        String?
+
+  // EigenAI audit trail
+  llm_full_prompt  String?   // Full prompt (system + user) sent to EigenAI
+  llm_raw_output   String?   // Full raw response from EigenAI
+  llm_reasoning    String?   // Parsed reasoning from EigenAI JSON
+  llm_signature    String?   // Cryptographic signature returned by EigenAI
+  llm_model_used   String?   // Model ID used (e.g., "gpt-oss-120b-f16")
+  llm_chain_id     Int?      // Chain ID for signature verification
+
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([agent_address])
+  @@index([user_address])
+  @@index([market])
+  @@index([created_at])
+}

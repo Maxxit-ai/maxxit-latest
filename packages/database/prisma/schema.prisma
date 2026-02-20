@@ -923,3 +923,33 @@ model openclaw_telegram_links {
   @@index([code])
   @@index([user_wallet])
 }
+
+/// EigenAI verification log for every programmatic open-position call
+/// Stores the full prompt, raw LLM output, reasoning, and signature so
+/// any response can be independently verified on-chain / off-chain.
+model openclaw_eigen_verification {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  // Trade parameters (as returned by EigenAI)
+  agent_address       String?
+  user_address        String?
+  market              String?
+  side                String?   // "LONG" | "SHORT"
+  deployment_id       String?
+  signal_id           String?
+
+  // EigenAI output
+  llm_full_prompt     String?   // Complete prompt sent to EigenAI (system + user)
+  llm_raw_output      String?   // Full raw response from EigenAI before parsing
+  llm_reasoning       String?   // Extracted reasoning field from EigenAI JSON
+  llm_signature       String?   // Cryptographic signature returned by EigenAI
+  llm_model_used      String?   // Model ID (e.g. "gpt-oss-120b-f16")
+  llm_chain_id        Int?      // Chain ID for on-chain signature verification
+
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([agent_address])
+  @@index([user_address])
+  @@index([market])
+  @@index([created_at])
+}
