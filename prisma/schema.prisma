@@ -164,12 +164,19 @@ model agents {
   agent_top_traders         agent_top_traders[]
   is_copy_trade_club        Boolean                     @default(false)
   token_filters             String[]                    @default([])
+  commitment                String?                     @unique
+  salt_encrypted            String?
+  salt_iv                   String?
+  salt_tag                  String?
+  alpha_default_price       Decimal?                    @db.Decimal(20, 6)
   agent_accounts            agent_accounts[]
   agent_deployments         agent_deployments[]
   agent_research_institutes agent_research_institutes[]
   agent_telegram_users      agent_telegram_users[]
   impact_factor_history     impact_factor_history[]
   pnl_snapshots             pnl_snapshots[]
+  proof_records             proof_records[]
+  alpha_listings            alpha_listings[]
   signals                   signals[]
   venue_routing_config      venue_routing_config?
 }
@@ -305,6 +312,7 @@ model positions {
   source_trader_trade_id String?               // References trader_trades.source_trade_id for copy-trade positions
   billing_events        billing_events[]
   impact_factor_history impact_factor_history[]
+  alpha_listings        alpha_listings[]
   agent_deployments     agent_deployments       @relation(fields: [deployment_id], references: [id], onDelete: Cascade)
   telegram_trades       telegram_trades?        @relation(fields: [manual_trade_id], references: [id])
   signals               signals                 @relation(fields: [signal_id], references: [id], onDelete: Cascade)
@@ -842,6 +850,59 @@ enum credit_entry_type_t {
   USAGE
   REWARD
   ADJUSTMENT
+}
+
+enum proof_status_t {
+  PENDING
+  PROVING
+  VERIFIED
+  FAILED
+}
+
+model proof_records {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agent_id          String         @db.Uuid
+  commitment        String
+  brevis_request_id String?
+  status            proof_status_t @default(PENDING)
+  total_pnl         Decimal?       @db.Decimal(20, 8)
+  trade_count       Int?
+  win_count         Int?
+  total_collateral  Decimal?       @db.Decimal(20, 8)
+  start_block       BigInt?
+  end_block         BigInt?
+  proof_timestamp   DateTime?      @db.Timestamptz(6)
+  created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  verified_at       DateTime?      @db.Timestamptz(6)
+  tx_hash           String?
+  agents            agents         @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+
+  @@index([agent_id])
+  @@index([commitment])
+  @@index([status])
+}
+
+model alpha_listings {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agent_id            String    @db.Uuid
+  position_id         String?   @db.Uuid
+  commitment          String
+  on_chain_listing_id String?
+  token               String
+  side                String
+  leverage            Int
+  position_pct        Int       // basis points (2500 = 25%)
+  price_usdc          Decimal   @db.Decimal(20, 6)
+  content_hash        String
+  alpha_content       Json
+  active              Boolean   @default(true)
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  agents              agents    @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  positions           positions? @relation(fields: [position_id], references: [id])
+
+  @@index([agent_id])
+  @@index([commitment])
+  @@index([active, created_at])
 }
 
 /// Trader trades - populated by trader-alpha-worker, consumed by signal-generator

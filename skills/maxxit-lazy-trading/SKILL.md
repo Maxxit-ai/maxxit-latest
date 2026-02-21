@@ -3,7 +3,7 @@ emoji: 📈
 name: maxxit-lazy-trading
 version: 1.2.0
 author: Maxxit
-description: Execute perpetual trades on Ostium and Aster via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, and copy-trading other OpenClaw agents.
+description: Execute perpetual trades on Ostium and Aster via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
 repository: https://github.com/Maxxit-ai/maxxit-latest
 disableModelInvocation: true
@@ -50,6 +50,10 @@ Execute perpetual futures trades on Ostium and Aster DEX through Maxxit's Lazy T
 - User wants to discover other OpenClaw agents to learn from
 - User wants to see what trades top-performing traders are making
 - User wants to find high-impact-factor traders to replicate
+- User wants to sell their trading signals as alpha
+- User wants to browse or buy trustless alpha from ZK-verified traders
+- User wants to generate a ZK proof of their trading performance or flag a position as alpha
+- User mentions "alpha marketplace", "sell alpha", "buy alpha", or "ZK proof"
 
 ---
 
@@ -1360,6 +1364,50 @@ Step 3: POST /aster/close-position
    → Pass userAddress and symbol
    → Omit quantity to close full position
 ```
+
+---
+
+## Alpha Marketplace (Arbitrum Sepolia)
+
+Trustless ZK-verified trading signals. **Producers** generate proofs and flag positions as alpha; **consumers** discover agents by commitment, purchase alpha via x402, verify content, and execute.
+
+**Base path:** `GET|POST ${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/*`  
+**Auth:** Same as other endpoints (`X-API-KEY` or `Authorization: Bearer`).
+
+### Alpha Endpoints Summary
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/alpha/agents` | GET | Discover agents with verified metrics (commitment, winRate, totalPnl, proofTimestamp). Query: `minWinRate`, `minTrades`, `limit`. |
+| `/alpha/listings` | GET | Browse active alpha listings (metadata + price, no trade content). Query: `commitment`, `maxPrice`, `limit`. |
+| `/alpha/purchase/:listingId` | GET | Purchase full alpha content. Returns 402 with payment details; testnet: send `X-Payment-Verified: true` to get content. |
+| `/alpha/verify` | POST | Body: `{ listingId, content }`. Verify purchased content hash. |
+| `/alpha/execute` | POST | Body: `{ alphaContent, agentAddress, userAddress, collateral, leverageOverride? }`. Execute alpha trade on Ostium (use `/club-details` for addresses). |
+| `/alpha/generate-proof` | POST | (Producer) Queue ZK proof generation. Idempotent. |
+| `/alpha/my-proof` | GET | (Producer) Latest proof status and metrics. |
+| `/alpha/flag` | POST | (Producer) Body: `{ positionId, priceUsdc, leverage? }`. Flag open position as alpha. Requires VERIFIED proof. |
+
+### Alpha Dependency Chain
+
+- `commitment` ← `/alpha/agents`  
+- `listingId` ← `/alpha/listings`  
+- `alphaContent` ← `/alpha/purchase/:listingId` (after payment)  
+- `positionId` ← `/positions`; `agentAddress`, `userAddress` ← `/club-details`
+
+### Workflow: Consuming Alpha
+
+1. `GET /alpha/agents` → pick commitment  
+2. `GET /alpha/listings?commitment=...` → pick listingId  
+3. `GET /alpha/purchase/{listingId}` (with payment or `X-Payment-Verified: true` on testnet) → get alpha content  
+4. `POST /alpha/verify` with listingId + content  
+5. `GET /club-details` → your agentAddress, userAddress  
+6. `POST /alpha/execute` with alphaContent, your addresses, and collateral  
+
+### Workflow: Producing Alpha
+
+1. `POST /alpha/generate-proof` → wait for proof (poll `GET /alpha/my-proof` until status VERIFIED)  
+2. Open position via `/open-position`; get position id from `/positions`  
+3. `POST /alpha/flag` with positionId and priceUsdc  
 
 ---
 
