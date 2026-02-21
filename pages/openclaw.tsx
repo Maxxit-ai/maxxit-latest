@@ -114,7 +114,7 @@ const MODEL_OPTIONS: ModelOption[] = [
   },
   {
     id: "gpt-5-mini",
-    name: "GPT-5 Nano",
+    name: "GPT-5 Mini",
     minPlan: "starter",
     costLabel: "$0.05 in / $0.40 out per 1M tokens",
     speedLabel: "Ultra-fast",

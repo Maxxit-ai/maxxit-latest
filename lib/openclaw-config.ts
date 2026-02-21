@@ -80,7 +80,7 @@ export const MODELS: Record<string, ModelConfig> = {
   },
   "gpt-5-mini": {
     id: "gpt-5-mini",
-    name: "GPT-5 Nano",
+    name: "GPT-5 Mini",
     provider: "openai",
     minPlan: "starter",
     estimatedCostPer1MTokens: 0.05,
