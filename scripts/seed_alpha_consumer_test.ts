@@ -1,15 +1,17 @@
 /**
  * Seed script for Alpha Consumer Flow testing
  *
- * Creates all required DB data for manual consumer testing:
- * - API key (tied to your wallet)
- * - Producer data: agent, proof, alpha listing
- * - Consumer agent: user_agent_addresses with Ostium address + encrypted key (for POST /pay)
+ * Two modes (set SEED_MODE env var):
  *
- * Run: npx tsx scripts/seed_alpha_consumer_test.ts
+ *   full (default)    — Creates everything: API key, consumer agent, producer data.
+ *                       Needs TEST_WALLET. Use when starting from scratch.
  *
- * IMPORTANT: Replace YOUR_WALLET with your actual wallet address before running.
- * After seeding, fund your agent's ostium_agent_address with Arbitrum Sepolia USDC.
+ *   minimal           — Only creates producer data (agent, proof, listing).
+ *                       Use your existing API key and agent.
+ *
+ * Examples:
+ *   SEED_MODE=full    TEST_WALLET=0xYourAddress npx tsx scripts/seed_alpha_consumer_test.ts
+ *   SEED_MODE=minimal npx tsx scripts/seed_alpha_consumer_test.ts
  */
 
 import { createHash, randomBytes } from "crypto";
@@ -18,45 +20,62 @@ import { getOrCreateOstiumAgentAddress } from "../lib/deployment-agent-address";
 
 const prisma = new PrismaClient() as any;
 
-async function seed() {
-  // ── 1. YOUR TEST WALLET (consumer) ─────────────────────────────────────────
-  const YOUR_WALLET = process.env.TEST_WALLET || "0xYOUR_WALLET_ADDRESS_HERE";
+const SEED_MODE = "minimal".toLowerCase();
+// const SEED_MODE = (process.env.SEED_MODE || "full").toLowerCase();
+const isFullMode = SEED_MODE === "full";
 
-  if (YOUR_WALLET === "0xYOUR_WALLET_ADDRESS_HERE") {
-    console.error("\n❌ Please set YOUR_WALLET in the script or run with:");
-    console.error("   TEST_WALLET=0xYourAddress npx tsx scripts/seed_alpha_consumer_test.ts\n");
-    process.exit(1);
+async function seed() {
+  let rawApiKey: string | null = null;
+  let ostiumAgentAddress: string | null = null;
+  let normalizedWallet: string | null = null;
+
+  // ── Full mode: consumer setup (API key + agent) ─────────────────────────────
+  if (isFullMode) {
+    const YOUR_WALLET = process.env.TEST_WALLET || "0xYOUR_WALLET_ADDRESS_HERE";
+
+    if (YOUR_WALLET === "0xYOUR_WALLET_ADDRESS_HERE") {
+      console.error("\n❌ Full mode requires TEST_WALLET. Run with:");
+      console.error(
+        "   SEED_MODE=full TEST_WALLET=0xYourAddress npx tsx scripts/seed_alpha_consumer_test.ts\n",
+      );
+      process.exit(1);
+    }
+
+    normalizedWallet = YOUR_WALLET.toLowerCase();
+
+    // Create API Key
+    rawApiKey = "mxxt_test_" + randomBytes(16).toString("hex");
+    const keyHash = createHash("sha256").update(rawApiKey).digest("hex");
+
+    await prisma.user_api_keys.create({
+      data: {
+        user_wallet: normalizedWallet,
+        key_hash: keyHash,
+        key_prefix: rawApiKey.slice(0, 12),
+      },
+    });
+
+    console.log("\n=== SAVE THIS API KEY (you'll need it for every request) ===");
+    console.log("API Key:", rawApiKey);
+    console.log("Wallet: ", YOUR_WALLET);
+    console.log("============================================================\n");
+
+    // Create Consumer's Ostium Agent (required for POST /pay)
+    console.log("Creating consumer agent address for POST /pay...");
+    const result = await getOrCreateOstiumAgentAddress({
+      userWallet: normalizedWallet,
+    });
+    ostiumAgentAddress = result.address;
+    console.log("Consumer agent (ostium_agent_address):", ostiumAgentAddress);
+    console.log(
+      "⛔ FUND THIS ADDRESS with Arbitrum Sepolia USDC (e.g. 10 USDC)\n",
+    );
+  } else {
+    console.log("\n=== SEED_MODE=minimal: Using your existing API key and agent ===\n");
   }
 
-  const normalizedWallet = YOUR_WALLET.toLowerCase();
-
-  // ── 2. Create API Key ──────────────────────────────────────────────────────
-  const rawApiKey = "mxxt_test_" + randomBytes(16).toString("hex");
-  const keyHash = createHash("sha256").update(rawApiKey).digest("hex");
-
-  await prisma.user_api_keys.create({
-    data: {
-      user_wallet: normalizedWallet,
-      key_hash: keyHash,
-      key_prefix: rawApiKey.slice(0, 12),
-    },
-  });
-
-  console.log("\n=== SAVE THIS API KEY (you'll need it for every request) ===");
-  console.log("API Key:", rawApiKey);
-  console.log("Wallet: ", YOUR_WALLET);
-  console.log("============================================================\n");
-
-  // ── 3. Create Consumer's Ostium Agent (required for POST /pay) ──────────────
-  console.log("Creating consumer agent address for POST /pay...");
-  const { address: ostiumAgentAddress } = await getOrCreateOstiumAgentAddress({
-    userWallet: normalizedWallet,
-  });
-  console.log("Consumer agent (ostium_agent_address):", ostiumAgentAddress);
-  console.log("⛔ FUND THIS ADDRESS with Arbitrum Sepolia USDC (e.g. 10 USDC)\n");
-
-  // ── 4. Producer: Create agent + proof + listing ─────────────────────────────
-  const producerWallet = "0x" + "a".repeat(40); // Fake producer for testing
+  // ── Producer: Create agent + proof + listing ─────────────────────────────
+  const producerWallet = "0x7e3D3Ce78D53AaA557f38a9618976c230AEd9988"; // Fake producer for testing
   const salt = randomBytes(16).toString("hex");
   const commitment = createHash("sha256")
     .update(producerWallet + salt)
@@ -148,14 +167,26 @@ async function seed() {
 
   console.log("=== SEED COMPLETE ===");
   console.log("\nValues you'll need:");
-  console.log("  API Key:        ", rawApiKey);
   console.log("  Listing ID:     ", listing.id);
   console.log("  Commitment:     ", commitment);
-  console.log("  Agent address   ", ostiumAgentAddress, "(fund with USDC!)");
-  console.log("\nNext steps:");
-  console.log("  1. Fund", ostiumAgentAddress, "with testnet USDC (Arbitrum Sepolia faucet)");
-  console.log("  2. npm run dev");
-  console.log("  3. Follow docs/ALPHA_CONSUMER_TESTING_GUIDE.md Step 1 → Step 5\n");
+  if (isFullMode && rawApiKey && ostiumAgentAddress) {
+    console.log("  API Key:        ", rawApiKey);
+    console.log("  Agent address   ", ostiumAgentAddress, "(fund with USDC!)");
+    console.log("\nNext steps:");
+    console.log(
+      "  1. Fund",
+      ostiumAgentAddress,
+      "with testnet USDC (Arbitrum Sepolia faucet)",
+    );
+    console.log("  2. npm run dev");
+  } else {
+    console.log("\nNext steps:");
+    console.log("  1. Use your existing API key and agent");
+    console.log("  2. npm run dev");
+  }
+  console.log(
+    "  3. Follow docs/ALPHA_CONSUMER_TESTING_GUIDE.md Step 1 → Step 5\n",
+  );
 
   await prisma.$disconnect();
 }
