@@ -39,6 +39,15 @@ export default async function handler(
       });
     }
 
+    // Ownership validation: userAddress must match the authenticated API key holder
+    if (userAddress.toLowerCase() !== apiKeyRecord.user_wallet.toLowerCase()) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "userAddress does not match authenticated wallet. You can only execute trades on your own account.",
+      });
+    }
+
     const { token, side, leverage: alphaLeverage } = alphaContent;
     if (!token || !side) {
       return res.status(400).json({
@@ -64,7 +73,7 @@ export default async function handler(
           side: side.toLowerCase(),
           collateral,
           leverage,
-          isTestnet: true,
+          isTestnet: process.env.ALPHA_TESTNET_MODE !== "false",
         }),
       }
     );
@@ -83,6 +92,18 @@ export default async function handler(
     await prismaClient.user_api_keys.update({
       where: { id: apiKeyRecord.id },
       data: { last_used_at: new Date() },
+    });
+
+    // Fire-and-forget: log alpha-sourced trade for analytics
+    console.log("[AlphaExecute] ✅ Alpha trade executed", {
+      consumer: apiKeyRecord.user_wallet,
+      agentAddress,
+      token,
+      side,
+      leverage,
+      collateral,
+      orderId: positionData.orderId,
+      tradeId: positionData.tradeId,
     });
 
     return res.status(200).json({

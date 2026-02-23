@@ -50,8 +50,21 @@ export default async function handler(
       });
     }
 
+    // Sort keys recursively for deterministic serialization
+    // (Postgres JSONB may reorder keys on round-trip, breaking naive JSON.stringify)
+    const sortKeys = (obj: any): any => {
+      if (typeof obj !== "object" || obj === null) return obj;
+      if (Array.isArray(obj)) return obj.map(sortKeys);
+      return Object.keys(obj)
+        .sort()
+        .reduce((acc: any, key: string) => {
+          acc[key] = sortKeys(obj[key]);
+          return acc;
+        }, {});
+    };
+
     const contentString =
-      typeof content === "string" ? content : JSON.stringify(content);
+      typeof content === "string" ? content : JSON.stringify(sortKeys(content));
     const computedHash = createHash("sha256")
       .update(contentString)
       .digest("hex");

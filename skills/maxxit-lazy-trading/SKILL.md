@@ -1371,43 +1371,126 @@ Step 3: POST /aster/close-position
 
 Trustless ZK-verified trading signals. **Producers** generate proofs and flag positions as alpha; **consumers** discover agents by commitment, purchase alpha via x402, verify content, and execute.
 
-**Base path:** `GET|POST ${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/*`  
-**Auth:** Same as other endpoints (`X-API-KEY` or `Authorization: Bearer`).
+**Base path:** `${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/*`  
+**Auth:** `X-API-KEY` header (same as other endpoints).  
+**Payment:** On-chain USDC on Arbitrum Sepolia (testnet) or Arbitrum One (mainnet).
 
 ### Alpha Endpoints Summary
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/alpha/agents` | GET | Discover agents with verified metrics (commitment, winRate, totalPnl, proofTimestamp). Query: `minWinRate`, `minTrades`, `limit`. |
+| `/alpha/agents` | GET | Discover agents with verified metrics (commitment, winRate, totalPnl). Query: `minWinRate`, `minTrades`, `limit`. |
 | `/alpha/listings` | GET | Browse active alpha listings (metadata + price, no trade content). Query: `commitment`, `maxPrice`, `limit`. |
-| `/alpha/purchase/:listingId` | GET | Purchase full alpha content. Returns 402 with payment details; testnet: send `X-Payment-Verified: true` to get content. |
-| `/alpha/verify` | POST | Body: `{ listingId, content }`. Verify purchased content hash. |
-| `/alpha/execute` | POST | Body: `{ alphaContent, agentAddress, userAddress, collateral, leverageOverride? }`. Execute alpha trade on Ostium (use `/club-details` for addresses). |
+| `/alpha/purchase/:listingId` | GET | **Phase 1** (no `X-Payment` header): returns 402 + payment details. **Phase 2** (with `X-Payment: txHash`): verifies on-chain, returns alpha. |
+| `/alpha/pay/:listingId` | POST | **Payment helper**: sends USDC from your agent on-chain. Returns `txHash`. Call between Phase 1 and Phase 2. |
+| `/alpha/verify` | POST | Body: `{ listingId, content }`. Verify purchased content hash matches commitment. |
+| `/alpha/execute` | POST | Body: `{ alphaContent, agentAddress, userAddress, collateral, leverageOverride? }`. Execute alpha trade on Ostium. |
 | `/alpha/generate-proof` | POST | (Producer) Queue ZK proof generation. Idempotent. |
 | `/alpha/my-proof` | GET | (Producer) Latest proof status and metrics. |
-| `/alpha/flag` | POST | (Producer) Body: `{ positionId, priceUsdc, leverage? }`. Flag open position as alpha. Requires VERIFIED proof. |
+| `/alpha/flag` | POST | (Producer) Body: `{ positionId, priceUsdc, leverage? }`. Flag open position as alpha. |
+
+### How x402 Purchase Works (3 API Calls)
+
+> **⚠️ CRITICAL**: To purchase alpha content you MUST call these 3 endpoints in this exact order. Do NOT skip steps. The `/pay` endpoint handles all wallet operations server-side — you do NOT need a private key.
+
+```
+Step A:  GET  /alpha/purchase/{listingId}              → 402 + paymentDetails
+Step B:  POST /alpha/pay/{listingId}                   → { txHash }
+Step C:  GET  /alpha/purchase/{listingId}              → 200 + alpha content
+         + Header: X-Payment: {txHash from Step B}
+```
+
+**Step A — Get payment details:**
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/purchase/{listingId}" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+Response: `402` with `paymentDetails.price`, `paymentDetails.payTo`, `paymentDetails.network`.  
+If response is `200`: you already own this listing — alpha is returned directly, skip to Step 4.
+
+**Step B — Send USDC (server handles everything):**
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/pay/{listingId}" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+Response: `200` with `txHash`, `from`, `to`, `amount`.  
+If `alreadyPaid: true`: use the returned `txHash` directly.  
+If `402`: insufficient USDC balance — response has `required` and `available` amounts.
+
+**Step C — Retrieve alpha content:**
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/purchase/{listingId}" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-Payment: {txHash from Step B}"
+```
+Response: `200` with `alpha` object (token, side, leverage, venue, entryPrice), `contentHash`, `payment` receipt.
+
+**SAVE from Step C:** `alpha`, `contentHash`, `listingId` — needed for `/verify` and `/execute`.
 
 ### Alpha Dependency Chain
 
-- `commitment` ← `/alpha/agents`  
-- `listingId` ← `/alpha/listings`  
-- `alphaContent` ← `/alpha/purchase/:listingId` (after payment)  
-- `positionId` ← `/positions`; `agentAddress`, `userAddress` ← `/club-details`
+```
+/alpha/agents          → commitment
+/alpha/listings        → listingId  (needs commitment)
+/alpha/purchase        → 402 paymentDetails  (needs listingId)
+/alpha/pay             → txHash  (needs listingId)
+/alpha/purchase        → alpha content  (needs listingId + txHash in X-Payment header)
+/alpha/verify          → verified  (needs listingId + alpha content)
+/club-details          → agentAddress, userAddress
+/alpha/execute         → trade result  (needs alpha + addresses + collateral)
+```
 
-### Workflow: Consuming Alpha
+### Workflow: Consuming Alpha (Complete Flow)
 
-1. `GET /alpha/agents` → pick commitment  
-2. `GET /alpha/listings?commitment=...` → pick listingId  
-3. `GET /alpha/purchase/{listingId}` (with payment or `X-Payment-Verified: true` on testnet) → get alpha content  
-4. `POST /alpha/verify` with listingId + content  
-5. `GET /club-details` → your agentAddress, userAddress  
-6. `POST /alpha/execute` with alphaContent, your addresses, and collateral  
+```
+Step 1: GET /alpha/agents
+   → Pick an agent by commitment, winRate, totalPnl
+   → SAVE: commitment
+
+Step 2: GET /alpha/listings?commitment={commitment}
+   → Browse listings, pick one
+   → SAVE: listingId
+
+Step 3a: GET /alpha/purchase/{listingId}
+   → If 200: already purchased, skip to Step 4
+   → If 402: need to pay → go to Step 3b
+
+Step 3b: POST /alpha/pay/{listingId}
+   → Server sends USDC from your agent to the producer
+   → If 402: insufficient USDC balance → fund your agent wallet and retry
+   → If alreadyPaid: use the returned txHash
+   → SAVE: txHash
+
+Step 3c: GET /alpha/purchase/{listingId}
+   → Header: X-Payment: {txHash from Step 3b}
+   → SAVE: alpha, contentHash, listingId
+
+Step 4: POST /alpha/verify
+   → Body: { "listingId": "...", "content": { ...alpha from Step 3c } }
+   → Check: verified === true
+
+Step 5: GET /club-details
+   → Extract: user_wallet → userAddress
+   → Extract: ostium_agent_address → agentAddress
+
+Step 6: POST /alpha/execute
+   → Body: { "alphaContent": { ...alpha }, "agentAddress": "...",
+             "userAddress": "...", "collateral": 100 }
+   → Check: success === true
+```
 
 ### Workflow: Producing Alpha
 
-1. `POST /alpha/generate-proof` → wait for proof (poll `GET /alpha/my-proof` until status VERIFIED)  
-2. Open position via `/open-position`; get position id from `/positions`  
-3. `POST /alpha/flag` with positionId and priceUsdc  
+```
+Step 1: POST /alpha/generate-proof
+   → Wait for proof (poll GET /alpha/my-proof until status = VERIFIED)
+
+Step 2: Open position via /open-position
+   → Get position id from /positions
+
+Step 3: POST /alpha/flag
+   → Body: { "positionId": "...", "priceUsdc": 5 }
+```
 
 ---
 

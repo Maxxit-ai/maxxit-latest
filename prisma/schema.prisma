@@ -903,6 +903,28 @@ model alpha_listings {
   @@index([agent_id])
   @@index([commitment])
   @@index([active, created_at])
+
+  alpha_purchases   alpha_purchases[]
+}
+
+/// Alpha purchases — tracks on-chain USDC payments for alpha listings (x402 protocol)
+/// tx_hash is unique for replay protection (same tx can't buy two listings)
+model alpha_purchases {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  listing_id        String    @db.Uuid
+  buyer_wallet      String                          // consumer's user_wallet (from API key)
+  buyer_agent_addr  String                          // agent address that sent USDC
+  seller_agent_addr String                          // producer's profit_receiver_address
+  amount_usdc       Decimal   @db.Decimal(20, 6)
+  tx_hash           String    @unique               // on-chain tx hash (replay protection)
+  network           String    @default("arbitrum-sepolia")
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  alpha_listings    alpha_listings @relation(fields: [listing_id], references: [id])
+
+  @@index([listing_id])
+  @@index([buyer_wallet])
+  @@index([tx_hash])
 }
 
 /// Trader trades - populated by trader-alpha-worker, consumed by signal-generator

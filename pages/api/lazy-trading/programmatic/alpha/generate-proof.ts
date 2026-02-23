@@ -92,6 +92,8 @@ export default async function handler(
         where: { id: agent.id },
         data: {
           commitment,
+          // WARNING: salt_encrypted is currently stored as PLAINTEXT despite the field name.
+          // Real AES-256-GCM encryption is deferred to mainnet. See ALPHA_MARKETPLACE_DESIGN.md.
           salt_encrypted: salt,
         },
       });

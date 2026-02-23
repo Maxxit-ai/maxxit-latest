@@ -35,6 +35,13 @@ export default async function handler(
       });
     }
 
+    if (!priceUsdc || Number(priceUsdc) <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "priceUsdc must be greater than 0",
+      });
+    }
+
     const userWallet = apiKeyRecord.user_wallet;
     if (!userWallet) {
       return res.status(400).json({
@@ -143,6 +150,18 @@ export default async function handler(
         ? Math.round((thisPositionNotional / totalPortfolioNotional) * 10000)
         : 10000;
 
+    // Prevent duplicate flagging: check if position already has an active listing
+    const existingListing = await prismaClient.alpha_listings.findFirst({
+      where: { position_id: position.id, active: true },
+    });
+    if (existingListing) {
+      return res.status(409).json({
+        success: false,
+        error: "Position already has an active listing",
+        existingListingId: existingListing.id,
+      });
+    }
+
     const alphaContent = {
       token: position.token_symbol,
       side: position.side,
@@ -154,8 +173,21 @@ export default async function handler(
       timestamp: new Date().toISOString(),
     };
 
+    // Sort keys recursively for deterministic serialization
+    // (must match the same logic in verify.ts for hash comparison)
+    const sortKeys = (obj: any): any => {
+      if (typeof obj !== "object" || obj === null) return obj;
+      if (Array.isArray(obj)) return obj.map(sortKeys);
+      return Object.keys(obj)
+        .sort()
+        .reduce((acc: any, key: string) => {
+          acc[key] = sortKeys(obj[key]);
+          return acc;
+        }, {});
+    };
+
     const contentHash = createHash("sha256")
-      .update(JSON.stringify(alphaContent))
+      .update(JSON.stringify(sortKeys(alphaContent)))
       .digest("hex");
 
     const listing = await prismaClient.alpha_listings.create({
