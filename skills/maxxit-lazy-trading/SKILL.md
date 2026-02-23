@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.0
+version: 1.2.1
 author: Maxxit
 description: Execute perpetual trades on Ostium and Aster via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -94,6 +94,10 @@ The following shows where each required parameter comes from. **Always resolve d
 | `takeProfitPercent` | User specifies (e.g., 0.30 = 30%) | User input (required) |
 | `stopLossPercent` | User specifies (e.g., 0.10 = 10%) | User input (required) |
 | `address` (for copy-trader-trades) | `/copy-traders` response → `creatorWallet` or `walletAddress` | `GET /copy-traders` |
+| `commitment` (Alpha) | `/alpha/agents` response → `commitment` | `GET /alpha/agents` |
+| `listingId` (Alpha) | `/alpha/listings` response → `listingId` | `GET /alpha/listings` |
+| `alpha`, `contentHash` (Alpha) | `/alpha/purchase` Phase 2 response → `alpha`, `contentHash` | `GET /alpha/purchase` + `X-Payment` header |
+| `txHash` (Alpha) | `/alpha/pay` response → `txHash` | `POST /alpha/pay` |
 
 ### Mandatory Workflow Rules
 
@@ -105,6 +109,7 @@ The following shows where each required parameter comes from. **Always resolve d
 5. **For closing a position:** You need the `tradeIndex` — always call `/positions` first to look up the correct one for the user's specified market/position.
 6. **Ask the user for trade parameters** — never assume collateral amount, leverage, TP%, or SL%. Present defaults but let the user confirm or override.
 7. **Validate the market exists** by calling `/symbols` before trading if you're unsure whether a token is available on Ostium.
+8. **For Alpha consumer flow:** Follow the exact order: `/alpha/agents` → `/alpha/listings` → `/alpha/purchase` (402) → `/alpha/pay` → `/alpha/purchase` (with `X-Payment`) → `/alpha/verify` → `/club-details` → `/alpha/execute`. Never skip steps. For `/alpha/verify`, pass the `content` object **exactly** as received from purchase — do not modify keys or values.
 
 ### Pre-Flight Checklist (Run Mentally Before Every API Call)
 
@@ -115,6 +120,10 @@ The following shows where each required parameter comes from. **Always resolve d
 ✅ Does this endpoint need entryPrice/pairIndex? → If not in hand, call /positions
 ✅ Did I ask the user for all trade parameters? → collateral, leverage, side, TP%, SL%
 ✅ Is the market/symbol valid? → If unsure, call /symbols to verify
+✅ (Alpha) Do I have commitment? → If not, call /alpha/agents
+✅ (Alpha) Do I have listingId? → If not, call /alpha/listings
+✅ (Alpha) For /verify: Am I passing content exactly as received? → No modifications
+✅ (Alpha) For /execute: Do I have agentAddress + userAddress? → Call /club-details
 ```
 
 ---
@@ -1375,6 +1384,10 @@ Trustless ZK-verified trading signals. **Producers** generate proofs and flag po
 **Auth:** `X-API-KEY` header (same as other endpoints).  
 **Payment:** On-chain USDC on Arbitrum Sepolia (testnet) or Arbitrum One (mainnet).
 
+**Prerequisites for consuming alpha:**
+- User must have completed Lazy Trading setup (agent deployed) — `/club-details` must return `ostium_agent_address`. The `/pay` endpoint uses this agent to send USDC; without it, `/pay` returns 400.
+- Agent wallet must hold enough USDC for the listing price. If insufficient, `/pay` returns 402 with `required` and `available` amounts — inform the user to fund the agent address.
+
 ### Alpha Endpoints Summary
 
 | Endpoint | Method | Purpose |
@@ -1428,6 +1441,8 @@ Response: `200` with `alpha` object (token, side, leverage, venue, entryPrice), 
 
 **SAVE from Step C:** `alpha`, `contentHash`, `listingId` — needed for `/verify` and `/execute`.
 
+**Pass `content` exactly as received:** For `/alpha/verify`, the `content` field must be the exact `alpha` object from Step C. Do not modify keys, values, or key order — the hash is computed using sorted keys and any change will cause verification to fail.
+
 ### Alpha Dependency Chain
 
 ```
@@ -1477,6 +1492,9 @@ Step 5: GET /club-details
 Step 6: POST /alpha/execute
    → Body: { "alphaContent": { ...alpha }, "agentAddress": "...",
              "userAddress": "...", "collateral": 100 }
+   → alphaContent must include at least token and side (from alpha)
+   → agentAddress = ostium_agent_address, userAddress = user_wallet (both from /club-details)
+   → collateral: ask user or use default (e.g. 100 USDC)
    → Check: success === true
 ```
 
@@ -1532,6 +1550,12 @@ Step 6: POST /alpha/execute
 | 400 | Missing or invalid message / parameters |
 | 405 | Wrong HTTP method |
 | 500 | Server error |
+
+**Alpha-specific errors:**
+| 400 | `/pay`: No agent address found (user must complete Lazy Trading setup). `/purchase`: Invalid X-Payment header or payment verification failed. |
+| 402 | Payment required (`/purchase` Phase 1) or insufficient USDC balance (`/pay` — check `required` and `available` in response). |
+| 409 | Transaction hash already used (replay protection — each tx can only purchase one listing). |
+| 410 | Alpha listing no longer active. |
 
 ## Getting Started
 
