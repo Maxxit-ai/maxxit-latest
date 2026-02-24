@@ -279,6 +279,15 @@ export default function OpenClawSetupPage() {
   const [revealedEnvVars, setRevealedEnvVars] = useState<Set<string>>(new Set());
   const [deletingEnvKey, setDeletingEnvKey] = useState<string | null>(null);
 
+  // Version update state (OpenClaw + Maxxit skill)
+  const [openclawVersion, setOpenclawVersion] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean } | null>(null);
+  const [skillVersion, setSkillVersion] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean } | null>(null);
+  const [isCheckingVersions, setIsCheckingVersions] = useState(false);
+  const [isUpdatingOpenclaw, setIsUpdatingOpenclaw] = useState(false);
+  const [isUpdatingSkill, setIsUpdatingSkill] = useState(false);
+  const [showVersionsSection, setShowVersionsSection] = useState(false);
+  const [versionUpdateMessage, setVersionUpdateMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
 
   // EigenAI Signature Verification state — fetched records
   type EigenVerificationRecord = {
@@ -746,6 +755,40 @@ export default function OpenClawSetupPage() {
     };
 
     fetchEnvVars();
+  }, [walletAddress, activated, instanceStatusPhase]);
+
+  // Fetch installed/latest versions when instance is ready
+  useEffect(() => {
+    if (!walletAddress || !activated || instanceStatusPhase !== "ready") return;
+
+    const fetchVersions = async () => {
+      setIsCheckingVersions(true);
+      setVersionUpdateMessage(null);
+      try {
+        const res = await fetch(`/api/openclaw/versions?userWallet=${walletAddress}`);
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setOpenclawVersion(data.openclaw || null);
+          setSkillVersion(data.skill || null);
+        } else {
+          console.error("[OpenClaw] Failed to fetch versions:", data.error);
+          setVersionUpdateMessage({
+            type: "error",
+            text: data.error || "Failed to fetch version information",
+          });
+        }
+      } catch (err) {
+        console.error("[OpenClaw] Error fetching versions:", err);
+        setVersionUpdateMessage({
+          type: "error",
+          text: "Failed to fetch version information",
+        });
+      } finally {
+        setIsCheckingVersions(false);
+      }
+    };
+
+    fetchVersions();
   }, [walletAddress, activated, instanceStatusPhase]);
 
   useEffect(() => {
@@ -2601,6 +2644,249 @@ export default function OpenClawSetupPage() {
                         </>
                       ) : (
                         <p className="text-sm text-[var(--text-muted)] text-center">No credit data available</p>
+                      )}
+                    </div>
+
+                    {/* Software Updates Section */}
+                    <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => setShowVersionsSection(!showVersionsSection)}
+                        className="w-full p-5 flex items-center justify-between hover:bg-[var(--bg-card)] transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Settings className="w-5 h-5 text-[var(--accent)]" />
+                          <h3 className="font-bold text-lg">Software Updates</h3>
+                          {(() => {
+                            const updates =
+                              (openclawVersion?.updateAvailable ? 1 : 0) +
+                              (skillVersion?.updateAvailable ? 1 : 0);
+                            return updates > 0 ? (
+                              <span className="text-xs px-2 py-0.5 bg-[var(--accent)]/20 text-[var(--accent)] rounded-full">
+                                {updates} update{updates > 1 ? "s" : ""} available
+                              </span>
+                            ) : null;
+                          })()}
+                        </div>
+                        <ChevronRight
+                          className={`w-5 h-5 text-[var(--text-muted)] transition-transform ${showVersionsSection ? "rotate-90" : ""}`}
+                        />
+                      </button>
+
+                      {showVersionsSection && (
+                        <div className="p-5 pt-0 space-y-4">
+                          {versionUpdateMessage && (
+                            <div
+                              className={`rounded-lg p-3 flex items-center gap-2 ${versionUpdateMessage.type === "success"
+                                ? "bg-green-500/10 border border-green-500/30"
+                                : "bg-red-500/10 border border-red-500/30"
+                                }`}
+                            >
+                              {versionUpdateMessage.type === "success" ? (
+                                <Check className="w-4 h-4 text-green-400 shrink-0" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                              )}
+                              <p
+                                className={`text-sm ${versionUpdateMessage.type === "success" ? "text-green-400" : "text-red-400"
+                                  }`}
+                              >
+                                {versionUpdateMessage.text}
+                              </p>
+                            </div>
+                          )}
+
+                          {isCheckingVersions ? (
+                            <div className="flex items-center justify-center py-4 gap-2 text-[var(--text-muted)]">
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              <span className="text-sm">Checking versions...</span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                              {/* OpenClaw Version Card */}
+                              <div className="border border-[var(--border)] rounded-lg p-4 bg-[var(--bg-card)] flex flex-col justify-between gap-3 h-full">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-semibold">OpenClaw</p>
+                                    <p className="text-xs text-[var(--text-muted)]">
+                                      Core gateway runtime on your instance
+                                    </p>
+                                  </div>
+                                  {openclawVersion?.updateAvailable ? (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 font-bold uppercase tracking-wider">
+                                      Update Available
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-bold uppercase tracking-wider">
+                                      Up to date
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs space-y-1 font-mono">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[var(--text-muted)]">Installed</span>
+                                    <span>{openclawVersion?.installed || "unknown"}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[var(--text-muted)]">Latest</span>
+                                    <span>{openclawVersion?.latest || "unknown"}</span>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    if (!walletAddress) return;
+                                    setIsUpdatingOpenclaw(true);
+                                    setVersionUpdateMessage(null);
+                                    try {
+                                      const res = await fetch("/api/openclaw/update-version", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ userWallet: walletAddress, type: "openclaw" }),
+                                      });
+                                      const data = await res.json();
+                                      if (res.ok && data.success) {
+                                        setVersionUpdateMessage({
+                                          type: "success",
+                                          text: "OpenClaw updated successfully. It may take a moment to restart.",
+                                        });
+                                        // Refresh versions after a short delay
+                                        setTimeout(async () => {
+                                          try {
+                                            setIsCheckingVersions(true);
+                                            const vRes = await fetch(`/api/openclaw/versions?userWallet=${walletAddress}`);
+                                            const vData = await vRes.json();
+                                            if (vRes.ok && vData.success) {
+                                              setOpenclawVersion(vData.openclaw || null);
+                                              setSkillVersion(vData.skill || null);
+                                            }
+                                          } finally {
+                                            setIsCheckingVersions(false);
+                                          }
+                                        }, 5000);
+                                      } else {
+                                        setVersionUpdateMessage({
+                                          type: "error",
+                                          text: data.error || "Failed to update OpenClaw",
+                                        });
+                                      }
+                                    } catch {
+                                      setVersionUpdateMessage({
+                                        type: "error",
+                                        text: "Failed to update OpenClaw",
+                                      });
+                                    } finally {
+                                      setIsUpdatingOpenclaw(false);
+                                    }
+                                  }}
+                                  disabled={isUpdatingOpenclaw || isCheckingVersions}
+                                  className="w-full py-2.5 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
+                                >
+                                  {isUpdatingOpenclaw ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      Updating...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Zap className="w-4 h-4" />
+                                      Update OpenClaw
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+
+                              {/* Maxxit Lazy Trading Skill Version Card */}
+                              <div className="border border-[var(--border)] rounded-lg p-4 bg-[var(--bg-card)] flex flex-col justify-between gap-3 h-full">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-semibold">Maxxit Lazy Trading Skill</p>
+                                    <p className="text-xs text-[var(--text-muted)]">
+                                      Skill powering Ostium/Aster programmatic trading
+                                    </p>
+                                  </div>
+                                  {skillVersion?.updateAvailable ? (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 font-bold uppercase tracking-wider">
+                                      Update Available
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-bold uppercase tracking-wider">
+                                      Up to date
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs space-y-1 font-mono">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[var(--text-muted)]">Installed</span>
+                                    <span>{skillVersion?.installed || "unknown"}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[var(--text-muted)]">Latest</span>
+                                    <span>{skillVersion?.latest || "unknown"}</span>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    if (!walletAddress) return;
+                                    setIsUpdatingSkill(true);
+                                    setVersionUpdateMessage(null);
+                                    try {
+                                      const res = await fetch("/api/openclaw/update-version", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ userWallet: walletAddress, type: "skill" }),
+                                      });
+                                      const data = await res.json();
+                                      if (res.ok && data.success) {
+                                        setVersionUpdateMessage({
+                                          type: "success",
+                                          text: "Lazy Trading skill updated successfully. It may take a moment to restart.",
+                                        });
+                                        setTimeout(async () => {
+                                          try {
+                                            setIsCheckingVersions(true);
+                                            const vRes = await fetch(`/api/openclaw/versions?userWallet=${walletAddress}`);
+                                            const vData = await vRes.json();
+                                            if (vRes.ok && vData.success) {
+                                              setOpenclawVersion(vData.openclaw || null);
+                                              setSkillVersion(vData.skill || null);
+                                            }
+                                          } finally {
+                                            setIsCheckingVersions(false);
+                                          }
+                                        }, 5000);
+                                      } else {
+                                        setVersionUpdateMessage({
+                                          type: "error",
+                                          text: data.error || "Failed to update skill",
+                                        });
+                                      }
+                                    } catch {
+                                      setVersionUpdateMessage({
+                                        type: "error",
+                                        text: "Failed to update skill",
+                                      });
+                                    } finally {
+                                      setIsUpdatingSkill(false);
+                                    }
+                                  }}
+                                  disabled={isUpdatingSkill || isCheckingVersions}
+                                  className="w-full py-2.5 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
+                                >
+                                  {isUpdatingSkill ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      Updating...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Zap className="w-4 h-4" />
+                                      Update Skill
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
 
