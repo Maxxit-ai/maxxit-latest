@@ -48,6 +48,7 @@ export MAXXIT_API_URL="https://maxxit.ai"
 ## Supported Venues
 
 - **Ostium** - Perpetual futures on Arbitrum
+- **Alpha Marketplace** - Trustless ZK-verified trading signals (Arbitrum Sepolia testnet)
 
 ## Links
 

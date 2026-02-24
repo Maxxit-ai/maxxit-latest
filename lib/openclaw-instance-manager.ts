@@ -573,6 +573,115 @@ export async function runCommandOnInstance(
   }
 }
 
+export interface RunCommandResult {
+  commandId: string;
+  status: string;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Run shell commands on an EC2 instance via SSM and wait for completion,
+ * returning stdout/stderr. Useful for short-lived commands where we need output
+ * (e.g. version checks, one-off updates).
+ */
+export async function runCommandOnInstanceWithOutput(
+  instanceId: string,
+  commands: string[],
+  options?: { timeoutSeconds?: number; pollIntervalMs?: number }
+): Promise<RunCommandResult> {
+  const {
+    SSMClient,
+    SendCommandCommand,
+    GetCommandInvocationCommand,
+  } = await import("@aws-sdk/client-ssm");
+
+  const timeoutSeconds = options?.timeoutSeconds ?? 120;
+  const pollIntervalMs = options?.pollIntervalMs ?? 2000;
+
+  const ssmClient = new SSMClient({
+    region: process.env.AWS_REGION || "us-east-1",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+    },
+  });
+
+  try {
+    const sendResponse = await ssmClient.send(
+      new SendCommandCommand({
+        InstanceIds: [instanceId],
+        DocumentName: "AWS-RunShellScript",
+        Parameters: {
+          commands,
+        },
+        TimeoutSeconds: timeoutSeconds,
+      })
+    );
+
+    const commandId = sendResponse.Command?.CommandId;
+    if (!commandId) {
+      throw new Error("No command ID returned from SSM SendCommand");
+    }
+
+    const start = Date.now();
+    // Poll for command invocation result
+    // Status values: Pending | InProgress | Delayed | Success | Cancelled | Failed | TimedOut | Cancelling
+    // We treat Success as completed-ok, others as terminal error states.
+    // See: https://docs.aws.amazon.com/systems-manager/latest/APIReference/API_GetCommandInvocation.html
+    // We don't import the Status enum to avoid tight coupling; strings are stable.
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const elapsedSeconds = (Date.now() - start) / 1000;
+      if (elapsedSeconds > timeoutSeconds) {
+        throw new Error(
+          `SSM command ${commandId} timed out after ${timeoutSeconds}s`
+        );
+      }
+
+      const invocation = await ssmClient.send(
+        new GetCommandInvocationCommand({
+          CommandId: commandId,
+          InstanceId: instanceId,
+        })
+      );
+
+      const status = invocation.Status || "Unknown";
+
+      if (
+        status === "Success" ||
+        status === "Cancelled" ||
+        status === "Failed" ||
+        status === "TimedOut" ||
+        status === "Cancelling"
+      ) {
+        const stdout = invocation.StandardOutputContent || "";
+        const stderr = invocation.StandardErrorContent || "";
+
+        if (status !== "Success") {
+          throw new Error(
+            `SSM command ${commandId} completed with status ${status}: ${stderr || stdout}`
+          );
+        }
+
+        return {
+          commandId,
+          status,
+          stdout,
+          stderr,
+        };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+  } catch (error) {
+    throw new Error(
+      `Failed to run command on instance ${instanceId}: ${error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
 /**
  * Update instance configuration (requires recreating the instance)
  */
