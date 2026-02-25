@@ -57,10 +57,8 @@ async function getInstalledVersions(
     const { stdout } = await runCommandOnInstanceWithOutput(
       instanceId,
       [
-        'export NVM_DIR="/home/ubuntu/.nvm"',
-        'NVM_INIT="export NVM_DIR=/home/ubuntu/.nvm && [ -s \\"$NVM_DIR/nvm.sh\\" ] && . \\"$NVM_DIR/nvm.sh\\""',
-        'OPENCLAW_VERSION=$(su - ubuntu -c "eval $NVM_INIT && openclaw --version" 2>/dev/null || echo "unknown")',
-        'SKILL_VERSION=$(su - ubuntu -c "grep \\"^version:\\" /home/ubuntu/.openclaw/skills/maxxit-lazy-trading/SKILL.md 2>/dev/null | head -1 | awk \'{print $2}\'" || echo "unknown")',
+        'OPENCLAW_VERSION=$(su - ubuntu -c "openclaw --version" 2>/dev/null || echo "unknown")',
+        'SKILL_VERSION=$(node -e "try{var d=require(\'/home/ubuntu/.openclaw/workspace/.clawhub/lock.json\');console.log(d.skills[\'maxxit-lazy-trading\'].version)}catch(e){console.log(\'unknown\')}" 2>/dev/null || echo "unknown")',
         'echo "OPENCLAW_VERSION=$OPENCLAW_VERSION"',
         'echo "SKILL_VERSION=$SKILL_VERSION"',
       ],
