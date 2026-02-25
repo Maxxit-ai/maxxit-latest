@@ -5,7 +5,7 @@
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../lib/prisma";
-import { getDetailedInstanceStatus, type DetailedInstanceStatus } from "../../../lib/openclaw-instance-manager";
+import { getDetailedInstanceStatus, checkSetupComplete, type DetailedInstanceStatus } from "../../../lib/openclaw-instance-manager";
 
 export default async function handler(
     req: NextApiRequest,
@@ -49,7 +49,7 @@ export default async function handler(
         const detailedStatus = await getDetailedInstanceStatus(instance.container_id);
 
         let statusMessage = "";
-        let statusPhase: "launching" | "starting" | "checking" | "ready" | "error" = "launching";
+        let statusPhase: "launching" | "starting" | "checking" | "configuring" | "ready" | "error" = "launching";
 
         if (detailedStatus.state === "pending") {
             statusMessage = "Launching instance...";
@@ -59,8 +59,22 @@ export default async function handler(
                 statusMessage = "Running status checks...";
                 statusPhase = "checking";
             } else if (detailedStatus.ready) {
-                statusMessage = "Instance is ready!";
-                statusPhase = "ready";
+                // EC2 status checks passed — now check if userdata setup script is done
+                if (instance.container_status === "running") {
+                    // Already confirmed ready previously, skip SSM check
+                    statusMessage = "Instance is ready!";
+                    statusPhase = "ready";
+                } else {
+                    // Check for sentinel file via SSM
+                    const setupDone = await checkSetupComplete(instance.container_id!);
+                    if (setupDone) {
+                        statusMessage = "Instance is ready!";
+                        statusPhase = "ready";
+                    } else {
+                        statusMessage = "Installing and configuring OpenClaw...";
+                        statusPhase = "configuring";
+                    }
+                }
             } else if (detailedStatus.systemStatus === "impaired" || detailedStatus.instanceStatus === "impaired") {
                 statusMessage = "Status check failed";
                 statusPhase = "error";
@@ -76,7 +90,7 @@ export default async function handler(
             statusPhase = "error";
         }
 
-        const newContainerStatus = detailedStatus.state === "running" && detailedStatus.ready ? "running" : detailedStatus.state;
+        const newContainerStatus = statusPhase === "ready" ? "running" : detailedStatus.state;
         if (instance.container_status !== newContainerStatus) {
             await prisma.openclaw_instances.update({
                 where: { user_wallet: userWallet },

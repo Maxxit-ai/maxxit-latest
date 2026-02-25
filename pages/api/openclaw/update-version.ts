@@ -9,15 +9,15 @@ type UpdateType = "openclaw" | "skill";
 
 type UpdateResponse =
   | {
-      success: true;
-      type: UpdateType;
-      message: string;
-    }
+    success: true;
+    type: UpdateType;
+    message: string;
+  }
   | {
-      success: false;
-      type?: UpdateType;
-      error: string;
-    };
+    success: false;
+    type?: UpdateType;
+    error: string;
+  };
 
 export default async function handler(
   req: NextApiRequest,
@@ -78,28 +78,25 @@ export default async function handler(
       });
     }
 
-    const commands: string[] = [
-      'export NVM_DIR="/home/ubuntu/.nvm"',
-      'NVM_INIT="export NVM_DIR=/home/ubuntu/.nvm && [ -s \\"$NVM_DIR/nvm.sh\\" ] && . \\"$NVM_DIR/nvm.sh\\""',
-    ];
+    const commands: string[] = [];
 
     if (type === "openclaw") {
       commands.push(
-        'echo "[Maxxit] Updating OpenClaw via npm as ubuntu..."',
-        'su - ubuntu -c "eval $NVM_INIT && npm install -g openclaw@latest"',
-        'echo "[Maxxit] Running openclaw doctor as ubuntu..."',
-        'su - ubuntu -c "eval $NVM_INIT && openclaw doctor" || echo "[Maxxit] openclaw doctor reported issues"'
+        'echo "[Maxxit] Updating OpenClaw via npm..."',
+        'npm update -g openclaw',
+        'echo "[Maxxit] Running openclaw doctor..."',
+        'su - ubuntu -c "openclaw doctor" || echo "[Maxxit] openclaw doctor reported issues"'
       );
     } else {
       commands.push(
-        'echo "[Maxxit] Updating maxxit-lazy-trading skill via ClawHub as ubuntu..."',
-        'su - ubuntu -c "eval $NVM_INIT && npx clawhub@latest install maxxit-lazy-trading --force"'
+        'echo "[Maxxit] Updating maxxit-lazy-trading skill via ClawHub..."',
+        'su - ubuntu -c "npx clawhub@latest install maxxit-lazy-trading --force"'
       );
     }
 
     commands.push(
-      'echo "[Maxxit] Restarting OpenClaw gateway as ubuntu..."',
-      'su - ubuntu -c "eval $NVM_INIT && openclaw gateway restart"',
+      'echo "[Maxxit] Restarting OpenClaw gateway..."',
+      'su - ubuntu -c "openclaw gateway restart"',
       'echo "[Maxxit] Update flow complete"'
     );
 
