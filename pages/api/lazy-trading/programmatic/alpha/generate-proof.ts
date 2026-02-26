@@ -8,12 +8,14 @@ const prismaClient = prisma as any;
 /**
  * POST /api/lazy-trading/programmatic/alpha/generate-proof
  *
- * Trigger ZK proof generation for the authenticated agent's Ostium performance.
- * Idempotent: if a proof is already PENDING or PROVING, returns the existing record.
+ * Trigger ZK proof generation for the authenticated agent's Ostium performance
+ * plus an optional featured open position.
  *
  * Body (optional):
  *   autoProcess: boolean — If true, processes the proof immediately inline
  *                          instead of queuing for the worker. Default: false.
+ *   tradeId: string      — The Ostium trade index to feature in the proof.
+ *                          If omitted, the most recent open trade is used.
  */
 export default async function handler(
   req: NextApiRequest,
@@ -29,7 +31,7 @@ export default async function handler(
       return res.status(401).json({ success: false, error: "Invalid API key" });
     }
 
-    const { autoProcess = false } = req.body || {};
+    const { autoProcess = false, tradeId } = req.body || {};
     const shouldProcessInline = Boolean(autoProcess && process.env.SP1_PROVER_MODE);
     if (autoProcess && !shouldProcessInline) {
       console.log(
@@ -109,8 +111,6 @@ export default async function handler(
         where: { id: agent.id },
         data: {
           commitment,
-          // WARNING: salt_encrypted is currently stored as PLAINTEXT despite the field name.
-          // Real AES-256-GCM encryption is deferred to mainnet. See ALPHA_MARKETPLACE_DESIGN.md.
           salt_encrypted: salt,
         },
       });
@@ -121,6 +121,7 @@ export default async function handler(
       data: {
         agent_id: agent.id,
         commitment,
+        trade_id: tradeId || null,
         status: shouldProcessInline ? "PROVING" : "PENDING",
       },
     });
@@ -133,13 +134,11 @@ export default async function handler(
 
     // ---- Auto-process: run proof generation inline ----
     if (shouldProcessInline) {
-      // Use the user's wallet directly — the agent is a delegate that trades
-      // on the user's wallet, so on-chain trades appear under userWallet.
       console.log(
-        `[generate-proof] Auto-processing proof ${proofRecord.id} for ${userWallet}`
+        `[generate-proof] Auto-processing proof ${proofRecord.id} for ${userWallet}${tradeId ? ` with tradeId=${tradeId}` : ''}`
       );
 
-      const result = await generateProof(userWallet);
+      const result = await generateProof(userWallet, tradeId);
 
       if (!result.success) {
         await prismaClient.proof_records.update({
@@ -161,7 +160,6 @@ export default async function handler(
           txHash = await submitProofToRegistry(result.publicValues, result.proof);
         } catch (submitError: any) {
           console.error("[generate-proof] Automated submission failed:", submitError.message);
-          // Don't fail the whole request if submission fails, but return the error
         }
       }
 
@@ -175,6 +173,7 @@ export default async function handler(
           trade_count: result.metrics.tradeCount,
           win_count: result.metrics.winCount,
           total_collateral: result.metrics.totalCollateral,
+          trade_id: result.featured?.tradeId?.toString() || tradeId || null,
           start_block: result.metrics.startBlock
             ? BigInt(result.metrics.startBlock)
             : null,
@@ -211,6 +210,7 @@ export default async function handler(
           startBlock: result.metrics.startBlock?.toString() || null,
           endBlock: result.metrics.endBlock?.toString() || null,
         },
+        featured: result.featured,
         zkProofId: result.proofId,
         proof: result.proof,
         publicValues: result.publicValues,
@@ -227,6 +227,7 @@ export default async function handler(
       proofId: proofRecord.id,
       status: "PENDING",
       commitment,
+      tradeId: tradeId || null,
       estimatedTime: "60-300s",
       hint: "Pass { autoProcess: true } to process the proof immediately instead of queuing.",
       network: "arbitrum-sepolia",

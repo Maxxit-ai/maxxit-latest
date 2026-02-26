@@ -20,14 +20,18 @@ function hasRequiredConfiguration(): boolean {
     "SP1_PROVER_MODE",
     "SP1_HOST_BINARY",
     "SP1_PRIVATE_KEY",
-    "TRADER_REGISTRY_ADDRESS",
     "ARBITRUM_SEPOLIA_RPC",
   ];
 
+  // Accept either env var name
+  const hasRegistry = process.env.POSITION_REGISTRY_ADDRESS || process.env.TRADER_REGISTRY_ADDRESS;
+
   const missingKeys = requiredKeys.filter((key) => !process.env[key]);
-  if (missingKeys.length > 0) {
+  if (missingKeys.length > 0 || !hasRegistry) {
+    const missing = [...missingKeys];
+    if (!hasRegistry) missing.push("POSITION_REGISTRY_ADDRESS");
     console.error(
-      `[proof-worker] Missing required environment variables: ${missingKeys.join(", ")}`
+      `[proof-worker] Missing required environment variables: ${missing.join(", ")}`
     );
     return false;
   }
@@ -70,10 +74,10 @@ async function resetStaleProvingRecords(): Promise<number> {
   return result.count;
 }
 
-async function processProofRecord(proofId: string, wallet: string): Promise<void> {
-  console.log(`[proof-worker] Processing proof ${proofId} for wallet ${wallet}`);
+async function processProofRecord(proofId: string, wallet: string, tradeId?: string): Promise<void> {
+  console.log(`[proof-worker] Processing proof ${proofId} for wallet ${wallet}${tradeId ? ` (tradeId=${tradeId})` : ''}`);
 
-  const proofResult = await generateProof(wallet);
+  const proofResult = await generateProof(wallet, tradeId);
   if (!proofResult.success) {
     await prismaClient.proof_records.update({
       where: { id: proofId },
@@ -97,6 +101,7 @@ async function processProofRecord(proofId: string, wallet: string): Promise<void
       trade_count: proofResult.metrics.tradeCount,
       win_count: proofResult.metrics.winCount,
       total_collateral: proofResult.metrics.totalCollateral,
+      trade_id: proofResult.featured?.tradeId?.toString() || tradeId || null,
       start_block: proofResult.metrics.startBlock
         ? BigInt(proofResult.metrics.startBlock)
         : null,
@@ -165,7 +170,7 @@ async function pollOnce(): Promise<void> {
     }
 
     try {
-      await processProofRecord(candidate.id, userWallet);
+      await processProofRecord(candidate.id, userWallet, candidate.trade_id ?? undefined);
     } catch (error: any) {
       console.error(`[proof-worker] Failed proof ${candidate.id}: ${error.message}`);
       await prismaClient.proof_records.update({

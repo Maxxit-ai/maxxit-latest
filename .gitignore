@@ -21,6 +21,7 @@ venv/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.proof-worker
 
 # Debug logs
 npm-debug.log*

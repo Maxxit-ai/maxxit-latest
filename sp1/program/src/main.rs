@@ -1,27 +1,38 @@
-//! Ostium Trader Performance Proof — SP1 Guest Program
+//! Ostium Trader Performance + Featured Position Proof — SP1 Guest Program
 //!
-//! This program runs inside the SP1 zkVM and proves that given a set of trades,
-//! the computed metrics (PnL, win rate, trade count) are correct.
+//! This program runs inside the SP1 zkVM and proves:
+//! 1. Aggregate trader performance (PnL, win rate, trade count) from closed trades
+//! 2. A specific featured position (the one being listed as alpha)
 //!
 //! Inputs (read from host):
-//!   - Vec<Trade> — closed trade data from Ostium subgraph
+//!   - Vec<Trade>         — closed trade data from Ostium subgraph
+//!   - FeaturedPosition   — the open position to prove alongside performance
 //!
-//! Outputs (committed to public):
-//!   - trader: [u8; 20]     — trader address
-//!   - trade_count: u32     — number of closed trades
-//!   - win_count: u32       — trades with positive PnL
-//!   - total_pnl: i64       — total PnL in USDC micros (6 decimals)
-//!   - total_collateral: u64 — total collateral in USDC micros
-//!   - start_timestamp: u64 — earliest trade timestamp
-//!   - end_timestamp: u64   — latest trade timestamp
+//! Outputs (committed to public, ALL BIG-ENDIAN for Solidity compatibility):
+//!   — Aggregate (60 bytes):
+//!     - trader: [u8; 20]       (20B)
+//!     - trade_count: u32       (4B)
+//!     - win_count: u32         (4B)
+//!     - total_pnl: i64         (8B) — PnL in USDC micros (6 dec)
+//!     - total_collateral: u64  (8B) — collateral in USDC micros (6 dec)
+//!     - start_timestamp: u64   (8B)
+//!     - end_timestamp: u64     (8B)
+//!   — Featured position (50 bytes):
+//!     - featured_trade_id: u64   (8B)
+//!     - featured_pair_index: u32 (4B)
+//!     - featured_is_buy: u8      (1B)
+//!     - featured_leverage: u32   (4B) — leverage × 100
+//!     - featured_collateral: u64 (8B) — USDC micros (6 dec)
+//!     - featured_entry_price: u128 (16B) — 18 decimals
+//!     - featured_is_open: u8     (1B)
+//!     - featured_timestamp: u64  (8B)
 
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 
 use serde::{Deserialize, Serialize};
 
-/// A single trade from the Ostium subgraph.
-/// All values are raw strings from the subgraph; parsing happens here.
+/// A single closed trade from the Ostium subgraph.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Trade {
     pub trader: String,
@@ -35,16 +46,25 @@ pub struct Trade {
     pub rollover: String,     // 18 decimals
 }
 
-/// Output metrics committed as public values
+/// The featured open position being listed as alpha.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TraderMetrics {
-    pub trader: [u8; 20],
-    pub trade_count: u32,
-    pub win_count: u32,
-    pub total_pnl_micros: i64,    // PnL in USDC * 1e6
-    pub total_collateral_micros: u64, // Collateral in USDC * 1e6
-    pub start_timestamp: u64,
-    pub end_timestamp: u64,
+pub struct FeaturedPosition {
+    pub trader: String,
+    pub trade_id: u64,
+    pub pair_index: u32,
+    pub is_buy: bool,
+    pub leverage: String,     // 2 decimals (e.g. 500 = 5x)
+    pub collateral: String,   // 6 decimals (USDC)
+    pub entry_price: String,  // 18 decimals
+    pub is_open: bool,
+    pub timestamp: String,
+}
+
+/// Combined input from host
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ProofInput {
+    pub trades: Vec<Trade>,
+    pub featured: FeaturedPosition,
 }
 
 fn parse_u128(s: &str) -> u128 {
@@ -67,8 +87,15 @@ fn decode_address(addr: &str) -> [u8; 20] {
 }
 
 pub fn main() {
-    // Read trade data from host
-    let trades: Vec<Trade> = sp1_zkvm::io::read();
+    // Read combined input from host
+    let input: ProofInput = sp1_zkvm::io::read();
+
+    let trades = input.trades;
+    let featured = input.featured;
+
+    // ========================================================================
+    // Part 1: Aggregate performance metrics (from closed trades)
+    // ========================================================================
 
     let mut trade_count: u32 = 0;
     let mut win_count: u32 = 0;
@@ -79,43 +106,33 @@ pub fn main() {
     let mut trader_bytes = [0u8; 20];
 
     for trade in &trades {
-        // Set trader from first trade
         if trade_count == 0 {
             trader_bytes = decode_address(&trade.trader);
         }
 
         trade_count += 1;
 
-        // Collateral: 6 decimals → already in micros
         let collateral_micros = parse_u128(&trade.collateral);
         total_collateral_micros += collateral_micros as u64;
 
-        // Compute PnL
-        let open_price = parse_u128(&trade.open_price);  // 18 decimals
-        let close_price = parse_u128(&trade.close_price); // 18 decimals
-        let leverage = parse_u128(&trade.leverage);        // 2 decimals (÷100)
+        let open_price = parse_u128(&trade.open_price);
+        let close_price = parse_u128(&trade.close_price);
+        let leverage = parse_u128(&trade.leverage);
 
         let mut trade_pnl_micros: i64 = 0;
 
         if open_price > 0 {
-            // PnL = collateral * leverage * |price_diff| / open_price / 100
-            // Working in higher precision to avoid overflow:
-            // collateral_micros is ~1e8 range, leverage ~5000, price ~1e23
-            // Result should be in micros (6 decimals)
             let price_diff = if trade.is_buy {
                 close_price as i128 - open_price as i128
             } else {
                 open_price as i128 - close_price as i128
             };
 
-            // PnL = collateral_micros * leverage * price_diff / (open_price * 100)
             let numerator = collateral_micros as i128 * leverage as i128 * price_diff;
             let denominator = open_price as i128 * 100;
             trade_pnl_micros = (numerator / denominator) as i64;
         }
 
-        // Subtract fees (funding and rollover are in 18 decimals)
-        // Convert to 6 decimals: ÷ 1e12
         let funding_micros = (parse_u128(&trade.funding) / 1_000_000_000_000) as i64;
         let rollover_micros = (parse_u128(&trade.rollover) / 1_000_000_000_000) as i64;
         trade_pnl_micros -= funding_micros.abs() + rollover_micros.abs();
@@ -125,7 +142,6 @@ pub fn main() {
             win_count += 1;
         }
 
-        // Timestamps
         let ts = parse_u64(&trade.timestamp);
         if ts < start_timestamp {
             start_timestamp = ts;
@@ -137,18 +153,43 @@ pub fn main() {
 
     if trades.is_empty() {
         start_timestamp = 0;
+        // If no closed trades, use featured position's trader
+        trader_bytes = decode_address(&featured.trader);
     }
 
-    // Commit the proven metrics as public output
-    let metrics = TraderMetrics {
-        trader: trader_bytes,
-        trade_count,
-        win_count,
-        total_pnl_micros,
-        total_collateral_micros,
-        start_timestamp,
-        end_timestamp,
-    };
+    // ========================================================================
+    // Part 2: Featured position data
+    // ========================================================================
 
-    sp1_zkvm::io::commit(&metrics);
+    let featured_trade_id = featured.trade_id;
+    let featured_pair_index = featured.pair_index;
+    let featured_is_buy: u8 = if featured.is_buy { 1 } else { 0 };
+    let featured_leverage = parse_u128(&featured.leverage) as u32;
+    let featured_collateral_micros = parse_u128(&featured.collateral) as u64;
+    let featured_entry_price = parse_u128(&featured.entry_price);
+    let featured_is_open: u8 = if featured.is_open { 1 } else { 0 };
+    let featured_timestamp = parse_u64(&featured.timestamp);
+
+    // ========================================================================
+    // Commit all values in BIG-ENDIAN for Solidity compatibility
+    // ========================================================================
+
+    // Aggregate metrics (60 bytes)
+    sp1_zkvm::io::commit_slice(&trader_bytes);                          // 20 bytes
+    sp1_zkvm::io::commit_slice(&trade_count.to_be_bytes());             // 4 bytes
+    sp1_zkvm::io::commit_slice(&win_count.to_be_bytes());               // 4 bytes
+    sp1_zkvm::io::commit_slice(&total_pnl_micros.to_be_bytes());        // 8 bytes
+    sp1_zkvm::io::commit_slice(&total_collateral_micros.to_be_bytes()); // 8 bytes
+    sp1_zkvm::io::commit_slice(&start_timestamp.to_be_bytes());         // 8 bytes
+    sp1_zkvm::io::commit_slice(&end_timestamp.to_be_bytes());           // 8 bytes
+
+    // Featured position (50 bytes)
+    sp1_zkvm::io::commit_slice(&featured_trade_id.to_be_bytes());       // 8 bytes
+    sp1_zkvm::io::commit_slice(&featured_pair_index.to_be_bytes());     // 4 bytes
+    sp1_zkvm::io::commit_slice(&[featured_is_buy]);                     // 1 byte
+    sp1_zkvm::io::commit_slice(&featured_leverage.to_be_bytes());       // 4 bytes
+    sp1_zkvm::io::commit_slice(&featured_collateral_micros.to_be_bytes()); // 8 bytes
+    sp1_zkvm::io::commit_slice(&featured_entry_price.to_be_bytes());    // 16 bytes
+    sp1_zkvm::io::commit_slice(&[featured_is_open]);                    // 1 byte
+    sp1_zkvm::io::commit_slice(&featured_timestamp.to_be_bytes());      // 8 bytes
 }

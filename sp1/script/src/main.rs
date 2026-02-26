@@ -1,18 +1,17 @@
 //! Ostium Trader Proof — SP1 Host Script
 //!
 //! This host program:
-//! 1. Reads trade data as JSON from stdin (piped from TypeScript)
+//! 1. Reads combined input (trades + featured position) as JSON from stdin
 //! 2. Executes the guest program in SP1's zkVM
 //! 3. Generates a proof (Groth16 for on-chain, or mock for testing)
 //! 4. Outputs the proof and public values as JSON to stdout
 //!
-//! Usage:
-//!   echo '<trades_json>' | cargo run --release -- --mode execute
-//!   echo '<trades_json>' | cargo run --release -- --mode prove
+//! Input JSON format:
+//!   { "trades": [...], "featured": { ... } }
 //!
-//! Modes:
-//!   execute  — Run the guest program without generating a proof (fast, for testing)
-//!   prove    — Generate a full ZK proof (slow, for production)
+//! Usage:
+//!   echo '<input_json>' | cargo run --release -- --mode execute
+//!   echo '<input_json>' | cargo run --release -- --mode prove
 
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -44,16 +43,25 @@ struct Trade {
     rollover: String,
 }
 
-/// Output metrics from the guest program
+/// Featured position matching the guest program's FeaturedPosition struct
 #[derive(Serialize, Deserialize, Debug)]
-struct TraderMetrics {
-    trader: [u8; 20],
-    trade_count: u32,
-    win_count: u32,
-    total_pnl_micros: i64,
-    total_collateral_micros: u64,
-    start_timestamp: u64,
-    end_timestamp: u64,
+struct FeaturedPosition {
+    trader: String,
+    trade_id: u64,
+    pair_index: u32,
+    is_buy: bool,
+    leverage: String,
+    collateral: String,
+    entry_price: String,
+    is_open: bool,
+    timestamp: String,
+}
+
+/// Combined input matching the guest program's ProofInput struct
+#[derive(Serialize, Deserialize, Debug)]
+struct ProofInput {
+    trades: Vec<Trade>,
+    featured: FeaturedPosition,
 }
 
 /// JSON output structure
@@ -62,9 +70,10 @@ struct ProofOutput {
     success: bool,
     mode: String,
     metrics: MetricsOutput,
-    proof: Option<String>,      // hex-encoded proof bytes
-    public_values: Option<String>, // hex-encoded public values
-    vkey_hash: Option<String>,  // verifying key hash
+    featured: FeaturedOutput,
+    proof: Option<String>,
+    public_values: Option<String>,
+    vkey_hash: Option<String>,
     error: Option<String>,
 }
 
@@ -73,49 +82,71 @@ struct MetricsOutput {
     trader: String,
     trade_count: u32,
     win_count: u32,
-    total_pnl: f64,         // PnL in USDC (human-readable)
-    total_collateral: f64,  // Collateral in USDC (human-readable)
+    total_pnl: f64,
+    total_collateral: f64,
     start_timestamp: u64,
     end_timestamp: u64,
+}
+
+#[derive(Serialize)]
+struct FeaturedOutput {
+    trade_id: u64,
+    pair_index: u32,
+    is_buy: bool,
+    leverage: f64,
+    collateral: f64,
+    entry_price: f64,
+    is_open: bool,
+    timestamp: u64,
 }
 
 fn main() {
     let args = Args::parse();
 
-    // Read trades JSON from stdin
-    let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
-    let trades: Vec<Trade> = serde_json::from_str(&input).expect("Failed to parse trades JSON");
+    // Read combined input JSON from stdin
+    let mut input_str = String::new();
+    std::io::stdin().read_to_string(&mut input_str).expect("Failed to read stdin");
+    let input: ProofInput = serde_json::from_str(&input_str).expect("Failed to parse input JSON");
 
-    eprintln!("[sp1-host] Processing {} trades in '{}' mode", trades.len(), args.mode);
+    eprintln!(
+        "[sp1-host] Processing {} trades + featured position (tradeId={}) in '{}' mode",
+        input.trades.len(),
+        input.featured.trade_id,
+        args.mode
+    );
 
     // Create SP1 prover client
     let client = ProverClient::from_env();
 
     // Prepare stdin for the guest
     let mut stdin = SP1Stdin::new();
-    stdin.write(&trades);
+    stdin.write(&input);
 
     match args.mode.as_str() {
         "execute" => {
-            // Execute without proof (fast, for testing)
-            let (mut output, report) = client
+            let (output, report) = client
                 .execute(GUEST_ELF, &stdin)
                 .run()
                 .expect("Execution failed");
 
-            let metrics: TraderMetrics = output.read();
-
-            eprintln!("[sp1-host] Execution complete. Cycles: {}", report.total_instruction_count());
+            let public_bytes = output.as_ref();
+            eprintln!(
+                "[sp1-host] Execution complete. Cycles: {}, public_values: {} bytes",
+                report.total_instruction_count(),
+                public_bytes.len()
+            );
 
             let (_, vk) = client.setup(GUEST_ELF);
+
+            let (metrics_out, featured_out) = decode_public_values(public_bytes);
 
             let result = ProofOutput {
                 success: true,
                 mode: "execute".to_string(),
-                metrics: to_metrics_output(&metrics),
+                metrics: metrics_out,
+                featured: featured_out,
                 proof: None,
-                public_values: Some(hex::encode(output.as_ref())),
+                public_values: Some(hex::encode(public_bytes)),
                 vkey_hash: Some(vk.bytes32()),
                 error: None,
             };
@@ -123,7 +154,6 @@ fn main() {
             println!("{}", serde_json::to_string(&result).unwrap());
         }
         "prove" => {
-            // Generate full Groth16 proof for on-chain verification
             let (pk, vk) = client.setup(GUEST_ELF);
 
             eprintln!("[sp1-host] Generating Groth16 proof...");
@@ -134,8 +164,8 @@ fn main() {
                 .run()
                 .expect("Proving failed");
 
-            let mut public_values = proof.public_values.clone();
-            let metrics: TraderMetrics = public_values.read();
+            let public_bytes = proof.public_values.as_ref();
+            let (metrics_out, featured_out) = decode_public_values(public_bytes);
 
             // Verify locally before outputting
             client
@@ -144,16 +174,15 @@ fn main() {
 
             eprintln!("[sp1-host] Proof generated and verified locally");
 
-            // proof.bytes() returns the compact on-chain format:
-            // [4-byte groth16 vkey hash prefix] ++ [encoded proof]
             let proof_bytes = proof.bytes();
 
             let result = ProofOutput {
                 success: true,
                 mode: "prove".to_string(),
-                metrics: to_metrics_output(&metrics),
+                metrics: metrics_out,
+                featured: featured_out,
                 proof: Some(hex::encode(&proof_bytes)),
-                public_values: Some(hex::encode(proof.public_values.as_ref())),
+                public_values: Some(hex::encode(public_bytes)),
                 vkey_hash: Some(vk.bytes32()),
                 error: None,
             };
@@ -173,6 +202,16 @@ fn main() {
                     start_timestamp: 0,
                     end_timestamp: 0,
                 },
+                featured: FeaturedOutput {
+                    trade_id: 0,
+                    pair_index: 0,
+                    is_buy: false,
+                    leverage: 0.0,
+                    collateral: 0.0,
+                    entry_price: 0.0,
+                    is_open: false,
+                    timestamp: 0,
+                },
                 proof: None,
                 public_values: None,
                 vkey_hash: None,
@@ -184,14 +223,72 @@ fn main() {
     }
 }
 
-fn to_metrics_output(m: &TraderMetrics) -> MetricsOutput {
-    MetricsOutput {
-        trader: format!("0x{}", hex::encode(m.trader)),
-        trade_count: m.trade_count,
-        win_count: m.win_count,
-        total_pnl: m.total_pnl_micros as f64 / 1_000_000.0,
-        total_collateral: m.total_collateral_micros as f64 / 1_000_000.0,
-        start_timestamp: m.start_timestamp,
-        end_timestamp: m.end_timestamp,
-    }
+/// Decode the 110-byte big-endian public values committed by the guest.
+///
+/// Layout:
+///   [0..20]   trader address (20 bytes)
+///   [20..24]  trade_count (u32 BE)
+///   [24..28]  win_count (u32 BE)
+///   [28..36]  total_pnl (i64 BE)
+///   [36..44]  total_collateral (u64 BE)
+///   [44..52]  start_timestamp (u64 BE)
+///   [52..60]  end_timestamp (u64 BE)
+///   [60..68]  featured_trade_id (u64 BE)
+///   [68..72]  featured_pair_index (u32 BE)
+///   [72]      featured_is_buy (u8)
+///   [73..77]  featured_leverage (u32 BE)
+///   [77..85]  featured_collateral (u64 BE)
+///   [85..101] featured_entry_price (u128 BE)
+///   [101]     featured_is_open (u8)
+///   [102..110] featured_timestamp (u64 BE)
+fn decode_public_values(bytes: &[u8]) -> (MetricsOutput, FeaturedOutput) {
+    assert!(
+        bytes.len() >= 110,
+        "Public values too short: {} bytes, expected 110",
+        bytes.len()
+    );
+
+    // Aggregate metrics
+    let mut trader = [0u8; 20];
+    trader.copy_from_slice(&bytes[0..20]);
+
+    let trade_count = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
+    let win_count = u32::from_be_bytes(bytes[24..28].try_into().unwrap());
+    let total_pnl_micros = i64::from_be_bytes(bytes[28..36].try_into().unwrap());
+    let total_collateral_micros = u64::from_be_bytes(bytes[36..44].try_into().unwrap());
+    let start_timestamp = u64::from_be_bytes(bytes[44..52].try_into().unwrap());
+    let end_timestamp = u64::from_be_bytes(bytes[52..60].try_into().unwrap());
+
+    // Featured position
+    let featured_trade_id = u64::from_be_bytes(bytes[60..68].try_into().unwrap());
+    let featured_pair_index = u32::from_be_bytes(bytes[68..72].try_into().unwrap());
+    let featured_is_buy = bytes[72] == 1;
+    let featured_leverage_raw = u32::from_be_bytes(bytes[73..77].try_into().unwrap());
+    let featured_collateral_micros = u64::from_be_bytes(bytes[77..85].try_into().unwrap());
+    let featured_entry_price_raw = u128::from_be_bytes(bytes[85..101].try_into().unwrap());
+    let featured_is_open = bytes[101] == 1;
+    let featured_timestamp = u64::from_be_bytes(bytes[102..110].try_into().unwrap());
+
+    let metrics = MetricsOutput {
+        trader: format!("0x{}", hex::encode(trader)),
+        trade_count,
+        win_count,
+        total_pnl: total_pnl_micros as f64 / 1_000_000.0,
+        total_collateral: total_collateral_micros as f64 / 1_000_000.0,
+        start_timestamp,
+        end_timestamp,
+    };
+
+    let featured = FeaturedOutput {
+        trade_id: featured_trade_id,
+        pair_index: featured_pair_index,
+        is_buy: featured_is_buy,
+        leverage: featured_leverage_raw as f64 / 100.0,
+        collateral: featured_collateral_micros as f64 / 1_000_000.0,
+        entry_price: featured_entry_price_raw as f64 / 1e18,
+        is_open: featured_is_open,
+        timestamp: featured_timestamp,
+    };
+
+    (metrics, featured)
 }

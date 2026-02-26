@@ -1,18 +1,42 @@
+# =============================================================================
+# .dockerignore — keep Docker build context lean
+# =============================================================================
+
+# Node / build artifacts
 node_modules
 npm-debug.log
 .next
+dist
+build
+coverage
+.nyc_output
+.cache
+.turbo
+
+# Source maps & editor config
+*.map
+*.log
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Git
 .git
 .gitignore
-README.md
+
+# Rust build artifacts (we only need the final binary)
+sp1/target/debug
+sp1/target/.rustc_info.json
+sp1/target/.cargo-lock
+sp1/program
+sp1/script/src
+sp1/script/Cargo.*
+sp1/Cargo.*
+
+# Environment & secrets (injected at runtime)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-.DS_Store
-*.log
-coverage
-.nyc_output
-.cache
-dist
-build

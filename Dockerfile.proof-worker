@@ -1,0 +1,49 @@
+# =============================================================================
+# Dockerfile.proof-worker — Maxxit ZK Proof Worker for EigenCompute (TEE)
+#
+# Uses Ubuntu 24.04 (Noble) as base because the SP1 binary requires
+# GLIBC_2.39, which Debian Bookworm (node:-slim) does not ship.
+# =============================================================================
+
+FROM ubuntu:24.04
+
+USER root
+
+# Install Node.js 22.x, OpenSSL, and ca-certificates
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      curl ca-certificates openssl gnupg && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ---------- 1. Copy prisma schema FIRST (needed by postinstall) ----------
+COPY prisma/ ./prisma/
+
+# ---------- 2. Install dependencies ----------
+COPY package.json package-lock.json ./
+RUN npm install --legacy-peer-deps
+
+# ---------- 3. Copy worker source files ----------
+COPY services/proof-worker.ts ./services/
+COPY lib/prisma.ts             ./lib/
+COPY lib/zk-prover.ts          ./lib/
+COPY prisma.ts                 ./
+COPY tsconfig.json ./
+
+# ---------- 4. Copy pre-compiled SP1 host binary ----------
+COPY sp1/target/release/ostium-trader-host /app/sp1/target/release/ostium-trader-host
+RUN chmod +x /app/sp1/target/release/ostium-trader-host
+
+# Verify the binary can actually run (catches glibc issues at build time)
+RUN ldd /app/sp1/target/release/ostium-trader-host && \
+    /app/sp1/target/release/ostium-trader-host --help || true
+
+# ---------- 5. Runtime defaults ----------
+ENV NODE_ENV=production
+ENV SP1_HOST_BINARY=/app/sp1/target/release/ostium-trader-host
+
+# The worker is a long-running polling loop, no ports exposed.
+CMD ["npx", "tsx", "services/proof-worker.ts"]

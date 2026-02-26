@@ -8,8 +8,14 @@ const prismaClient = prisma as any;
 /**
  * POST /api/lazy-trading/programmatic/alpha/flag
  *
- * Flag a position as alpha and list it for sale.
- * Requires a VERIFIED proof to exist for the agent.
+ * Flag a verified trade as alpha and list it for sale.
+ *
+ * Body:
+ *   proofId:   string  — UUID of a VERIFIED proof record (from /alpha/generate-proof)
+ *   priceUsdc: number  — listing price in USDC
+ *   token:     string  — token symbol (e.g. "ETH", "BTC")
+ *   side:      string  — "long" or "short"
+ *   leverage:  number  — (optional) leverage multiplier, default 10
  */
 export default async function handler(
   req: NextApiRequest,
@@ -25,13 +31,12 @@ export default async function handler(
       return res.status(401).json({ success: false, error: "Invalid API key" });
     }
 
-    const { positionId, priceUsdc, leverage: leverageOverride } =
-      req.body || {};
+    const { proofId, priceUsdc, token, side, leverage } = req.body || {};
 
-    if (!positionId || priceUsdc === undefined) {
+    if (!proofId || priceUsdc === undefined || !token || !side) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields: positionId, priceUsdc",
+        error: "Missing required fields: proofId, priceUsdc, token, side",
       });
     }
 
@@ -39,6 +44,14 @@ export default async function handler(
       return res.status(400).json({
         success: false,
         error: "priceUsdc must be greater than 0",
+      });
+    }
+
+    const validSides = ["long", "short"];
+    if (!validSides.includes(side.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        error: 'side must be "long" or "short"',
       });
     }
 
@@ -50,131 +63,94 @@ export default async function handler(
       });
     }
 
-    const agent = await prismaClient.agents.findFirst({
-      where: {
-        creator_wallet: userWallet,
-        venue: "OSTIUM",
-        status: { in: ["PUBLIC", "PRIVATE"] },
+    // ── 1. Look up the proof record ──────────────────────────────────
+    const proofRecord = await prismaClient.proof_records.findUnique({
+      where: { id: proofId },
+      include: {
+        agents: {
+          select: { id: true, creator_wallet: true, commitment: true },
+        },
       },
     });
 
-    if (!agent) {
+    if (!proofRecord) {
       return res.status(404).json({
         success: false,
-        error: "No active Ostium agent found for this wallet",
+        error: "Proof record not found",
       });
     }
 
+    if (proofRecord.status !== "VERIFIED") {
+      return res.status(400).json({
+        success: false,
+        error: `Proof is not verified yet. Current status: ${proofRecord.status}`,
+      });
+    }
+
+    // Verify ownership
+    if (proofRecord.agents?.creator_wallet !== userWallet) {
+      return res.status(403).json({
+        success: false,
+        error: "This proof does not belong to your account",
+      });
+    }
+
+    const agent = proofRecord.agents;
     if (!agent.commitment) {
       return res.status(400).json({
         success: false,
-        error:
-          "Agent has no commitment. Call POST /alpha/generate-proof first.",
+        error: "Agent has no commitment. This shouldn't happen for a verified proof.",
       });
     }
 
-    const verifiedProof = await prismaClient.proof_records.findFirst({
-      where: {
-        agent_id: agent.id,
-        status: "VERIFIED",
-      },
-      orderBy: { verified_at: "desc" },
-    });
-
-    if (!verifiedProof) {
+    const tradeId = proofRecord.trade_id;
+    if (!tradeId) {
       return res.status(400).json({
         success: false,
-        error:
-          "No verified proof found. Generate and wait for proof verification first.",
+        error: "Proof has no trade_id. Re-generate the proof with a tradeId.",
       });
     }
 
-    const position = await prismaClient.positions.findUnique({
-      where: { id: positionId },
-      include: {
-        signals: {
-          select: { llm_leverage: true },
-        },
-        agent_deployments: {
-          select: { user_wallet: true },
-        },
-      },
-    });
-
-    if (!position) {
-      return res.status(404).json({
-        success: false,
-        error: "Position not found",
-      });
-    }
-
-    if (position.agent_deployments.user_wallet !== userWallet) {
-      return res.status(403).json({
-        success: false,
-        error: "This position does not belong to your agent",
-      });
-    }
-
-    if (position.status !== "OPEN") {
-      return res.status(400).json({
-        success: false,
-        error: "Can only flag OPEN positions as alpha",
-      });
-    }
-
-    const leverage =
-      leverageOverride || position.signals?.llm_leverage || 10;
-
-    const allPositions = await prismaClient.positions.findMany({
-      where: {
-        deployment_id: position.deployment_id,
-        status: "OPEN",
-      },
-      select: {
-        qty: true,
-        signals: { select: { llm_leverage: true } },
-      },
-    });
-
-    const totalPortfolioNotional = allPositions.reduce(
-      (sum: number, p: any) => {
-        const posLeverage = p.signals?.llm_leverage || 10;
-        return sum + Number(p.qty) * posLeverage;
-      },
-      0
-    );
-
-    const thisPositionNotional = Number(position.qty) * leverage;
-    const positionPct =
-      totalPortfolioNotional > 0
-        ? Math.round((thisPositionNotional / totalPortfolioNotional) * 10000)
-        : 10000;
-
-    // Prevent duplicate flagging: check if position already has an active listing
+    // ── 2. Prevent duplicate listing for same trade ──────────────────
     const existingListing = await prismaClient.alpha_listings.findFirst({
-      where: { position_id: position.id, active: true },
+      where: { trade_id: tradeId, active: true },
     });
     if (existingListing) {
       return res.status(409).json({
         success: false,
-        error: "Position already has an active listing",
+        error: "This trade already has an active listing",
         existingListingId: existingListing.id,
       });
     }
 
+    // ── 3. Build listing content ─────────────────────────────────────
+    const actualLeverage = leverage || 10;
+    const winRate =
+      proofRecord.trade_count > 0
+        ? Math.round((proofRecord.win_count / proofRecord.trade_count) * 10000) / 100
+        : 0;
+
+    // alpha_content: revealed to buyers after purchase
+    // Does NOT include tradeId — that remains private
     const alphaContent = {
-      token: position.token_symbol,
-      side: position.side,
-      leverage,
-      positionPct,
-      entryPrice: Number(position.entry_price),
-      collateralUsdc: Number(position.qty),
+      token: token.toUpperCase(),
+      side: side.toLowerCase(),
+      leverage: actualLeverage,
       venue: "OSTIUM",
+      proofTxHash: proofRecord.tx_hash || null,
+      metrics: {
+        tradeCount: proofRecord.trade_count,
+        winCount: proofRecord.win_count,
+        winRate,
+        totalPnl: proofRecord.total_pnl ? Number(proofRecord.total_pnl) : 0,
+        totalCollateral: proofRecord.total_collateral
+          ? Number(proofRecord.total_collateral)
+          : 0,
+      },
       timestamp: new Date().toISOString(),
     };
 
-    // Sort keys recursively for deterministic serialization
-    // (must match the same logic in verify.ts for hash comparison)
+    // Deterministic hash for content verification
     const sortKeys = (obj: any): any => {
       if (typeof obj !== "object" || obj === null) return obj;
       if (Array.isArray(obj)) return obj.map(sortKeys);
@@ -190,15 +166,16 @@ export default async function handler(
       .update(JSON.stringify(sortKeys(alphaContent)))
       .digest("hex");
 
+    // ── 4. Create the listing ────────────────────────────────────────
     const listing = await prismaClient.alpha_listings.create({
       data: {
         agent_id: agent.id,
-        position_id: positionId,
         commitment: agent.commitment,
-        token: position.token_symbol,
-        side: position.side,
-        leverage,
-        position_pct: positionPct,
+        trade_id: tradeId,
+        token: token.toUpperCase(),
+        side: side.toLowerCase(),
+        leverage: actualLeverage,
+        position_pct: 10000,
         price_usdc: priceUsdc,
         content_hash: contentHash,
         alpha_content: alphaContent,
@@ -213,15 +190,23 @@ export default async function handler(
 
     return res.status(200).json({
       success: true,
-      message: "Position flagged as alpha",
+      message: "Alpha listed successfully",
       listingId: listing.id,
+      tradeId,
       commitment: agent.commitment,
       priceUsdc: priceUsdc.toString(),
       contentHash,
-      conviction: {
-        positionPct,
-        positionPctDisplay: `${(positionPct / 100).toFixed(1)}%`,
-        leverage,
+      listing: {
+        token: token.toUpperCase(),
+        side: side.toLowerCase(),
+        leverage: actualLeverage,
+      },
+      proofMetrics: {
+        tradeCount: proofRecord.trade_count,
+        winCount: proofRecord.win_count,
+        winRate,
+        totalPnl: proofRecord.total_pnl?.toString() || "0",
+        proofTxHash: proofRecord.tx_hash,
       },
       network: "arbitrum-sepolia",
     });
