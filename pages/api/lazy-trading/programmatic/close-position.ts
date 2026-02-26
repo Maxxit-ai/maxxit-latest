@@ -79,6 +79,14 @@ export default async function handler(
 
     const positionData = await closePositionResponse.json();
 
+    // Deactivate the alpha_listing for this trade
+    if (tradeId) {
+      await prismaClient.alpha_listings.updateMany({
+        where: { trade_id: String(tradeId) },
+        data: { active: false },
+      });
+    }
+
     // Update last used timestamp for API key
     await prismaClient.user_api_keys.update({
       where: { id: apiKeyRecord.id },
