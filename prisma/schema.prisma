@@ -889,7 +889,7 @@ model alpha_listings {
   position_id         String?   @db.Uuid
   commitment          String
   on_chain_listing_id String?
-  trade_id            String?           // Ostium subgraph trade ID used in ZK proof
+  trade_id          String?          // Ostium subgraph trade index to feature
   token               String
   side                String
   leverage            Int

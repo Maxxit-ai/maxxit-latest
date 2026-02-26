@@ -25,7 +25,7 @@ const ec2Client = new EC2Client({
 });
 
 // Configuration
-const OPENCLAW_AMI_ID = process.env.OPENCLAW_AMI_ID || "ami-xxxxxxxxxx"; // AMI with OpenClaw pre-installed
+const OPENCLAW_AMI_ID = process.env.OPENCLAW_AMI_ID || "ami-xxxxxxxxxx"; // AMI with Node.js and npm
 const INSTANCE_TYPE = (process.env.OPENCLAW_INSTANCE_TYPE || "t3.small") as _InstanceType;
 const SECURITY_GROUP_ID = process.env.OPENCLAW_SECURITY_GROUP_ID || "";
 const SUBNET_ID = process.env.OPENCLAW_SUBNET_ID || "";
@@ -129,9 +129,10 @@ fi
 
 echo "$(date): API keys fetched (ZAI: \${ZAI_KEY:+set}, OpenAI: \${OPENAI_KEY:+set})"
 
-# Clean up any existing config
-echo "$(date): Cleaning existing config..."
+# Clean up any existing openclaw config/data from AMI
+echo "$(date): Cleaning existing openclaw config..."
 rm -rf /home/ubuntu/.openclaw
+echo "$(date): Cleanup complete"
 
 # Build onboard command with OpenAI API key
 ONBOARD_CMD="openclaw onboard --non-interactive --accept-risk --mode local --skip-channels --skip-skills --skip-ui --install-daemon"
@@ -142,25 +143,32 @@ else
   echo "$(date): WARNING - No OpenAI API key found, onboarding may fail"
 fi
 
-# NVM setup - openclaw is installed via NVM
-export NVM_DIR="/home/ubuntu/.nvm"
-NVM_INIT="export NVM_DIR=/home/ubuntu/.nvm && [ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\""
-
-echo "$(date): Checking openclaw installation..."
-OPENCLAW_CHECK=$(su - ubuntu -c "eval $NVM_INIT && which openclaw" 2>/dev/null || echo "")
-echo "$(date): OpenClaw path: $OPENCLAW_CHECK"
-
-if [ -z "$OPENCLAW_CHECK" ]; then
-  echo "$(date): ERROR - openclaw not found. Attempting to install..."
-  su - ubuntu -c "eval $NVM_INIT && npm install -g openclaw" || {
-    echo "$(date): ERROR - Failed to install openclaw"
+# Install openclaw globally via npm
+# NOTE: npm install -g must run as root to write to /usr/lib/node_modules
+echo "$(date): Installing openclaw globally via npm..."
+npm install -g openclaw || {
+  echo "$(date): First install attempt failed, clearing npm cache and retrying..."
+  npm cache clean --force
+  npm install -g openclaw || {
+    echo "$(date): ERROR - Failed to install openclaw after retry"
     exit 1
   }
+}
+
+# Verify installation is accessible by the ubuntu user
+echo "$(date): Verifying openclaw installation..."
+OPENCLAW_VERSION=$(su - ubuntu -c "openclaw --version" 2>/dev/null || echo "")
+echo "$(date): OpenClaw version: $OPENCLAW_VERSION"
+
+if [ -z "$OPENCLAW_VERSION" ]; then
+  echo "$(date): ERROR - openclaw not found or not accessible by ubuntu user"
+  exit 1
 fi
+echo "$(date): OpenClaw installed successfully"
 
 # Run OpenClaw onboarding as ubuntu user
 echo "$(date): Running OpenClaw onboarding..."
-su - ubuntu -c "eval $NVM_INIT && $ONBOARD_CMD" || {
+su - ubuntu -c "$ONBOARD_CMD" || {
   echo "$(date): ERROR - OpenClaw onboarding failed"
   exit 1
 }
@@ -168,13 +176,13 @@ echo "$(date): OpenClaw onboarding complete"
 
 # Enable Telegram plugin
 echo "$(date): Enabling Telegram plugin..."
-su - ubuntu -c "eval $NVM_INIT && openclaw plugins enable telegram" || {
+su - ubuntu -c "openclaw plugins enable telegram" || {
   echo "$(date): WARNING - Failed to enable Telegram plugin"
 }
 
 # Add Telegram channel with bot token
 echo "$(date): Adding Telegram channel..."
-su - ubuntu -c "eval $NVM_INIT && openclaw channels add --channel telegram --token '$BOT_TOKEN'" || {
+su - ubuntu -c "openclaw channels add --channel telegram --token '$BOT_TOKEN'" || {
   echo "$(date): ERROR - Failed to add Telegram channel"
   exit 1
 }
@@ -182,17 +190,17 @@ echo "$(date): Telegram channel added"
 
 # Set the default model
 echo "$(date): Setting default model to ${modelId}..."
-su - ubuntu -c "eval $NVM_INIT && openclaw models set ${modelId}" || {
+su - ubuntu -c "openclaw models set ${modelId}" || {
   echo "$(date): WARNING - Failed to set model, using default"
 }
 
 ${config.telegramUserId ? `
 # Configure secure DM policy (allowlist with user's Telegram ID)
 echo "$(date): Configuring secure DM policy for user ${config.telegramUserId}..."
-su - ubuntu -c "eval $NVM_INIT && openclaw config set channels.telegram.allowFrom '[\"${config.telegramUserId}\"]' --json" || {
+su - ubuntu -c "openclaw config set channels.telegram.allowFrom '[\"${config.telegramUserId}\"]' --json" || {
   echo "$(date): WARNING - Failed to set allowFrom"
 }
-su - ubuntu -c "eval $NVM_INIT && openclaw config set channels.telegram.dmPolicy allowlist" || {
+su - ubuntu -c "openclaw config set channels.telegram.dmPolicy allowlist" || {
   echo "$(date): WARNING - Failed to set dmPolicy"
 }
 ` : `
@@ -220,7 +228,7 @@ if [ -n "$MAXXIT_API_KEY" ]; then
   
   # Install the skill using clawhub
   echo "$(date): Installing maxxit-lazy-trading skill..."
-  su - ubuntu -c "eval $NVM_INIT && npx clawhub@latest install maxxit-lazy-trading --force" || {
+  su - ubuntu -c "npx clawhub@latest install maxxit-lazy-trading --force" || {
     echo "$(date): WARNING - Failed to install maxxit-lazy-trading skill"
   }
   
@@ -235,13 +243,13 @@ echo "$(date): Skipping Maxxit Lazy Trading skill (not configured)"
 
 # Restart gateway to apply all config changes
 echo "$(date): Restarting gateway..."
-su - ubuntu -c "eval $NVM_INIT && openclaw gateway restart" || {
+su - ubuntu -c "openclaw gateway restart" || {
   echo "$(date): WARNING - Failed to restart gateway"
 }
 
 # Verify setup
 echo "$(date): Verifying OpenClaw setup..."
-su - ubuntu -c "eval $NVM_INIT && openclaw status" || true
+su - ubuntu -c "openclaw status" || true
 
 echo "$(date): OpenClaw configuration complete!"
 
@@ -267,7 +275,6 @@ MSGEOF
 # Create sender script
 cat > /tmp/welcome_msg.sh << 'EOF'
 #!/bin/bash
-source /home/ubuntu/.nvm/nvm.sh
 MESSAGE=\$(cat /tmp/welcome_msg.txt)
 openclaw message send --channel telegram --target TARGET_PLACEHOLDER --message "\$MESSAGE"
 EOF
@@ -283,6 +290,12 @@ rm -f /tmp/welcome_msg.sh /tmp/welcome_msg.txt
 ` : `
 echo "$(date): No chat ID provided, skipping welcome message"
 `}
+
+# Signal that setup is fully complete (used by instance-status API)
+mkdir -p /var/log/openclaw
+echo "$(date): Writing setup-complete sentinel file..."
+touch /var/log/openclaw/setup-complete
+echo "$(date): Setup complete sentinel written. All done!"
 `;
 }
 
@@ -525,6 +538,67 @@ export async function terminateInstance(instanceId: string): Promise<void> {
       `Failed to terminate instance: ${error instanceof Error ? error.message : String(error)
       }`
     );
+  }
+}
+
+/**
+ * Check whether the userdata setup script has completed on an EC2 instance.
+ * Looks for the sentinel file /var/log/openclaw/setup-complete via SSM.
+ * Returns true if setup is complete, false if still in progress or unreachable.
+ */
+export async function checkSetupComplete(instanceId: string): Promise<boolean> {
+  const { SSMClient, SendCommandCommand, GetCommandInvocationCommand } = await import("@aws-sdk/client-ssm");
+
+  const ssmClient = new SSMClient({
+    region: process.env.AWS_REGION || "us-east-1",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+    },
+  });
+
+  try {
+    const sendResp = await ssmClient.send(
+      new SendCommandCommand({
+        InstanceIds: [instanceId],
+        DocumentName: "AWS-RunShellScript",
+        Parameters: {
+          commands: ["test -f /var/log/openclaw/setup-complete && echo SETUP_DONE || echo SETUP_PENDING"],
+        },
+        TimeoutSeconds: 10,
+      })
+    );
+
+    const commandId = sendResp.Command?.CommandId;
+    if (!commandId) return false;
+
+    // Poll for result (up to ~8 seconds)
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        const invocation = await ssmClient.send(
+          new GetCommandInvocationCommand({
+            CommandId: commandId,
+            InstanceId: instanceId,
+          })
+        );
+        if (invocation.Status === "Success") {
+          const output = (invocation.StandardOutputContent || "").trim();
+          return output === "SETUP_DONE";
+        }
+        if (invocation.Status === "Failed" || invocation.Status === "Cancelled" || invocation.Status === "TimedOut") {
+          return false;
+        }
+        // Still InProgress — keep polling
+      } catch {
+        // GetCommandInvocation may throw if not ready yet
+      }
+    }
+
+    return false; // Timed out waiting
+  } catch {
+    // SSM agent may not be ready yet — treat as not complete
+    return false;
   }
 }
 

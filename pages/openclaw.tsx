@@ -256,7 +256,7 @@ export default function OpenClawSetupPage() {
   const [isCreatingOpenAIKey, setIsCreatingOpenAIKey] = useState(false);
 
   const [instanceStatusPhase, setInstanceStatusPhase] = useState<
-    "launching" | "starting" | "checking" | "ready" | "error" | null
+    "launching" | "starting" | "checking" | "configuring" | "ready" | "error" | null
   >(null);
   const [instanceStatusMessage, setInstanceStatusMessage] = useState<string | null>(null);
 
@@ -2397,18 +2397,22 @@ export default function OpenClawSetupPage() {
                           ? "OpenClaw is running"
                           : instanceStatusPhase === "error"
                             ? "Something went wrong"
-                            : instanceStatusPhase === "checking"
-                              ? "Running status checks..."
-                              : instanceStatusPhase === "starting"
-                                ? "Starting up..."
-                                : "Launching instance..."}
+                            : instanceStatusPhase === "configuring"
+                              ? "Setting up OpenClaw..."
+                              : instanceStatusPhase === "checking"
+                                ? "Running status checks..."
+                                : instanceStatusPhase === "starting"
+                                  ? "Starting up..."
+                                  : "Launching instance..."}
                       </h1>
                       <p className="text-[var(--text-secondary)]">
                         {instanceStatusPhase === "ready"
                           ? "Your instance is live. You should receive a welcome message from your assistant soon as shown below : "
                           : instanceStatusPhase === "error"
                             ? instanceStatusMessage || "Please try again or contact support."
-                            : instanceStatusMessage || "This may take 1-2 minutes..."}
+                            : instanceStatusPhase === "configuring"
+                              ? "Installing packages and configuring your assistant. This may take 2-3 minutes..."
+                              : instanceStatusMessage || "This may take 1-2 minutes..."}
                       </p>
                       {instanceStatusPhase === "ready" && (
                         <div className="mt-6 border border-[var(--border)] rounded-lg p-6 bg-[var(--bg-card)]">
@@ -2426,7 +2430,7 @@ export default function OpenClawSetupPage() {
                     {instanceStatusPhase && instanceStatusPhase !== "ready" && instanceStatusPhase !== "error" && (
                       <div className="border border-[var(--border)] rounded-lg p-4 space-y-3">
                         <div className="flex items-center gap-3">
-                          <div className={`w-3 h-3 rounded-full ${instanceStatusPhase === "launching" || instanceStatusPhase === "starting" || instanceStatusPhase === "checking"
+                          <div className={`w-3 h-3 rounded-full ${instanceStatusPhase === "launching" || instanceStatusPhase === "starting" || instanceStatusPhase === "checking" || instanceStatusPhase === "configuring"
                             ? "bg-[var(--accent)]"
                             : "bg-[var(--border)]"
                             }`} />
@@ -2435,7 +2439,7 @@ export default function OpenClawSetupPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <div className={`w-3 h-3 rounded-full ${instanceStatusPhase === "starting" || instanceStatusPhase === "checking"
+                          <div className={`w-3 h-3 rounded-full ${instanceStatusPhase === "starting" || instanceStatusPhase === "checking" || instanceStatusPhase === "configuring"
                             ? "bg-[var(--accent)]"
                             : "bg-[var(--border)]"
                             }`} />
@@ -2444,12 +2448,21 @@ export default function OpenClawSetupPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <div className={`w-3 h-3 rounded-full ${instanceStatusPhase === "checking"
+                          <div className={`w-3 h-3 rounded-full ${instanceStatusPhase === "checking" || instanceStatusPhase === "configuring"
                             ? "bg-[var(--accent)]"
                             : "bg-[var(--border)]"
                             }`} />
                           <span className={`text-sm ${instanceStatusPhase === "checking" ? "text-[var(--accent)] font-medium" : "text-[var(--text-muted)]"}`}>
                             Running status checks
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${instanceStatusPhase === "configuring"
+                            ? "bg-[var(--accent)]"
+                            : "bg-[var(--border)]"
+                            }`} />
+                          <span className={`text-sm ${instanceStatusPhase === "configuring" ? "text-[var(--accent)] font-medium" : "text-[var(--text-muted)]"}`}>
+                            Configuring OpenClaw
                           </span>
                         </div>
                       </div>
@@ -2777,7 +2790,7 @@ export default function OpenClawSetupPage() {
                                       setIsUpdatingOpenclaw(false);
                                     }
                                   }}
-                                  disabled={isUpdatingOpenclaw || isCheckingVersions}
+                                  disabled={isUpdatingOpenclaw || isCheckingVersions || !openclawVersion?.updateAvailable}
                                   className="w-full py-2.5 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
                                 >
                                   {isUpdatingOpenclaw ? (
@@ -2868,7 +2881,7 @@ export default function OpenClawSetupPage() {
                                       setIsUpdatingSkill(false);
                                     }
                                   }}
-                                  disabled={isUpdatingSkill || isCheckingVersions}
+                                  disabled={isUpdatingSkill || isCheckingVersions || !skillVersion?.updateAvailable}
                                   className="w-full py-2.5 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
                                 >
                                   {isUpdatingSkill ? (
