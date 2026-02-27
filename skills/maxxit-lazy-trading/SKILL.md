@@ -926,6 +926,35 @@ Step 6 (if user wants TP/SL): POST /set-take-profit and/or POST /set-stop-loss
    → Use entryPrice from Step 5
    → For pairIndex, use the symbol id from Step 2 or call /positions
    → Use takeProfitPercent/stopLossPercent from Step 4
+
+Step 7: ASK — "Would you like to list this trade as alpha on the marketplace?"
+   → If user says NO → Done.
+   → If user says YES → Continue to Step 8.
+   → Also ask: "What price in USDC would you like to charge?" (e.g. 5 USDC)
+
+Step 8: POST /alpha/generate-proof
+   → Body: { "tradeId": "{tradeId from Step 5}", "autoProcess": false }
+   → tradeId comes from the /open-position response
+   → autoProcess: false queues the proof for the worker (~3-5 min)
+   → SAVE: proofId from the response
+
+Step 9: Wait for proof verification
+   → If autoProcess was true and response has status: "VERIFIED" → go to Step 10
+   → If autoProcess was false or status is still PENDING/PROVING:
+     Poll GET /alpha/proof-status?proofId={proofId} every 10 seconds
+     → Wait until status === "VERIFIED"
+     → If status === "FAILED" → inform the user and stop
+
+Step 10: POST /alpha/flag
+   → Body: {
+       "proofId": "{proofId from Step 8}",
+       "priceUsdc": {price from Step 7},
+       "token": "{market from Step 5, e.g. ETH}",
+       "side": "{side from Step 5, e.g. long}",
+       "leverage": {leverage from Step 5}
+     }
+   → Show user the response: listingId, tradeId, proofMetrics
+   → "Your trade is now listed as alpha! Listing ID: {listingId}"
 ```
 
 ### Workflow 2: Closing an Existing Position
@@ -1398,10 +1427,10 @@ Trustless ZK-verified trading signals. **Producers** generate proofs and flag po
 | `/alpha/pay/:listingId` | POST | **Payment helper**: sends USDC from your agent on-chain. Returns `txHash`. Call between Phase 1 and Phase 2. |
 | `/alpha/verify` | POST | Body: `{ listingId, content }`. Verify purchased content hash matches commitment. |
 | `/alpha/execute` | POST | Body: `{ alphaContent, agentAddress, userAddress, collateral, leverageOverride? }`. Execute alpha trade on Ostium. |
-| `/alpha/generate-proof` | POST | (Producer) Queue ZK proof generation. Body: `{ autoProcess?: boolean }`. Use `autoProcess: false` in production worker flow. |
+| `/alpha/generate-proof` | POST | (Producer) Generate ZK proof of trading performance. Body: `{ tradeId?: string, autoProcess?: boolean }`. Pass `tradeId` to feature a specific trade; omit for most recent open trade. `autoProcess: false` processesed by the worker (~3-5 min). |
 | `/alpha/proof-status` | GET | (Producer) Check proof processing status. Query: `proofId`. |
 | `/alpha/my-proof` | GET | (Producer) Latest proof status and metrics. |
-| `/alpha/flag` | POST | (Producer) Body: `{ positionId, priceUsdc, leverage? }`. Flag open position as alpha. |
+| `/alpha/flag` | POST | (Producer) Body: `{ proofId, priceUsdc, token, side, leverage? }`. List verified trade as alpha using the proof ID from generate-proof. |
 
 ### How x402 Purchase Works (3 API Calls)
 
@@ -1500,34 +1529,58 @@ Step 6: POST /alpha/execute
 
 ### Workflow: Producing Alpha
 
-1. `POST /alpha/generate-proof` with `{ autoProcess: false }` → queues proof and returns `proofId`  
-   Example:
-   ```bash
-   curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/generate-proof" \
-     -H "X-API-KEY: ${MAXXIT_API_KEY}" \
-     -H "Content-Type: application/json" \
-     -d '{"autoProcess": false}'
-   ```
-2. Poll `GET /alpha/proof-status?proofId=...` until status is `VERIFIED` (worker processes the queue)  
-   Example:
-   ```bash
-   curl -G "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/proof-status" \
-     -H "X-API-KEY: ${MAXXIT_API_KEY}" \
-     --data-urlencode "proofId=<proof_id>"
-   ```  
-   Optional polling loop:
-   ```bash
-   PROOF_ID="<proof_id>"
-   while true; do
-     curl -s -G "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/proof-status" \
-       -H "X-API-KEY: ${MAXXIT_API_KEY}" \
-       --data-urlencode "proofId=${PROOF_ID}"
-     echo ""
-     sleep 5
-   done
-   ```
-3. Open position via `/open-position`; get position id from `/positions`  
-4. `POST /alpha/flag` with positionId and priceUsdc  
+> **⚠️ This is the standalone producer workflow.** If the user just opened a position via Workflow 1, Steps 7-10 already handle alpha listing — you don't need to repeat this. Use this workflow only when the user wants to list an existing open position.
+
+```
+Step 1: POST /positions (address = user_wallet from /club-details)
+   → List open positions
+   → Let user pick which trade to feature
+   → SAVE: tradeId, market (token), side, leverage from the chosen position
+
+Step 2: POST /alpha/generate-proof
+   → Body: { "tradeId": "{tradeId from Step 1}", "autoProcess": true }
+   → SAVE: proofId from response
+   → If status is already VERIFIED → go to Step 4
+
+Step 3: Poll GET /alpha/proof-status?proofId={proofId}
+   → Wait until status === "VERIFIED"
+   → Poll every 10 seconds (max ~5 min)
+   → If FAILED → inform user and stop
+
+Step 4: ASK user for price
+   → "What USDC price would you like to charge for this alpha?"
+
+Step 5: POST /alpha/flag
+   → Body: {
+       "proofId": "{proofId from Step 2}",
+       "priceUsdc": {price from Step 4},
+       "token": "{market from Step 1}",
+       "side": "{side from Step 1}",
+       "leverage": {leverage from Step 1}
+     }
+   → Show user: listingId, proofMetrics (tradeCount, winRate, totalPnl)
+   → "Your trade is listed as alpha! Listing ID: {listingId}"
+```
+
+**Example curl commands:**
+```bash
+# Generate proof with specific tradeId
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/generate-proof" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"tradeId": "1612509", "autoProcess": false}'
+
+# Check proof status
+curl -G "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/proof-status" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  --data-urlencode "proofId=<proof_id>"
+
+# Flag as alpha using proofId
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/flag" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"proofId": "<proof_id>", "priceUsdc": 5, "token": "ETH", "side": "long", "leverage": 6}'
+```
 
 ---
 
@@ -1537,9 +1590,6 @@ Step 6: POST /alpha/execute
 |----------|-------------|---------|
 | `MAXXIT_API_KEY` | Your lazy trading API key (starts with `lt_`) | `lt_abc123...` |
 | `MAXXIT_API_URL` | Maxxit API base URL | `https://maxxit.ai` |
-| `BREVIS_PROVER_URL` | Brevis prover service endpoint (empty = simulation mode, uses subgraph data) | `localhost:33247` |
-| `BREVIS_GATEWAY_URL` | Brevis gateway URL | `appsdkv3.brevis.network:443` |
-| `BREVIS_APP_CONTRACT` | BrevisApp contract address on Arbitrum Sepolia (optional) | `0x...` |
 
 ## Error Handling
 
