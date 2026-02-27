@@ -62,6 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             mode: 'payment',
             success_url: successUrl,
             cancel_url: cancelUrl,
+            allow_promotion_codes: true,
             metadata: {
                 userWallet,
                 tierName,
