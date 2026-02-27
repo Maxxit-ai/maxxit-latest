@@ -8,7 +8,7 @@ const prismaClient = prisma as any;
 
 const POLL_INTERVAL_MS = 15_000;
 const MAX_BATCH_SIZE = 5;
-const STALE_PROVING_MINUTES = 10;
+const STALE_PROVING_MINUTES = 35;
 const SUPPORTED_STATUSES = ["PENDING", "PROVING"] as const;
 
 let isShuttingDown = false;
