@@ -78,10 +78,7 @@ const STEPS = [
   { key: "plan", label: "Plan" },
   { key: "model", label: "Model" },
   { key: "telegram", label: "Telegram" },
-  { key: "openai", label: "OpenAI" },
-  { key: "ostium", label: "Ostium" },
-  { key: "aster", label: "Aster" },
-  { key: "apikey", label: "API Key" },
+  { key: "trading", label: "Trading" },
   { key: "activate", label: "Launch" },
 ] as const;
 
@@ -231,6 +228,7 @@ export default function OpenClawSetupPage() {
   const [lazyTradingSetupComplete, setLazyTradingSetupComplete] = useState(false);
   const [isCheckingLazyTradingSetup, setIsCheckingLazyTradingSetup] = useState(false);
   const [maxxitApiKey, setMaxxitApiKey] = useState<string | null>(null);
+  const [maxxitApiKeyPrefix, setMaxxitApiKeyPrefix] = useState<string | null>(null);
   const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
 
   const [skillSubStep, setSkillSubStep] = useState<SkillSubStep>('idle');
@@ -240,6 +238,7 @@ export default function OpenClawSetupPage() {
   const [allowanceComplete, setAllowanceComplete] = useState(false);
   const [skillTxHash, setSkillTxHash] = useState<string | null>(null);
   const [skillCurrentAction, setSkillCurrentAction] = useState("");
+  const [agentSetupSource, setAgentSetupSource] = useState<"ostium" | "aster" | null>(null);
   const [enablingTrading, setEnablingTrading] = useState(false);
   const [hasDeployment, setHasDeployment] = useState(false);
 
@@ -322,8 +321,8 @@ export default function OpenClawSetupPage() {
   const [eigenVerifyError, setEigenVerifyError] = useState<string | null>(null);
   const [showEigenSection, setShowEigenSection] = useState(false);
   const currentStepKey = STEPS[currentStepIndex]?.key;
-  const requiresApiKeyGeneration = lazyTradingSetupComplete || skillSubStep === "complete" || asterEnabled;
-  const canContinueFromApiKeyStep = !!maxxitApiKey || !requiresApiKeyGeneration;
+  const canContinueFromPlanStep =
+    openaiKeyStatus === "created" && (!!maxxitApiKey || !!maxxitApiKeyPrefix);
 
   // Lock body scroll when the EigenAI verification modal is open
   useEffect(() => {
@@ -484,10 +483,7 @@ export default function OpenClawSetupPage() {
       }
 
       if (inst.status === "active") {
-        markComplete("ostium");
-        markComplete("aster");
-        markComplete("apikey");
-        markComplete("openai");
+        markComplete("trading");
         markComplete("telegram");
         markComplete("activate");
         setActivated(true);
@@ -497,23 +493,26 @@ export default function OpenClawSetupPage() {
       }
 
       if (inst.openai?.projectId) {
-        markComplete("openai");
         setOpenaiKeyStatus("created");
         setOpenaiKeyPrefix(inst.openai.serviceAccountId ? `sk-svcacct-${inst.openai.serviceAccountId.substring(0, 8)}...` : null);
         setOpenaiKeyCreatedAt(inst.openai.keyCreatedAt || null);
       }
 
+      // Decide which step to show next based on existing progress
       if (inst.status === "active") {
-        setCurrentStepIndex(7);
-      } else if (inst.telegram.linked && inst.telegram.userId && inst.openai?.projectId) {
+        // Instance already launched -> jump to Launch step (index 4)
         setCurrentStepIndex(4);
       } else if (inst.telegram.linked && inst.telegram.userId) {
+        // Telegram linked & verified -> go to Trading step (index 3)
         setCurrentStepIndex(3);
       } else if (inst.telegram.username) {
+        // Bot linked but not verified yet -> stay on Telegram step (index 2)
         setCurrentStepIndex(2);
       } else if (inst.model) {
+        // Model chosen but Telegram not linked yet -> go to Telegram (index 2)
         setCurrentStepIndex(2);
       } else {
+        // Only plan chosen -> go to Model (index 1)
         setCurrentStepIndex(1);
       }
 
@@ -614,8 +613,14 @@ export default function OpenClawSetupPage() {
               telegramVerified: false,
               telegramUsername: data.instance.telegramUsername ?? null,
             });
+
+            // After subscription, automatically create required API keys
+            await handleCreateOpenAIKey();
+            if (!maxxitApiKey) {
+              await generateMaxxitApiKey();
+            }
+
             markComplete('plan');
-            setCurrentStepIndex(1);
           } else {
             setErrorMessage(data.error || 'Failed to create instance');
           }
@@ -626,7 +631,7 @@ export default function OpenClawSetupPage() {
         }
       })();
     }
-  }, [pendingPaymentPlan, walletAddress, isLoading, markComplete]);
+  }, [pendingPaymentPlan, walletAddress, isLoading, markComplete, maxxitApiKey]);
 
   // Check if Aster is configured (agent wallet exists + aster_enabled)
   useEffect(() => {
@@ -971,8 +976,13 @@ export default function OpenClawSetupPage() {
         }
       }
 
+      // After subscription, automatically create required API keys
+      await handleCreateOpenAIKey();
+      if (!maxxitApiKey) {
+        await generateMaxxitApiKey();
+      }
+
       markComplete("plan");
-      goNext();
     } catch (error) {
       setErrorMessage((error as Error).message);
     } finally {
@@ -1067,7 +1077,6 @@ export default function OpenClawSetupPage() {
         setOpenaiKeyStatus("created");
         setOpenaiKeyPrefix(response.keyPrefix || null);
         setOpenaiKeyCreatedAt(response.createdAt || null);
-        markComplete("openai");
 
         if (instanceData) {
           setInstanceData({
@@ -1081,13 +1090,44 @@ export default function OpenClawSetupPage() {
     } catch (error: any) {
       if (error.message.includes('already exists') || error.message.includes('409')) {
         setOpenaiKeyStatus("created");
-        markComplete("openai");
       } else {
         setOpenaiKeyStatus("not_created");
         setErrorMessage((error as Error).message);
       }
     } finally {
       setIsCreatingOpenAIKey(false);
+    }
+  };
+
+  const generateMaxxitApiKey = async () => {
+    if (!walletAddress || maxxitApiKey) return;
+    setIsGeneratingApiKey(true);
+    setErrorMessage("");
+    try {
+      const res = await fetch("/api/lazy-trading/api-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userWallet: walletAddress }),
+      });
+      const data = await res.json();
+      if (data.success && data.apiKey?.value) {
+        setMaxxitApiKey(data.apiKey.value);
+        setMaxxitApiKeyPrefix(data.apiKey.prefix || null);
+        await fetch("/api/openclaw/store-skill-key", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userWallet: walletAddress,
+            apiKey: data.apiKey.value,
+          }),
+        });
+      } else {
+        setErrorMessage(data.message || "Failed to generate API key");
+      }
+    } catch {
+      setErrorMessage("Failed to generate API key");
+    } finally {
+      setIsGeneratingApiKey(false);
     }
   };
 
@@ -1167,6 +1207,24 @@ export default function OpenClawSetupPage() {
     })();
   }, [lazyTradingEnabled, walletAddress, lazyTradingSetupComplete, maxxitApiKey]);
 
+  // Fetch existing Maxxit API key prefix (if any) when user is authenticated
+  useEffect(() => {
+    if (!walletAddress || !authenticated) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/lazy-trading/api-key?userWallet=${walletAddress}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && data.apiKey?.prefix) {
+          setMaxxitApiKeyPrefix(data.apiKey.prefix);
+        }
+      } catch {
+        // Ignore fetch errors here; UI will fall back to "waiting" or creation state
+      }
+    })();
+  }, [walletAddress, authenticated]);
+
   if (initialLoading) {
     return (
       <div className="min-h-screen bg-[var(--bg-deep)]">
@@ -1241,20 +1299,214 @@ export default function OpenClawSetupPage() {
             {currentStepKey === "plan" && (
               <div className="space-y-6">
                 {completedSteps.has("plan") && instanceData ? (
-                  <div className="border border-[var(--accent)] bg-[var(--accent)]/5 rounded-lg p-6 text-center space-y-3">
-                    <Check className="w-10 h-10 mx-auto text-[var(--accent)]" />
-                    <p className="font-bold text-lg">
-                      Plan selected:{" "}
-                      <span className="text-[var(--accent)]">
-                        {PLAN_OPTIONS.find((p) => p.id === selectedPlan)?.name}
-                      </span>
-                    </p>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      Instance already created.
-                    </p>
+                  <div className="border border-[var(--accent)] bg-[var(--accent)]/5 rounded-lg p-6 text-center space-y-4">
+                    <div className="space-y-3">
+                      <Check className="w-10 h-10 mx-auto text-[var(--accent)]" />
+                      <p className="font-bold text-lg">
+                        Plan selected:{" "}
+                        <span className="text-[var(--accent)]">
+                          {PLAN_OPTIONS.find((p) => p.id === selectedPlan)?.name}
+                        </span>
+                      </p>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Instance created and keys initialized for your wallet.
+                      </p>
+                    </div>
+
+                    <div className="border border-[var(--border)] bg-[var(--bg-card)] rounded-lg p-5 sm:p-6 text-left space-y-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--text-secondary)]">
+                            Your access keys
+                          </p>
+                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                            These credentials are generated just for you and wired into your OpenClaw instance.
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-deep)]/60 px-2.5 py-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                          <Shield className="w-3 h-3 text-[var(--accent)]" />
+                          Secure
+                        </span>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {/* OpenAI key showcase – mirrors previous step UI */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+                              OpenAI API Key
+                            </p>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${openaiKeyStatus === "created"
+                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                                  : openaiKeyStatus === "creating" || isCreatingOpenAIKey
+                                    ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                                    : "border-[var(--border)] bg-[var(--bg-deep)]/60 text-[var(--text-muted)]"
+                                }`}
+                            >
+                              {openaiKeyStatus === "created"
+                                ? "Ready"
+                                : openaiKeyStatus === "creating" || isCreatingOpenAIKey
+                                  ? "Creating…"
+                                  : "Pending"}
+                            </span>
+                          </div>
+
+                          {openaiKeyStatus === "created" && openaiKeyPrefix ? (
+                            <div className="space-y-3">
+                              <div className="border border-[var(--accent)] bg-[var(--accent)]/5 rounded-lg p-3 sm:p-4 text-center space-y-2">
+                                <Check className="w-6 h-6 mx-auto text-[var(--accent)]" />
+                                <p className="font-semibold text-sm sm:text-base">
+                                  OpenAI API Key Created
+                                </p>
+                                <div className="bg-[var(--bg-deep)]/40 rounded-lg p-3 space-y-1">
+                                  <div className="flex justify-between text-[10px] sm:text-xs">
+                                    <span className="text-[var(--text-muted)]">Key Prefix</span>
+                                    <span className="font-mono font-semibold">
+                                      {openaiKeyPrefix}
+                                    </span>
+                                  </div>
+                                  {openaiKeyCreatedAt && (
+                                    <div className="flex justify-between text-[10px] sm:text-xs">
+                                      <span className="text-[var(--text-muted)]">Created</span>
+                                      <span className="font-semibold">
+                                        {new Date(openaiKeyCreatedAt).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <ul className="text-[10px] sm:text-xs text-[var(--text-secondary)] space-y-1">
+                                <li className="flex items-start gap-1.5">
+                                  <span className="text-[var(--accent)]">•</span>
+                                  <span>Your personal key enables per-user usage tracking.</span>
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                  <span className="text-[var(--accent)]">•</span>
+                                  <span>LLM costs are deducted from your plan&apos;s monthly budget.</span>
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                  <span className="text-[var(--accent)]">•</span>
+                                  <span>Isolated from other users for fair usage.</span>
+                                </li>
+                              </ul>
+                            </div>
+                          ) : openaiKeyStatus === "creating" || isCreatingOpenAIKey ? (
+                            <div className="border border-[var(--accent)]/60 bg-[var(--accent)]/5 rounded-lg p-3 flex items-center gap-3">
+                              <Loader2 className="w-4 h-4 text-[var(--accent)] animate-spin" />
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-semibold">Creating OpenAI project…</p>
+                                <p className="text-[10px] text-[var(--text-secondary)]">
+                                  Setting up your dedicated project and API key.
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-red-400">
+                              Failed to create OpenAI key. Please retry your subscription flow or contact support.
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Maxxit API key showcase – mirrors previous step UI */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+                              Maxxit API Key
+                            </p>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${maxxitApiKey || maxxitApiKeyPrefix
+                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                                  : isGeneratingApiKey
+                                    ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                                    : "border-[var(--border)] bg-[var(--bg-deep)]/60 text-[var(--text-muted)]"
+                                }`}
+                            >
+                              {maxxitApiKey || maxxitApiKeyPrefix
+                                ? "Ready"
+                                : isGeneratingApiKey
+                                  ? "Generating…"
+                                  : "Pending"}
+                            </span>
+                          </div>
+
+                          {maxxitApiKey || maxxitApiKeyPrefix ? (
+                            <div className="space-y-3">
+                              <div className="border border-[var(--accent)] bg-[var(--accent)]/5 rounded-lg p-3 sm:p-4 text-center space-y-2">
+                                <Check className="w-6 h-6 mx-auto text-[var(--accent)]" />
+                                <p className="font-semibold text-sm sm:text-base">
+                                  Maxxit API Key Generated
+                                </p>
+                                <div className="bg-[var(--bg-deep)]/40 rounded-lg p-3 space-y-1">
+                                  <div className="flex justify-between text-[10px] sm:text-xs">
+                                    <span className="text-[var(--text-muted)]">Key Preview</span>
+                                    <span className="font-mono font-semibold">
+                                      {maxxitApiKeyPrefix
+                                        ? `${maxxitApiKeyPrefix}...`
+                                        : maxxitApiKey
+                                          ? `${maxxitApiKey.slice(0, 12)}...`
+                                          : ""}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between text-[10px] sm:text-xs">
+                                    <span className="text-[var(--text-muted)]">Scope</span>
+                                    <span className="font-semibold">
+                                      Lazy Trading skill
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <ul className="text-[10px] sm:text-xs text-[var(--text-secondary)] space-y-1">
+                                <li className="flex items-start gap-1.5">
+                                  <span className="text-[var(--accent)]">•</span>
+                                  <span>Lets your Maxxit Lazy Trading agent execute trades on your behalf.</span>
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                  <span className="text-[var(--accent)]">•</span>
+                                  <span>Stored in secure infrastructure and never exposed in plaintext to bots.</span>
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                  <span className="text-[var(--accent)]">•</span>
+                                  <span>Tied to your wallet so you stay in full control.</span>
+                                </li>
+                              </ul>
+                            </div>
+                          ) : isGeneratingApiKey ? (
+                            <div className="border border-[var(--accent)]/60 bg-[var(--accent)]/5 rounded-lg p-3 flex items-center gap-3">
+                              <Loader2 className="w-4 h-4 text-[var(--accent)] animate-spin" />
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-semibold">Generating Maxxit API key…</p>
+                                <p className="text-[10px] text-[var(--text-secondary)]">
+                                  Preparing secure credentials for your trading agent.
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {errorMessage && errorMessage.toLowerCase().includes("generate api key") ? (
+                                <p className="text-[10px] text-red-400">
+                                  Failed to generate Maxxit API key. Please retry your subscription flow or contact support.
+                                </p>
+                              ) : (
+                                <p className="text-[10px] text-[var(--text-secondary)]">
+                                  Waiting for Maxxit API key to be created…
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-[var(--text-muted)]">
+                        You don&apos;t need to copy these keys manually — they are stored in secure
+                        infrastructure and wired into your OpenClaw instance.
+                      </p>
+                    </div>
+
                     <button
                       onClick={goNext}
-                      className="mt-4 px-8 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center gap-2 mx-auto hover:opacity-90 transition-opacity"
+                      disabled={!canContinueFromPlanStep}
+                      className="mt-2 px-8 py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center gap-2 mx-auto hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Continue
                       <ChevronRight className="w-4 h-4" />
@@ -1459,7 +1711,8 @@ export default function OpenClawSetupPage() {
                           This links your Telegram ID for secure access.
                         </p>
                         <a
-                          href={`tg://resolve?domain=${botUsername}`}
+                          href={`https://t.me/${botUsername}`}
+                          target="_blank"
                           className="inline-flex items-center gap-2 px-4 py-2 bg-[#0088cc] text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
                         >
                           <ExternalLink className="w-4 h-4" />
@@ -1489,7 +1742,7 @@ export default function OpenClawSetupPage() {
                           <span>
                             Open{" "}
                             <a
-                              href="tg://resolve?domain=BotFather"
+                              href="https://t.me/BotFather"
                               className="text-[#0088cc] underline"
                             >
                               @BotFather
@@ -1570,163 +1823,8 @@ export default function OpenClawSetupPage() {
               </div>
             )}
 
-            {/* Step 4: OpenAI Key */}
-            {currentStepKey === "openai" && (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <h1 className="font-display text-2xl mb-2">
-                    Create OpenAI API Key
-                  </h1>
-                  <p className="text-[var(--text-secondary)]">
-                    Generate a personal OpenAI API key for usage tracking and budget management.
-                  </p>
-                </div>
-
-                {openaiKeyStatus === "created" && openaiKeyPrefix ? (
-                  <div className="space-y-4">
-                    {/* Success State */}
-                    <div className="border border-[var(--accent)] bg-[var(--accent)]/5 rounded-lg p-6 text-center space-y-3">
-                      <Check className="w-10 h-10 mx-auto text-[var(--accent)]" />
-                      <p className="font-bold text-lg">
-                        OpenAI API Key Created
-                      </p>
-                      <div className="bg-[var(--bg-card)] rounded-lg p-4 space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-[var(--text-muted)]">Key Prefix</span>
-                          <span className="font-mono font-semibold">{openaiKeyPrefix}</span>
-                        </div>
-                        {openaiKeyCreatedAt && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-[var(--text-muted)]">Created</span>
-                            <span className="font-semibold">
-                              {new Date(openaiKeyCreatedAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="border border-[var(--border)] rounded-lg p-4 space-y-2">
-                      <p className="text-sm text-[var(--text-secondary)]">
-                        <strong>What's next?</strong>
-                      </p>
-                      <ul className="text-sm text-[var(--text-secondary)] space-y-1">
-                        <li className="flex items-start gap-2">
-                          <span className="text-[var(--accent)]">•</span>
-                          <span>Your personal API key enables usage tracking</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-[var(--accent)]">•</span>
-                          <span>LLM costs are deducted from your plan's monthly budget</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-[var(--accent)]">•</span>
-                          <span>You can top up credits anytime if you need more</span>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                ) : openaiKeyStatus === "creating" || isCreatingOpenAIKey ? (
-                  <div className="space-y-4">
-                    {/* Creating State */}
-                    <div className="border border-[var(--accent)] bg-[var(--accent)]/5 rounded-lg p-6 text-center space-y-3">
-                      <Loader2 className="w-10 h-10 mx-auto text-[var(--accent)] animate-spin" />
-                      <p className="font-bold text-lg">
-                        Creating OpenAI Project
-                      </p>
-                      <p className="text-sm text-[var(--text-secondary)]">
-                        Setting up your personal project and generating API key...
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Not Created State */}
-                    <div className="border border-[var(--border)] rounded-lg p-5 space-y-4">
-                      <div className="flex items-start gap-3">
-                        <Shield className="w-5 h-5 text-[var(--accent)] mt-0.5" />
-                        <div className="flex-1">
-                          <p className="font-semibold mb-1">Personal OpenAI Key</p>
-                          <p className="text-sm text-[var(--text-secondary)]">
-                            We'll create a dedicated OpenAI project and service account for your instance.
-                            This allows us to track usage and enforce plan-based limits.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="border-t border-[var(--border)] pt-4">
-                        <p className="text-sm font-semibold mb-2 text-[var(--text-secondary)]">Benefits</p>
-                        <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
-                          <li className="flex items-start gap-2">
-                            <Check className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
-                            <span>Accurate usage tracking per model</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <Check className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
-                            <span>Monthly LLM budget included in your plan</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <Check className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
-                            <span>Easy top-up options when you need more</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <Check className="w-4 h-4 text-[var(--accent)] shrink-0 mt-0.5" />
-                            <span>Isolated from other users (fair usage)</span>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={handleCreateOpenAIKey}
-                      disabled={isCreatingOpenAIKey}
-                      className="w-full py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-                    >
-                      {isCreatingOpenAIKey ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          Creating Key...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-5 h-5" />
-                          Create OpenAI API Key
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={goBack}
-                    className="px-6 py-4 border border-[var(--border)] rounded-lg font-bold flex items-center gap-2 hover:border-[var(--text-muted)] transition-colors"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back
-                  </button>
-                  <button
-                    onClick={() => {
-                      markComplete("openai");
-                      goNext();
-                    }}
-                    disabled={openaiKeyStatus !== "created"}
-                    className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-                  >
-                    Continue
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-                {errorMessage && (
-                  <p className="text-red-500 text-sm text-center">
-                    {errorMessage}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Step 5: Ostium */}
-            {currentStepKey === "ostium" && (
+            {/* Step 4: Trading (Ostium + Aster) */}
+            {currentStepKey === "trading" && (
               <div className="space-y-6">
                 <div className="text-center">
                   <h1 className="font-display text-2xl mb-2">
@@ -1763,25 +1861,30 @@ export default function OpenClawSetupPage() {
                         >
                           Enable Skill
                         </button>
-                      ) : maxxitApiKey ? (
-                        /* Final state — API key generated, skill ready */
+                      ) : (lazyTradingSetupComplete || hasDeployment) ? (
+                        /* Final state — lazy trading fully set up */
                         <div className="space-y-3">
                           <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
                             <p className="text-sm text-green-400 mb-2">
-                              <strong>API Key Generated!</strong>
+                              <strong>Lazy Trading Ready ✓</strong>
                             </p>
-                            <code className="text-xs bg-[var(--bg-card)] px-2 py-1 rounded font-mono break-all">
-                              {maxxitApiKey}
-                            </code>
+                            {maxxitApiKey && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-[var(--text-muted)]">Maxxit API Key (preview)</p>
+                                <code className="text-xs bg-[var(--bg-card)] px-2 py-1 rounded font-mono break-all">
+                                  {`${maxxitApiKey.slice(0, 12)}...`}
+                                </code>
+                              </div>
+                            )}
                             <p className="text-xs text-[var(--text-muted)] mt-2">
-                              This key will be securely configured in your OpenClaw instance.
+                              Your trading agent is deployed and ready to execute trades on Ostium.
                             </p>
                           </div>
                           <button
                             onClick={() => {
                               setLazyTradingEnabled(false);
-                              setMaxxitApiKey(null);
                               setSkillSubStep('idle');
+                              setLazyTradingSetupComplete(false);
                               setTradingAgentId(null);
                               setOstiumAgentAddress(null);
                               setDelegationComplete(false);
@@ -1790,7 +1893,7 @@ export default function OpenClawSetupPage() {
                             }}
                             className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                           >
-                            Remove Skill
+                            Reset Lazy Trading
                           </button>
                         </div>
                       ) : skillSubStep === 'idle' || skillSubStep === 'creating-agent' ? (
@@ -1800,11 +1903,14 @@ export default function OpenClawSetupPage() {
                             We&apos;ll create a dedicated trading agent and set up on-chain permissions.
                           </p>
                           <button
-                            onClick={handleSetupTradingAgent}
+                            onClick={() => {
+                              setAgentSetupSource("ostium");
+                              handleSetupTradingAgent();
+                            }}
                             disabled={skillSubStep === 'creating-agent'}
                             className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
                           >
-                            {skillSubStep === 'creating-agent' ? (
+                            {skillSubStep === 'creating-agent' && agentSetupSource === "ostium" ? (
                               <><Loader2 className="w-5 h-5 animate-spin" /> Creating Agent...</>
                             ) : (
                               <><Zap className="w-4 h-4" /> Setup Trading Agent</>
@@ -1984,13 +2090,15 @@ export default function OpenClawSetupPage() {
                           <Loader2 className="w-5 h-5 animate-spin" />
                           <span>Creating deployment...</span>
                         </div>
-                      ) : skillSubStep === 'complete' || lazyTradingSetupComplete ? (
+                      ) : lazyTradingSetupComplete ? (
                         /* Sub-step 4: Complete */
                         <div className="space-y-3">
                           <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4 text-center">
                             <Check className="w-6 h-6 text-green-400 mx-auto mb-1" />
                             <p className="font-bold text-green-400">Trading Setup Complete</p>
-                            <p className="text-xs text-[var(--text-secondary)] mt-1">Your Ostium 1-click trading agent is ready. Continue to the next step.</p>
+                            <p className="text-xs text-[var(--text-secondary)] mt-1">
+                              Your Ostium 1-click trading agent is ready. Continue to the next step.
+                            </p>
                           </div>
                           <button
                             onClick={() => {
@@ -2008,6 +2116,187 @@ export default function OpenClawSetupPage() {
                   </div>
                 </div>
 
+                {/* Aster DEX (Optional) */}
+                <div className={`border rounded-lg p-5 transition-all ${asterEnabled
+                  ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                  : "border-[var(--border)]"
+                  }`}>
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl">🌟</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-baseline gap-2">
+                          <h3 className="font-bold">Aster DEX (BNB Chain)</h3>
+                          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                            Optional
+                          </span>
+                        </div>
+                        {asterEnabled && (
+                          <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                            Enabled
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[var(--text-secondary)] mb-4">
+                        Authorize your agent wallet to also trade on Aster DEX (BNB Chain).
+                      </p>
+
+                      {!ostiumAgentAddress ? (
+                        <div className="space-y-3">
+                          <p className="text-xs text-[var(--text-muted)]">
+                            You need a trading agent wallet before enabling Aster.
+                          </p>
+                          <button
+                            onClick={() => {
+                              setAgentSetupSource("aster");
+                              handleSetupTradingAgent();
+                            }}
+                            disabled={skillSubStep === 'creating-agent'}
+                            className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                          >
+                            {skillSubStep === 'creating-agent' && agentSetupSource === "aster" ? (
+                              <><Loader2 className="w-5 h-5 animate-spin" /> Creating Agent...</>
+                            ) : (
+                              <><Zap className="w-4 h-4" /> Setup Trading Agent</>
+                            )}
+                          </button>
+                        </div>
+                      ) : asterEnabled ? (
+                        <div className="space-y-3">
+                          <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
+                            <p className="text-sm text-green-400 mb-1">
+                              <strong>Aster DEX Enabled ✓</strong>
+                            </p>
+                            <p className="text-xs text-[var(--text-muted)]">
+                              Your agent wallet{" "}
+                              <code className="bg-[var(--bg-deep)] px-1.5 py-0.5 rounded text-xs">
+                                {ostiumAgentAddress}
+                              </code>{" "}
+                              is authorized for Aster trading.
+                            </p>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              setIsSavingAsterConfig(true);
+                              try {
+                                const res = await fetch("/api/lazy-trading/save-aster-credentials", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ userWallet: walletAddress, enabled: false }),
+                                });
+                                const data = await res.json();
+                                if (data.success) setAsterEnabled(false);
+                              } catch {
+                              } finally {
+                                setIsSavingAsterConfig(false);
+                              }
+                            }}
+                            className="text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                          >
+                            Disable Aster
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="bg-[var(--bg-deep)] border border-[var(--border)] rounded-lg p-3">
+                            <p className="text-xs text-[var(--text-muted)] mb-1">Your Agent Address</p>
+                            <p className="text-sm font-mono break-all">{ostiumAgentAddress}</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium">To enable Aster trading:</p>
+                            <ol className="text-sm text-[var(--text-secondary)] list-decimal list-inside space-y-1">
+                              <li>Go to Aster&apos;s API Wallet page</li>
+                              <li>Click &quot;Authorize new API wallet&quot;</li>
+                              <li>Paste your above given agent address as the &quot;API wallet address&quot;</li>
+                              <li>
+                                Select API options: <strong>Read</strong>, <strong>Perps trading</strong>, and{" "}
+                                <strong>Spot trading</strong>
+                              </li>
+                              <li>Click &quot;Authorize&quot; to grant those permissions</li>
+                              <li>Come back here and click &quot;Enable Aster&quot;</li>
+                            </ol>
+                          </div>
+
+                          <button
+                            onClick={() => setAsterShowGuide(!asterShowGuide)}
+                            className="text-xs text-[var(--accent)] hover:underline flex items-center gap-1"
+                          >
+                            {asterShowGuide ? "Hide" : "Show"} visual guide ▾
+                          </button>
+
+                          {asterShowGuide && (
+                            <div className="space-y-3">
+                              <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                                <img
+                                  src="/aster-finance/aster-wallet-mainnet-api.png"
+                                  alt="Authorize API wallet on Aster mainnet with permissions selected"
+                                  className="w-full"
+                                />
+                                <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">
+                                  Step 1: Enter your agent address and select Read, Perps trading, and Spot trading
+                                </p>
+                              </div>
+                              <div className="rounded-lg overflow-hidden border border-[var(--border)]">
+                                <img
+                                  src="/aster-finance/aster-wallet-mainnet-api-2.png"
+                                  alt="Authorized API wallet listed on Aster mainnet"
+                                  className="w-full"
+                                />
+                                <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">
+                                  Step 2: Confirm your wallet appears with Read, Perp Trade, and Spot Trade permissions
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex gap-3">
+                            <a
+                              href="https://www.asterdex.com/en/api-wallet"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 py-2.5 text-center border border-[var(--border)] rounded-lg text-sm hover:border-[var(--accent)] transition-colors"
+                            >
+                              Open Aster API Wallet ↗
+                            </a>
+                            <button
+                              onClick={async () => {
+                                setIsSavingAsterConfig(true);
+                                setErrorMessage("");
+                                try {
+                                  const res = await fetch("/api/lazy-trading/save-aster-credentials", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ userWallet: walletAddress, enabled: true }),
+                                  });
+                                  const data = await res.json();
+                                  if (data.success) {
+                                    setAsterEnabled(true);
+                                  } else {
+                                    setErrorMessage(data.error || "Failed to enable Aster");
+                                  }
+                                } catch {
+                                  setErrorMessage("Failed to enable Aster");
+                                } finally {
+                                  setIsSavingAsterConfig(false);
+                                }
+                              }}
+                              disabled={isSavingAsterConfig}
+                              className="flex-1 py-2.5 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                            >
+                              {isSavingAsterConfig ? (
+                                <><Loader2 className="w-4 h-4 animate-spin" /> Enabling...</>
+                              ) : (
+                                "Enable Aster"
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-3">
                   <button
                     onClick={goBack}
@@ -2019,7 +2308,7 @@ export default function OpenClawSetupPage() {
                   <button
                     onClick={() => {
                       const isOstiumSetupDone =
-                        skillSubStep === 'complete' || lazyTradingSetupComplete || hasDeployment;
+                        lazyTradingSetupComplete || hasDeployment;
                       const shouldCreateDeployment =
                         lazyTradingEnabled &&
                         skillSubStep === 'agent-created' &&
@@ -2031,20 +2320,20 @@ export default function OpenClawSetupPage() {
                         handleCreateTradingDeployment();
                         return;
                       }
-                      if (lazyTradingEnabled && !isOstiumSetupDone) {
-                        setErrorMessage("Complete Ostium setup and create deployment before continuing.");
+                      if (!isOstiumSetupDone) {
+                        setErrorMessage("Complete Ostium trading setup before continuing.");
                         return;
                       }
-                      markComplete("ostium");
+                      markComplete("trading");
                       goNext();
                     }}
                     className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                   >
-                    {(skillSubStep === 'complete' || lazyTradingSetupComplete || maxxitApiKey)
+                    {(lazyTradingSetupComplete || hasDeployment)
                       ? "Continue"
                       : lazyTradingEnabled
-                        ? "Create Deployment & Continue"
-                        : "Skip & Continue"}
+                        ? "Create Deployment"
+                        : "Complete setup to continue"}
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -2056,8 +2345,8 @@ export default function OpenClawSetupPage() {
               </div>
             )}
 
-            {/* Step 6: Aster DEX */}
-            {currentStepKey === "aster" && (
+            {/* Aster UI is now embedded inside the Trading step above */}
+            {false && (
               <div className="space-y-6">
                 <div className="text-center">
                   <h1 className="font-display text-2xl mb-2">
@@ -2076,7 +2365,12 @@ export default function OpenClawSetupPage() {
                     <div className="text-3xl">🌟</div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold">Aster DEX (BNB Chain)</h3>
+                        <div className="flex items-baseline gap-2">
+                          <h3 className="font-bold">Aster DEX (BNB Chain)</h3>
+                          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                            Optional
+                          </span>
+                        </div>
                         {asterEnabled && (
                           <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
                             Enabled
@@ -2230,136 +2524,12 @@ export default function OpenClawSetupPage() {
                   </button>
                   <button
                     onClick={() => {
-                      markComplete("aster");
+                      markComplete("trading");
                       goNext();
                     }}
                     className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                   >
                     {asterEnabled ? "Continue" : "Skip & Continue"}
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-                {errorMessage && (
-                  <p className="text-red-500 text-sm text-center">
-                    {errorMessage}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Step 7: API Key */}
-            {currentStepKey === "apikey" && (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <h1 className="font-display text-2xl mb-2">
-                    Generate API Key
-                  </h1>
-                  <p className="text-[var(--text-secondary)]">
-                    Create an API key to connect the Lazy Trading skill to your OpenClaw instance.
-                  </p>
-                </div>
-
-                <div className={`border rounded-lg p-5 transition-all ${maxxitApiKey
-                  ? "border-[var(--accent)] bg-[var(--accent)]/5"
-                  : "border-[var(--border)]"
-                  }`}>
-                  <div className="flex items-start gap-4">
-                    <div className="text-3xl">🔑</div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold">Maxxit API Key</h3>
-                        {maxxitApiKey && (
-                          <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
-                            Generated
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-[var(--text-secondary)] mb-4">
-                        This key allows your OpenClaw instance to execute trades on your behalf.
-                      </p>
-
-                      {maxxitApiKey ? (
-                        <div className="space-y-3">
-                          <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
-                            <p className="text-sm text-green-400 mb-2">
-                              <strong>API Key Generated!</strong>
-                            </p>
-                            <code className="text-xs bg-[var(--bg-card)] px-2 py-1 rounded font-mono break-all">
-                              {maxxitApiKey}
-                            </code>
-                            <p className="text-xs text-[var(--text-muted)] mt-2">
-                              This key will be securely configured in your OpenClaw instance.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={async () => {
-                            setIsGeneratingApiKey(true);
-                            setErrorMessage("");
-                            try {
-                              const res = await fetch("/api/lazy-trading/api-key", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ userWallet: walletAddress }),
-                              });
-                              const data = await res.json();
-                              if (data.success && data.apiKey?.value) {
-                                setMaxxitApiKey(data.apiKey.value);
-                                await fetch("/api/openclaw/store-skill-key", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    userWallet: walletAddress,
-                                    apiKey: data.apiKey.value,
-                                  }),
-                                });
-                              } else {
-                                setErrorMessage(data.message || "Failed to generate API key");
-                              }
-                            } catch {
-                              setErrorMessage("Failed to generate API key");
-                            } finally {
-                              setIsGeneratingApiKey(false);
-                            }
-                          }}
-                          disabled={isGeneratingApiKey}
-                          className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-                        >
-                          {isGeneratingApiKey ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                          ) : (
-                            "Generate API Key"
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={goBack}
-                    className="px-6 py-4 border border-[var(--border)] rounded-lg font-bold flex items-center gap-2 hover:border-[var(--text-muted)] transition-colors"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!canContinueFromApiKeyStep) {
-                        setErrorMessage("Generate an API key to continue when Ostium or Aster is enabled.");
-                        return;
-                      }
-                      markComplete("apikey");
-                      goNext();
-                    }}
-                    disabled={!canContinueFromApiKeyStep}
-                    className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {requiresApiKeyGeneration
-                      ? (maxxitApiKey ? "Continue" : "Generate API Key to Continue")
-                      : (maxxitApiKey ? "Continue" : "Skip & Continue")}
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -3217,7 +3387,7 @@ export default function OpenClawSetupPage() {
 
 
                     <a
-                      href={`tg://resolve?domain=${botUsername}`}
+                      href={`https://t.me/${botUsername}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`w-full py-4 font-bold rounded-lg flex items-center justify-center gap-2 transition-opacity ${instanceStatusPhase === "ready"
@@ -3284,6 +3454,33 @@ export default function OpenClawSetupPage() {
                           {openaiKeyStatus === "created" ? "Created" : "Not Created"}
                         </span>
                       </div>
+                      {openaiKeyStatus === "created" && openaiKeyPrefix && (
+                        <div className="flex justify-between text-xs mt-1">
+                          <span className="text-[var(--text-muted)]">
+                            OpenAI Key Prefix
+                          </span>
+                          <span className="font-mono text-[var(--text-secondary)]">
+                            {openaiKeyPrefix}
+                          </span>
+                        </div>
+                      )}
+                      {(maxxitApiKey || maxxitApiKeyPrefix) && (
+                        <>
+                          <div className="h-px bg-[var(--border)] mt-3" />
+                          <div className="flex justify-between text-xs">
+                            <span className="text-[var(--text-muted)]">
+                              Maxxit API Key
+                            </span>
+                            <span className="font-mono text-[var(--text-secondary)] break-all max-w-[60%] text-right">
+                              {maxxitApiKeyPrefix
+                                ? `${maxxitApiKeyPrefix}...`
+                                : maxxitApiKey
+                                  ? `${maxxitApiKey.slice(0, 12)}...`
+                                  : ""}
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
                     <div className="flex gap-3">
                       <button

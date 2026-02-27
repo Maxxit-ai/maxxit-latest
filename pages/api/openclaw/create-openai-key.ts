@@ -25,7 +25,7 @@ interface CreateOpenAIKeyResponse {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<CreateOpenAIKeyResponse>
+  res: NextApiResponse<CreateOpenAIKeyResponse>,
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -45,7 +45,7 @@ export default async function handler(
     }
 
     const normalizedWallet = userWallet;
-    console.log(normalizedWallet)
+    console.log(normalizedWallet);
 
     const instance = await prisma.openclaw_instances.findUnique({
       where: { user_wallet: normalizedWallet },
@@ -65,11 +65,11 @@ export default async function handler(
         keyPrefix: instance.openai_service_account_id
           ? `sk-svcacct-${instance.openai_service_account_id.substring(0, 8)}...`
           : undefined,
-        createdAt: instance.openai_api_key_created_at?.toISOString() || undefined,
+        createdAt:
+          instance.openai_api_key_created_at?.toISOString() || undefined,
         error: undefined,
       });
     }
-
 
     const sanitizedWallet = normalizedWallet.replace(/[^a-z0-9]/g, "_");
     const projectName = `openclaw-${sanitizedWallet}`;
@@ -79,7 +79,7 @@ export default async function handler(
 
       const serviceAccount = await createServiceAccount(
         project.id,
-        projectName
+        projectName,
       );
 
       await storeUserOpenAIApiKey(normalizedWallet, serviceAccount.apiKey);
@@ -107,7 +107,7 @@ export default async function handler(
           "[OpenClaw Create OpenAI Key] OpenAI API error:",
           apiError.message,
           apiError.statusCode,
-          apiError.responseBody
+          apiError.responseBody,
         );
 
         if (
