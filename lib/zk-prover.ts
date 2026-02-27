@@ -488,8 +488,8 @@ async function generateSP1Proof(
 
             const timeout = setTimeout(() => {
                 child.kill("SIGKILL");
-                reject(new Error("SP1 host timed out after 10 minutes"));
-            }, 600_000);
+                reject(new Error("SP1 host timed out after 30 minutes"));
+            }, 1_800_000);
 
             child.on("error", (err: Error) => {
                 clearTimeout(timeout);
@@ -504,9 +504,17 @@ async function generateSP1Proof(
                     return;
                 }
                 try {
-                    resolve(JSON.parse(stdout));
+                    // Native Gnark prover prints timing info to stdout before the JSON.
+                    // Extract only the JSON object from the output.
+                    const jsonStart = stdout.indexOf("{");
+                    const jsonEnd = stdout.lastIndexOf("}");
+                    if (jsonStart === -1 || jsonEnd === -1) {
+                        throw new Error("No JSON object found in output");
+                    }
+                    const jsonStr = stdout.slice(jsonStart, jsonEnd + 1);
+                    resolve(JSON.parse(jsonStr));
                 } catch (e) {
-                    reject(new Error(`Failed to parse SP1 output: ${stdout.slice(0, 200)} `));
+                    reject(new Error(`Failed to parse SP1 output: ${stdout.slice(0, 500)} `));
                 }
             });
 
