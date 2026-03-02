@@ -45,12 +45,30 @@ type Props = {
   onSetIsSavingAsterConfig: (v: boolean) => void;
   asterShowGuide: boolean;
   onSetAsterShowGuide: (v: boolean) => void;
+  // Avantis
+  avantisEnabled: boolean;
+  onSetAvantisEnabled: (v: boolean) => void;
+  avantisAgentAddress: string | null;
+  onSetAvantisAgentAddress: (addr: string | null) => void;
+  avantisDelegationComplete: boolean;
+  onSetAvantisDelegationComplete: (v: boolean) => void;
+  avantisAllowanceComplete: boolean;
+  onSetAvantisAllowanceComplete: (v: boolean) => void;
+  avantisSetupComplete: boolean;
+  onSetAvantisSetupComplete: (v: boolean) => void;
+  avantisSkillSubStep: "idle" | "creating-agent" | "agent-created" | "complete";
+  onSetAvantisSkillSubStep: (s: "idle" | "creating-agent" | "agent-created" | "complete") => void;
+  enablingAvantisTrading: boolean;
+  avantisSkillCurrentAction: string;
+  avantisSkillTxHash: string | null;
   // Navigation
   onBack: () => void;
   onContinue: () => void;
   onCreateTradingDeployment: () => void;
   onSetupTradingAgent: () => void;
   onEnableTrading: () => void;
+  onSetupAvantisAgent: () => void;
+  onEnableAvantisTrading: () => void;
   markComplete: (key: StepKey) => void;
 };
 
@@ -86,32 +104,48 @@ export function TradingStep({
   onSetIsSavingAsterConfig,
   asterShowGuide,
   onSetAsterShowGuide,
+  avantisEnabled,
+  onSetAvantisEnabled,
+  avantisAgentAddress,
+  onSetAvantisAgentAddress,
+  avantisDelegationComplete,
+  onSetAvantisDelegationComplete,
+  avantisAllowanceComplete,
+  onSetAvantisAllowanceComplete,
+  avantisSetupComplete,
+  onSetAvantisSetupComplete,
+  avantisSkillSubStep,
+  onSetAvantisSkillSubStep,
+  enablingAvantisTrading,
+  avantisSkillCurrentAction,
+  avantisSkillTxHash,
   onBack,
   onContinue,
   onCreateTradingDeployment,
   onSetupTradingAgent,
   onEnableTrading,
+  onSetupAvantisAgent,
+  onEnableAvantisTrading,
   markComplete,
 }: Props) {
   return (
     <div className="space-y-6">
       <div className="text-center">
         <h1 className="font-display text-2xl mb-2">
-          Ostium 1-Click Trading
+          Trading Skills
         </h1>
         <p className="text-[var(--text-secondary)]">
-          Set up your trading agent to execute trades on Ostium via your
+          Set up your trading agents for Ostium, Aster, and Avantis via your
           OpenClaw bot.
         </p>
       </div>
 
       {/* Ostium / Lazy Trading */}
       <div
-        className={`border rounded-lg p-5 transition-all ${
-          lazyTradingEnabled
-            ? "border-[var(--accent)] bg-[var(--accent)]/5"
-            : "border-[var(--border)]"
-        }`}
+        className={`border rounded-lg p-5 transition-all ${lazyTradingEnabled
+          ? "border-[var(--accent)] bg-[var(--accent)]/5"
+          : "border-[var(--border)]"
+          }`}
       >
         <div className="flex items-start gap-4">
           <div className="text-3xl">📈</div>
@@ -187,7 +221,7 @@ export function TradingStep({
                   className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   {skillSubStep === "creating-agent" &&
-                  agentSetupSource === "ostium" ? (
+                    agentSetupSource === "ostium" ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" /> Creating
                       Agent...
@@ -218,11 +252,10 @@ export function TradingStep({
 
                 <div className="space-y-3">
                   <div
-                    className={`flex items-center gap-3 p-3 rounded-lg border ${
-                      delegationComplete
-                        ? "border-green-500/50 bg-green-500/5"
-                        : "border-[var(--border)]"
-                    }`}
+                    className={`flex items-center gap-3 p-3 rounded-lg border ${delegationComplete
+                      ? "border-green-500/50 bg-green-500/5"
+                      : "border-[var(--border)]"
+                      }`}
                   >
                     {delegationComplete ? (
                       <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
@@ -242,11 +275,10 @@ export function TradingStep({
                   </div>
 
                   <div
-                    className={`flex items-center gap-3 p-3 rounded-lg border ${
-                      allowanceComplete
-                        ? "border-green-500/50 bg-green-500/5"
-                        : "border-[var(--border)]"
-                    }`}
+                    className={`flex items-center gap-3 p-3 rounded-lg border ${allowanceComplete
+                      ? "border-green-500/50 bg-green-500/5"
+                      : "border-[var(--border)]"
+                      }`}
                   >
                     {allowanceComplete ? (
                       <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
@@ -343,11 +375,10 @@ export function TradingStep({
 
       {/* Aster DEX (Optional) */}
       <div
-        className={`border rounded-lg p-5 transition-all ${
-          asterEnabled
-            ? "border-[var(--accent)] bg-[var(--accent)]/5"
-            : "border-[var(--border)]"
-        }`}
+        className={`border rounded-lg p-5 transition-all ${asterEnabled
+          ? "border-[var(--accent)] bg-[var(--accent)]/5"
+          : "border-[var(--border)]"
+          }`}
       >
         <div className="flex items-start gap-4">
           <div className="text-3xl">🌟</div>
@@ -384,7 +415,7 @@ export function TradingStep({
                   className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   {skillSubStep === "creating-agent" &&
-                  agentSetupSource === "aster" ? (
+                    agentSetupSource === "aster" ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" /> Creating
                       Agent...
@@ -562,6 +593,190 @@ export function TradingStep({
         </div>
       </div>
 
+      {/* Avantis DEX (Base — Optional) */}
+      <div
+        className={`border rounded-lg p-5 transition-all ${avantisEnabled || avantisSetupComplete
+          ? "border-[var(--accent)] bg-[var(--accent)]/5"
+          : "border-[var(--border)]"
+          }`}
+      >
+        <div className="flex items-start gap-4">
+          <div className="text-3xl">⬡</div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-baseline gap-2">
+                <h3 className="font-bold">Avantis DEX (Base)</h3>
+                <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                  Optional
+                </span>
+              </div>
+              {avantisSetupComplete && (
+                <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                  Ready
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              Enable 1-click trading on Avantis (Base chain) via delegation and USDC approval.
+            </p>
+
+            {avantisSetupComplete || avantisSkillSubStep === "complete" ? (
+              <div className="space-y-3">
+                <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
+                  <p className="text-sm text-green-400 mb-1">
+                    <strong>Avantis Trading Ready ✓</strong>
+                  </p>
+                  {avantisAgentAddress && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Agent Address
+                      </p>
+                      <code className="text-xs bg-[var(--bg-card)] px-2 py-1 rounded font-mono break-all">
+                        {avantisAgentAddress}
+                      </code>
+                    </div>
+                  )}
+                  <p className="text-xs text-[var(--text-muted)] mt-2">
+                    Your agent is authorized to trade on Avantis (Base).
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    onSetAvantisEnabled(false);
+                    onSetAvantisSetupComplete(false);
+                    onSetAvantisSkillSubStep("idle");
+                    onSetAvantisAgentAddress(null);
+                    onSetAvantisDelegationComplete(false);
+                    onSetAvantisAllowanceComplete(false);
+                  }}
+                  className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                >
+                  Reset Avantis
+                </button>
+              </div>
+            ) : avantisSkillSubStep === "idle" ? (
+              <div className="space-y-4">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  We&apos;ll set up on-chain permissions for Avantis on Base.
+                </p>
+                <button
+                  onClick={onSetupAvantisAgent}
+                  disabled={avantisSkillSubStep !== "idle"}
+                  className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  <Zap className="w-4 h-4" /> Setup Avantis Agent
+                </button>
+              </div>
+            ) : avantisSkillSubStep === "creating-agent" ? (
+              <div className="flex items-center justify-center gap-2 py-4 text-[var(--text-secondary)]">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Creating Avantis agent...</span>
+              </div>
+            ) : avantisSkillSubStep === "agent-created" ? (
+              <div className="space-y-4">
+                <div className="border border-[var(--border)] rounded-lg p-4">
+                  <p className="text-xs text-[var(--text-muted)] mb-1">
+                    Your Avantis Agent Address (Base)
+                  </p>
+                  <code className="text-sm font-mono break-all text-[var(--accent)]">
+                    {avantisAgentAddress}
+                  </code>
+                </div>
+
+                <div className="space-y-3">
+                  <div
+                    className={`flex items-center gap-3 p-3 rounded-lg border ${avantisDelegationComplete
+                      ? "border-green-500/50 bg-green-500/5"
+                      : "border-[var(--border)]"
+                      }`}
+                  >
+                    {avantisDelegationComplete ? (
+                      <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-[var(--text-muted)] flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-sm font-bold">
+                        {avantisDelegationComplete
+                          ? "Delegation Complete"
+                          : "Delegate Trading"}
+                      </p>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Allow your agent to trade on Avantis (Base) on your behalf
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`flex items-center gap-3 p-3 rounded-lg border ${avantisAllowanceComplete
+                      ? "border-green-500/50 bg-green-500/5"
+                      : "border-[var(--border)]"
+                      }`}
+                  >
+                    {avantisAllowanceComplete ? (
+                      <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-[var(--text-muted)] flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-sm font-bold">
+                        {avantisAllowanceComplete ? "USDC Approved" : "Approve USDC"}
+                      </p>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Allow Avantis to use your USDC on Base for trading
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {avantisSkillTxHash && (
+                  <div className="text-center text-xs text-[var(--text-muted)]">
+                    <Loader2 className="w-3 h-3 animate-spin inline mr-1" />
+                    Confirming transaction on Base...
+                  </div>
+                )}
+
+                {!avantisDelegationComplete || !avantisAllowanceComplete ? (
+                  <button
+                    onClick={onEnableAvantisTrading}
+                    disabled={enablingAvantisTrading}
+                    className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {enablingAvantisTrading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />{" "}
+                        {avantisSkillCurrentAction || "Processing..."}
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-4 h-4" /> Enable 1-Click Trading (Base)
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="border border-green-500/40 bg-green-500/10 rounded-lg p-3 text-xs text-green-300">
+                    Avantis setup complete — all approvals granted on Base
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    onSetAvantisEnabled(false);
+                    onSetAvantisSkillSubStep("idle");
+                    onSetAvantisAgentAddress(null);
+                    onSetAvantisDelegationComplete(false);
+                    onSetAvantisAllowanceComplete(false);
+                  }}
+                  className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
       <div className="flex gap-3">
         <button
           onClick={onBack}
@@ -598,8 +813,8 @@ export function TradingStep({
           {lazyTradingSetupComplete || hasDeployment
             ? "Continue"
             : lazyTradingEnabled
-            ? "Create Deployment"
-            : "Complete setup to continue"}
+              ? "Create Deployment"
+              : "Complete setup to continue"}
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>

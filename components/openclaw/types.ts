@@ -1,4 +1,5 @@
 import { getOstiumConfig } from "../../lib/ostium-config";
+import { getAvantisConfig } from "../../lib/avantis-config";
 
 const {
   tradingContract: OSTIUM_TRADING_CONTRACT,
@@ -6,9 +7,24 @@ const {
   storageContract: OSTIUM_STORAGE,
 } = getOstiumConfig();
 
-export { OSTIUM_TRADING_CONTRACT, USDC_TOKEN, OSTIUM_STORAGE };
+const avantisConfig = getAvantisConfig();
+const AVANTIS_TRADING_CONTRACT = avantisConfig.tradingContract;
+const AVANTIS_STORAGE = avantisConfig.tradingStorageContract;
+const AVANTIS_USDC_TOKEN = avantisConfig.usdcContract;
+const BASE_CHAIN_ID = avantisConfig.chainId;
+const BASE_CHAIN_NAME = avantisConfig.chainName;
+const BASE_EXPLORER_URL = avantisConfig.blockExplorerUrl;
+
+export {
+  OSTIUM_TRADING_CONTRACT, USDC_TOKEN, OSTIUM_STORAGE,
+  AVANTIS_TRADING_CONTRACT, AVANTIS_STORAGE, AVANTIS_USDC_TOKEN,
+  BASE_CHAIN_ID, BASE_CHAIN_NAME, BASE_EXPLORER_URL,
+};
 
 export const OSTIUM_TRADING_ABI = [
+  "function setDelegate(address delegate) external",
+];
+export const AVANTIS_TRADING_ABI = [
   "function setDelegate(address delegate) external",
 ];
 export const USDC_ABI = [

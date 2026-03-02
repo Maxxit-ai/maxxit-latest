@@ -3,7 +3,7 @@ emoji: 📈
 name: maxxit-lazy-trading
 version: 1.2.6
 author: Maxxit
-description: Execute perpetual trades on Ostium and Aster via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
+description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
 repository: https://github.com/Maxxit-ai/maxxit-latest
 disableModelInvocation: true
@@ -23,7 +23,7 @@ metadata:
 
 # Maxxit Lazy Trading
 
-Execute perpetual futures trades on Ostium and Aster DEX through Maxxit's Lazy Trading API. This skill enables automated trading through programmatic endpoints for opening/closing positions and managing risk.
+Execute perpetual futures trades on Ostium, Aster DEX, and Avantis DEX through Maxxit's Lazy Trading API. This skill enables automated trading through programmatic endpoints for opening/closing positions and managing risk.
 
 ## When to Use This Skill
 
@@ -59,15 +59,17 @@ Execute perpetual futures trades on Ostium and Aster DEX through Maxxit's Lazy T
 
 ## ⚠️ DEX Routing Rules (Mandatory)
 
-1. **Always ask venue first if unclear**: "Do you want to trade on Ostium or Aster?"
-2. **Always state the active venue explicitly** in your response (e.g., "Using Ostium..." or "Using Aster...").
+1. **Always ask venue first if unclear**: "Do you want to trade on Ostium, Aster, or Avantis?"
+2. **Always state the active venue explicitly** in your response (e.g., "Using Ostium..." or "Using Aster..." or "Using Avantis...").
 3. **Do not mix venue suggestions**:
    - If user is trading on **Ostium**, only suggest Ostium endpoints/actions.
    - If user is trading on **Aster**, only suggest Aster endpoints/actions.
+   - If user is trading on **Avantis**, only suggest Avantis endpoints/actions.
 4. **Do not ask network clarification**:
    - **Ostium is mainnet-only** in this setup.
    - **Aster is testnet-only** in this setup.
-   - Therefore do **not** ask "mainnet or testnet?" for either venue.
+   - **Avantis is mainnet-only** (Base chain) in this setup.
+   - Therefore do **not** ask "mainnet or testnet?" for any venue.
 5. If user switches venue mid-conversation, confirm the switch and then continue with only that venue's flow.
 
 ---
@@ -1059,8 +1061,9 @@ Step 5 (optional): POST /set-take-profit and/or POST /set-stop-loss
 |-------|-------|--------------|---------------|-------------|
 | **Ostium** | Arbitrum (mainnet only) | `BTC`, `ETH` | `agentAddress` + `userAddress` | Default for most trades |
 | **Aster** | BNB Chain (testnet only) | `BTCUSDT`, `ETHUSDT` | `userAddress` only | When user specifies BNB Chain or Aster |
+| **Avantis** | Base (mainnet only) | `BTC`, `ETH` | `agentAddress` + `userAddress` | When user specifies Base chain or Avantis |
 
-> **Network behavior rule:** Do not ask users to choose mainnet/testnet for these venues. Ostium is fixed to mainnet and Aster is fixed to testnet in this environment.
+> **Network behavior rule:** Do not ask users to choose mainnet/testnet for these venues. Ostium is fixed to mainnet, Aster is fixed to testnet, and Avantis is fixed to Base mainnet.
 
 **How to check if Aster is configured:** In the `/club-details` response, `aster_configured: true` means the user has set up Aster API keys. If `false`, direct them to set up Aster at maxxit.ai/openclaw.
 
@@ -1401,6 +1404,334 @@ Step 2: POST /aster/positions (userAddress = user_wallet)
 Step 3: POST /aster/close-position
    → Pass userAddress and symbol
    → Omit quantity to close full position
+```
+
+---
+
+## Avantis DEX (Base Chain) Endpoints
+
+> Avantis DEX is a perpetual futures exchange on Base chain. Use Avantis endpoints when the user wants to trade on Base. Avantis uses **delegation-based auth** (same pattern as Ostium) — you need both `agentAddress` and `userAddress` from `/club-details`.
+
+**How to check if Avantis is configured:** In the `/club-details` response, `avantis_configured: true` means the user has set up Avantis delegation. If `false`, direct them to set up Avantis at maxxit.ai/openclaw.
+
+### Avantis Symbols
+
+Avantis uses `BTC/USD`, `ETH/USD` format. The API endpoint maps the service's `/markets` route.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/symbols" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "markets": [
+    {
+      "pairIndex": 0,
+      "symbol": "BTC/USD",
+      "group": "crypto"
+    },
+    {
+      "pairIndex": 1,
+      "symbol": "ETH/USD",
+      "group": "crypto"
+    }
+  ],
+  "count": 50
+}
+```
+
+### Avantis Balance
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/balance" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x..."
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "userAddress": "0x..."    // REQUIRED — from /club-details → user_wallet. NEVER guess.
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "usdcBalance": "1500.25",
+  "ethBalance": "0.05"
+}
+```
+
+### Avantis Positions
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/positions" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "agentAddress": "0x..."
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "positions": [
+    {
+      "market": "BTC",
+      "marketFull": "BTC/USD",
+      "side": "long",
+      "collateral": 100.0,
+      "entryPrice": 95000.0,
+      "leverage": 10.0,
+      "tradeIndex": 2,
+      "pairIndex": 0
+    }
+  ],
+  "totalPositions": 1
+}
+```
+
+### Avantis Open Position
+
+> **⚠️ Dependencies:**
+> 1. `agentAddress` → from `/club-details` → `avantis_agent_address` (NEVER guess)
+> 2. `userAddress` → from `/club-details` → `user_wallet` (NEVER guess)
+> 3. `market` → validate via `/avantis/symbols`. Use base token only (e.g. `BTC`, not `BTC/USD`)
+> 4. `side`, `collateral`, `leverage` → **ASK the user explicitly**
+>
+> **Avantis uses `collateral` (USDC amount), similar to Ostium. Minimum collateral: 100 USDC.**
+>
+> **⚠️ TP/SL must be set at open time — there are NO separate set-tp / set-sl endpoints for Avantis.**
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/open-position" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentAddress": "0x...",
+    "userAddress": "0x...",
+    "market": "BTC",
+    "side": "long",
+    "collateral": 100,
+    "leverage": 10,
+    "takeProfitPercent": 0.30,
+    "stopLossPercent": 0.10
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "agentAddress": "0x...",      // REQUIRED — from /club-details → avantis_agent_address. NEVER guess.
+  "userAddress": "0x...",       // REQUIRED — from /club-details → user_wallet. NEVER guess.
+  "market": "BTC",              // REQUIRED — Base token only (e.g. "ETH", not "ETH/USD")
+  "side": "long",               // REQUIRED — "long" or "short". ASK the user.
+  "collateral": 100,            // REQUIRED — Collateral in USDC (min 100). ASK the user.
+  "leverage": 10,               // Optional (default: 10). ASK the user.
+  "takeProfitPercent": 0.30,    // Optional — set TP at open. ASK the user.
+  "stopLossPercent": 0.10       // Optional — set SL at open. ASK the user.
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "txHash": "0x...",
+  "actualTradeIndex": 5,
+  "entryPrice": 95000.0,
+  "slSet": true,
+  "tpSet": true,
+  "message": "Trade submitted on Avantis",
+  "result": {
+    "market": "BTC",
+    "side": "long",
+    "collateral": 100,
+    "leverage": 10,
+    "slConfigured": true,
+    "tpConfigured": true,
+    "tpPrice": 123500.0,
+    "slPrice": 85500.0
+  }
+}
+```
+
+### Avantis Close Position
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/close-position" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentAddress": "0x...",
+    "userAddress": "0x...",
+    "market": "BTC"
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "agentAddress": "0x...",      // REQUIRED — from /club-details. NEVER guess.
+  "userAddress": "0x...",       // REQUIRED — from /club-details. NEVER guess.
+  "market": "BTC",              // REQUIRED — Token symbol
+  "tradeId": "12345",           // Optional — specific trade ID
+  "actualTradeIndex": 2         // Recommended — from /avantis/positions → tradeIndex
+}
+```
+
+### Avantis Update SL/TP
+
+> **TP/SL can be set at open time (via `takeProfitPercent`/`stopLossPercent` in open-position), or updated after opening using this endpoint.**
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/update-sl-tp" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentAddress": "0x...",
+    "userAddress": "0x...",
+    "market": "BTC",
+    "takeProfitPercent": 0.30,
+    "stopLossPercent": 0.10
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "agentAddress": "0x...",      // REQUIRED — from /club-details. NEVER guess.
+  "userAddress": "0x...",       // REQUIRED — from /club-details. NEVER guess.
+  "market": "BTC",              // REQUIRED — Token symbol
+  "tradeIndex": 0,              // Optional — specific trade index from /avantis/positions
+  "takeProfitPrice": 100000,    // Absolute TP price (use this OR takeProfitPercent)
+  "stopLossPrice": 80000,       // Absolute SL price (use this OR stopLossPercent)
+  "takeProfitPercent": 0.30,    // TP as % from entry (0.30 = 30%). Use this OR takeProfitPrice.
+  "stopLossPercent": 0.10       // SL as % from entry (0.10 = 10%). Use this OR stopLossPrice.
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "txHash": "0x...",
+  "message": "TP/SL updated successfully",
+  "result": {
+    "market": "BTC",
+    "tradeIndex": 0,
+    "entryPrice": 95000.0,
+    "takeProfitPrice": 123500.0,
+    "stopLossPrice": 85500.0,
+    "side": "long"
+  }
+}
+```
+
+### Avantis Trade History
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/trade-history" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userAddress": "0x...",
+    "limit": 50
+  }'
+```
+
+**Request Body:**
+```json
+{
+  "userAddress": "0x...",       // REQUIRED — the trader's wallet address
+  "agentAddress": "0x...",     // Alternative to userAddress
+  "limit": 50                  // Optional — max results (default: 50)
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "total": 4,
+  "address": "0x...",
+  "blocksScanned": 200000,
+  "trades": [
+    {
+      "market": "BTC",
+      "pairIndex": 1,
+      "action": "close",
+      "side": "long",
+      "collateral": 10.0,
+      "leverage": 10.0,
+      "orderId": 12345,
+      "timestamp": 1709000000,
+      "txHash": "0x...",
+      "blockNumber": 25000000
+    }
+  ]
+}
+```
+
+### Avantis Parameter Dependency Graph
+
+| Parameter | Source | How to Get |
+|-----------|--------|-----------|
+| `userAddress` | `/club-details` → `user_wallet` | `GET /club-details` |
+| `agentAddress` | `/club-details` → `avantis_agent_address` | `GET /club-details` |
+| `avantis_configured` | `/club-details` → `avantis_configured` | `GET /club-details` (must be `true`) |
+| `market` | User specifies token | User input (e.g. `BTC`, `ETH`) |
+| `side` | User specifies `"long"` or `"short"` | User input (required) |
+| `collateral` | User specifies USDC amount (min 100) | User input (required) |
+| `leverage` | User specifies | User input |
+| `tradeIndex` | `/avantis/positions` → `tradeIndex` | From position data |
+
+### Avantis Workflow: Open Position on Base Chain
+
+```
+Step 1: GET /club-details
+   → Extract: user_wallet, avantis_agent_address
+   → Check: avantis_configured == true (if false, tell user to set up Avantis at maxxit.ai/openclaw)
+
+Step 2: GET /avantis/symbols
+   → Verify the token is available on Avantis
+
+Step 3: ASK the user for ALL trade parameters
+   → "Which token?" (e.g. BTC, ETH)
+   → "Long or short?"
+   → "How much USDC collateral? (minimum 100 USDC)"
+   → "Leverage? (e.g. 10x)"
+   → "Would you like to set TP/SL? If so, what percentages?"
+
+Step 4: POST /avantis/open-position
+   → Use agentAddress and userAddress from Step 1
+   → Use market, side, collateral, leverage from Step 3
+   → SAVE: tradeIndex and entryPrice from response
+```
+
+### Avantis Workflow: Close Position
+
+```
+Step 1: GET /club-details → Extract user_wallet, avantis_agent_address
+
+Step 2: POST /avantis/positions (userAddress + agentAddress)
+   → Show positions to user, let them pick which to close
+   → Extract tradeIndex
+
+Step 3: POST /avantis/close-position
+   → Pass agentAddress, userAddress, market
+   → Optionally pass actualTradeIndex
 ```
 
 ---

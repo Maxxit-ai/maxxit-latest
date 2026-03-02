@@ -23,6 +23,12 @@ import {
   USDC_TOKEN,
   USDC_ABI,
   OSTIUM_STORAGE,
+  AVANTIS_TRADING_CONTRACT,
+  AVANTIS_TRADING_ABI,
+  AVANTIS_STORAGE,
+  AVANTIS_USDC_TOKEN,
+  BASE_CHAIN_ID,
+  BASE_CHAIN_NAME,
 } from "../components/openclaw/types";
 import { StepIndicator } from "../components/openclaw/StepIndicator";
 import { OpenClawLanding } from "../components/openclaw/OpenClawLanding";
@@ -85,6 +91,17 @@ export default function OpenClawSetupPage() {
   const [asterEnabled, setAsterEnabled] = useState(false);
   const [isSavingAsterConfig, setIsSavingAsterConfig] = useState(false);
   const [asterShowGuide, setAsterShowGuide] = useState(false);
+
+  // Avantis DEX state (Base chain)
+  const [avantisEnabled, setAvantisEnabled] = useState(false);
+  const [avantisAgentAddress, setAvantisAgentAddress] = useState<string | null>(null);
+  const [avantisDelegationComplete, setAvantisDelegationComplete] = useState(false);
+  const [avantisAllowanceComplete, setAvantisAllowanceComplete] = useState(false);
+  const [avantisSetupComplete, setAvantisSetupComplete] = useState(false);
+  const [avantisSkillSubStep, setAvantisSkillSubStep] = useState<"idle" | "creating-agent" | "agent-created" | "complete">("idle");
+  const [enablingAvantisTrading, setEnablingAvantisTrading] = useState(false);
+  const [avantisSkillCurrentAction, setAvantisSkillCurrentAction] = useState("");
+  const [avantisSkillTxHash, setAvantisSkillTxHash] = useState<string | null>(null);
 
   const [openaiKeyStatus, setOpenaiKeyStatus] = useState<"not_created" | "creating" | "created">("not_created");
   const [openaiKeyPrefix, setOpenaiKeyPrefix] = useState<string | null>(null);
@@ -1093,6 +1110,141 @@ export default function OpenClawSetupPage() {
     }
   };
 
+  const handleSetupAvantisAgent = useCallback(async () => {
+    setAvantisSkillSubStep("creating-agent");
+    setErrorMessage("");
+    try {
+      const res = await fetch("/api/openclaw/create-trading-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userWallet: walletAddress, venue: "AVANTIS" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const addr = data.avantisAgentAddress || data.ostiumAgentAddress;
+        setAvantisAgentAddress(addr);
+        // Also set the ostium agent address if it exists for shared wallet
+        if (!ostiumAgentAddress && data.ostiumAgentAddress) {
+          setOstiumAgentAddress(data.ostiumAgentAddress);
+        }
+        setAvantisSkillSubStep("agent-created");
+        // Check existing approvals
+        try {
+          const [delegRes, approvalRes] = await Promise.all([
+            fetch(`/api/avantis/check-delegation-status?userWallet=${walletAddress}&agentAddress=${addr}`),
+            fetch(`/api/avantis/check-approval-status?userWallet=${walletAddress}`),
+          ]);
+          if (delegRes.ok) {
+            const d = await delegRes.json();
+            if (d.isDelegatedToAgent) setAvantisDelegationComplete(true);
+          }
+          if (approvalRes.ok) {
+            const a = await approvalRes.json();
+            if (a.hasApproval) setAvantisAllowanceComplete(true);
+          }
+        } catch { }
+      } else {
+        setErrorMessage(data.error || "Failed to setup Avantis agent");
+        setAvantisSkillSubStep("idle");
+      }
+    } catch {
+      setErrorMessage("Failed to setup Avantis agent");
+      setAvantisSkillSubStep("idle");
+    }
+  }, [walletAddress, ostiumAgentAddress]);
+
+  const handleEnableAvantisTrading = async () => {
+    if (!walletAddress || !avantisAgentAddress) return;
+    setEnablingAvantisTrading(true);
+    setErrorMessage("");
+    try {
+      // Delegation on Base chain
+      if (!avantisDelegationComplete) {
+        setAvantisSkillCurrentAction("Setting delegation on Base...");
+        const provider = (window as any).ethereum;
+        if (!provider) throw new Error("No wallet provider found. Please install MetaMask.");
+        await provider.request({ method: "eth_requestAccounts" });
+        const ethersProvider = new ethers.providers.Web3Provider(provider);
+        const network = await ethersProvider.getNetwork();
+        if (network.chainId !== BASE_CHAIN_ID) {
+          try {
+            await provider.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: `0x${BASE_CHAIN_ID.toString(16)}` }],
+            });
+            await new Promise((r) => setTimeout(r, 500));
+          } catch (switchErr: any) {
+            throw new Error(
+              switchErr.code === 4902
+                ? `Please add ${BASE_CHAIN_NAME} to your wallet`
+                : `Please switch to ${BASE_CHAIN_NAME} network`
+            );
+          }
+        }
+        const freshProvider = new ethers.providers.Web3Provider((window as any).ethereum);
+        const signer = freshProvider.getSigner();
+        const contract = new ethers.Contract(AVANTIS_TRADING_CONTRACT, AVANTIS_TRADING_ABI, signer);
+        const gasEstimate = await contract.estimateGas.setDelegate(avantisAgentAddress);
+        const tx = await contract.setDelegate(avantisAgentAddress, {
+          gasLimit: gasEstimate.mul(150).div(100),
+        });
+        setAvantisSkillTxHash(tx.hash);
+        await tx.wait();
+        setAvantisDelegationComplete(true);
+        setAvantisSkillTxHash(null);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
+      // USDC Approval on Base chain
+      if (!avantisAllowanceComplete) {
+        setAvantisSkillCurrentAction("Approving USDC allowance on Base...");
+        const provider = (window as any).ethereum;
+        if (!provider) throw new Error("No wallet provider found.");
+        const ethersProvider = new ethers.providers.Web3Provider(provider);
+        await ethersProvider.send("eth_requestAccounts", []);
+        const signer = ethersProvider.getSigner();
+        const usdcContract = new ethers.Contract(AVANTIS_USDC_TOKEN, USDC_ABI, signer);
+        const allowanceAmount = ethers.utils.parseUnits("1000000", 6);
+        const approveData = usdcContract.interface.encodeFunctionData("approve", [
+          AVANTIS_STORAGE,
+          allowanceAmount,
+        ]);
+        const gasEstimate = await ethersProvider.estimateGas({
+          to: AVANTIS_USDC_TOKEN,
+          from: walletAddress,
+          data: approveData,
+        });
+        const txHash = await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: walletAddress,
+              to: AVANTIS_USDC_TOKEN,
+              data: approveData,
+              gas: gasEstimate.mul(150).div(100).toHexString(),
+            },
+          ],
+        });
+        setAvantisSkillTxHash(txHash);
+        await ethersProvider.waitForTransaction(txHash);
+        setAvantisAllowanceComplete(true);
+        setAvantisSkillTxHash(null);
+      }
+
+      setAvantisSetupComplete(true);
+      setAvantisSkillSubStep("complete");
+    } catch (err: any) {
+      if (err.code === 4001 || err.message?.includes("rejected")) {
+        setErrorMessage("Transaction rejected");
+      } else {
+        setErrorMessage(err.message || "Failed to enable Avantis trading");
+      }
+    } finally {
+      setEnablingAvantisTrading(false);
+      setAvantisSkillCurrentAction("");
+    }
+  };
+
   const handleUpdateOpenclaw = async () => {
     if (!walletAddress) return;
     setIsUpdatingOpenclaw(true);
@@ -1376,11 +1528,28 @@ export default function OpenClawSetupPage() {
                 onSetIsSavingAsterConfig={setIsSavingAsterConfig}
                 asterShowGuide={asterShowGuide}
                 onSetAsterShowGuide={setAsterShowGuide}
+                avantisEnabled={avantisEnabled}
+                onSetAvantisEnabled={setAvantisEnabled}
+                avantisAgentAddress={avantisAgentAddress}
+                onSetAvantisAgentAddress={setAvantisAgentAddress}
+                avantisDelegationComplete={avantisDelegationComplete}
+                onSetAvantisDelegationComplete={setAvantisDelegationComplete}
+                avantisAllowanceComplete={avantisAllowanceComplete}
+                onSetAvantisAllowanceComplete={setAvantisAllowanceComplete}
+                avantisSetupComplete={avantisSetupComplete}
+                onSetAvantisSetupComplete={setAvantisSetupComplete}
+                avantisSkillSubStep={avantisSkillSubStep}
+                onSetAvantisSkillSubStep={setAvantisSkillSubStep}
+                enablingAvantisTrading={enablingAvantisTrading}
+                avantisSkillCurrentAction={avantisSkillCurrentAction}
+                avantisSkillTxHash={avantisSkillTxHash}
                 onBack={goBack}
                 onContinue={goNext}
                 onCreateTradingDeployment={handleCreateTradingDeployment}
                 onSetupTradingAgent={handleSetupTradingAgent}
                 onEnableTrading={handleEnableTrading}
+                onSetupAvantisAgent={handleSetupAvantisAgent}
+                onEnableAvantisTrading={handleEnableAvantisTrading}
                 markComplete={markComplete}
               />
             )}
