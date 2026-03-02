@@ -52,25 +52,6 @@ export default async function handler(
       });
     }
 
-    const lazyTraderAgent = await prisma.agents.findFirst({
-      where: {
-        creator_wallet: normalizedWallet,
-        OR: [
-          { name: { startsWith: "Lazy Trader -" } },
-          { name: { startsWith: "OpenClaw Trader" } },
-        ],
-      },
-      select: { id: true },
-    });
-    console.log("lazyTraderAgent", lazyTraderAgent);
-
-    if (!lazyTraderAgent) {
-      return res.status(404).json({
-        error: "Lazy trader agent not found",
-        message: "Complete Lazy Trading setup before creating an API key.",
-      });
-    }
-
     await prismaClient.user_api_keys.updateMany({
       where: { user_wallet: normalizedWallet, revoked_at: null },
       data: { revoked_at: new Date() },

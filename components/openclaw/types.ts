@@ -1,0 +1,141 @@
+import { getOstiumConfig } from "../../lib/ostium-config";
+
+const {
+  tradingContract: OSTIUM_TRADING_CONTRACT,
+  usdcContract: USDC_TOKEN,
+  storageContract: OSTIUM_STORAGE,
+} = getOstiumConfig();
+
+export { OSTIUM_TRADING_CONTRACT, USDC_TOKEN, OSTIUM_STORAGE };
+
+export const OSTIUM_TRADING_ABI = [
+  "function setDelegate(address delegate) external",
+];
+export const USDC_ABI = [
+  "function approve(address spender, uint256 amount) public returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+];
+
+export type SkillSubStep =
+  | "idle"
+  | "creating-agent"
+  | "agent-created"
+  | "delegating"
+  | "approving"
+  | "creating-deployment"
+  | "complete";
+
+export type PlanId = "starter" | "pro";
+
+export type PlanOption = {
+  id: PlanId;
+  name: string;
+  priceLabel: string;
+  budgetLabel: string;
+  modelsLabel: string;
+};
+
+export type ModelOption = {
+  id: string;
+  name: string;
+  minPlan: PlanId;
+  costLabel: string;
+  speedLabel: string;
+};
+
+export type InstanceData = {
+  id: string;
+  plan: string;
+  model: string;
+  status: string;
+  telegramLinked: boolean;
+  telegramVerified: boolean;
+  telegramUsername?: string | null;
+  openaiProjectId?: string | null;
+  openaiServiceAccountId?: string | null;
+  openaiApiKeyCreatedAt?: string | null;
+};
+
+export type EigenVerificationRecord = {
+  id: string;
+  user_address: string | null;
+  agent_address: string | null;
+  market: string | null;
+  side: string | null;
+  deployment_id: string | null;
+  signal_id: string | null;
+  llm_full_prompt: string | null;
+  llm_raw_output: string | null;
+  llm_reasoning: string | null;
+  llm_signature: string | null;
+  llm_model_used: string | null;
+  llm_chain_id: number | null;
+  created_at: string;
+};
+
+export const STEPS = [
+  { key: "plan", label: "Plan" },
+  { key: "model", label: "Model" },
+  { key: "telegram", label: "Telegram" },
+  { key: "trading", label: "Trading" },
+  { key: "activate", label: "Launch" },
+] as const;
+
+export type StepKey = (typeof STEPS)[number]["key"];
+
+export const PLAN_OPTIONS: PlanOption[] = [
+  {
+    id: "starter",
+    name: "Starter",
+    priceLabel: "$29/mo",
+    budgetLabel: "$2 LLM usage",
+    modelsLabel: "All models",
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    priceLabel: "$49/mo",
+    budgetLabel: "$20 LLM usage",
+    modelsLabel: "All models + custom skills",
+  },
+];
+
+export const MODEL_OPTIONS: ModelOption[] = [
+  {
+    id: "gpt-4o-mini",
+    name: "GPT-4o Mini",
+    minPlan: "starter",
+    costLabel: "$0.15 in / $0.60 out per 1M tokens",
+    speedLabel: "Fast & efficient",
+  },
+  {
+    id: "gpt-5-mini",
+    name: "GPT-5 Mini",
+    minPlan: "starter",
+    costLabel: "$0.05 in / $0.40 out per 1M tokens",
+    speedLabel: "Ultra-fast",
+  },
+  {
+    id: "gpt-4o",
+    name: "GPT-4o",
+    minPlan: "starter",
+    costLabel: "~$2.50/1M tokens",
+    speedLabel: "Balanced",
+  },
+];
+
+export const PLAN_RANKS: Record<PlanId, number> = { starter: 0, pro: 1 };
+
+export async function postJson<T>(url: string, payload: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await response.json()) as T;
+  if (!response.ok) {
+    const error = (data as { error?: string })?.error;
+    throw new Error(error || "Request failed");
+  }
+  return data;
+}
