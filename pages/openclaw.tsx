@@ -120,6 +120,7 @@ export default function OpenClawSetupPage() {
   const [selectedWebSearchProvider, setSelectedWebSearchProvider] =
     useState<WebSearchProvider>("brave");
   const [isUpdatingWebSearch, setIsUpdatingWebSearch] = useState(false);
+  const [showWebSearchSection, setShowWebSearchSection] = useState(false);
 
   // Version update state
   const [openclawVersion, setOpenclawVersion] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean } | null>(null);
@@ -1517,6 +1518,12 @@ export default function OpenClawSetupPage() {
                 onToggleEigen={() => setShowEigenSection((v) => !v)}
                 onRefreshEigen={handleRefreshEigen}
                 onVerifyEigen={handleEigenVerifySignature}
+                webSearchEnabled={webSearchEnabled}
+                selectedWebSearchProvider={selectedWebSearchProvider}
+                isUpdatingWebSearch={isUpdatingWebSearch}
+                showWebSearchSection={showWebSearchSection}
+                onToggleWebSearch={() => setShowWebSearchSection((v) => !v)}
+                onUpdateWebSearch={handleUpdateWebSearch}
               />
             )}
           </>
