@@ -35,7 +35,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     monthlyPriceCents: 2900,
     llmBudgetCents: 200,
     stripePriceId: process.env.STRIPE_PRICE_ID_OPENCLAW_STARTER || null,
-    allowedModels: ["gpt-4o-mini", "gpt-5-mini", "gpt-4o"],
+    allowedModels: ["gpt-5.1-codex-mini", "gpt-5-mini", "gpt-4o"],
     features: [
       "$2 LLM usage/month",
       "All models",
@@ -49,7 +49,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     monthlyPriceCents: 4900,
     llmBudgetCents: 2000,
     stripePriceId: process.env.STRIPE_PRICE_ID_OPENCLAW_PRO || null,
-    allowedModels: ["gpt-4o-mini", "gpt-5-mini", "gpt-4o"],
+    allowedModels: ["gpt-5.1-codex-mini", "gpt-5-mini", "gpt-4o"],
     features: [
       "$20 LLM usage/month",
       "All models",
@@ -70,13 +70,13 @@ export const MODELS: Record<string, ModelConfig> = {
     estimatedCostPer1MTokens: 0,
     description: "Fast and capable",
   },
-  "gpt-4o-mini": {
-    id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
+  "gpt-5.1-codex-mini": {
+    id: "gpt-5.1-codex-mini",
+    name: "GPT-5.1 Codex Mini",
     provider: "openai",
     minPlan: "starter",
-    estimatedCostPer1MTokens: 0.15,
-    description: "Fast and cost-effective",
+    estimatedCostPer1MTokens: 0.25,
+    description: "Optimized for coding",
   },
   "gpt-5-mini": {
     id: "gpt-5-mini",
@@ -116,5 +116,5 @@ export function canPlanUseModel(planId: string, modelId: string): boolean {
 }
 
 export function getDefaultModel(planId: string): string {
-  return "gpt-4o-mini";
+  return "gpt-5.1-codex-mini";
 }

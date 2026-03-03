@@ -18,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-        const { tierName, userWallet, returnUrl, source } = req.body;
+        const { tierName, userWallet, returnUrl, source, wsProvider } = req.body;
 
         if (!tierName || !userWallet) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -31,8 +31,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const origin = req.headers.origin || 'http://localhost:3000';
 
+        const wsProviderParam = wsProvider ? `&wsProvider=${encodeURIComponent(wsProvider)}` : '';
         const successUrl = returnUrl
-            ? `${returnUrl}?payment=success&tier=${tierName}`
+            ? `${returnUrl}?payment=success&tier=${tierName}${wsProviderParam}`
             : `${origin}/payment/success?session_id={CHECKOUT_SESSION_ID}`;
         const cancelUrl = returnUrl
             ? `${returnUrl}?payment=cancelled`

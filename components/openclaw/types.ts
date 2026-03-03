@@ -27,6 +27,8 @@ export type SkillSubStep =
 
 export type PlanId = "starter" | "pro";
 
+export type WebSearchProvider = "brave" | "perplexity" | "openrouter";
+
 export type PlanOption = {
   id: PlanId;
   name: string;
@@ -54,6 +56,7 @@ export type InstanceData = {
   openaiProjectId?: string | null;
   openaiServiceAccountId?: string | null;
   openaiApiKeyCreatedAt?: string | null;
+  webSearchProvider?: WebSearchProvider | null;
 };
 
 export type EigenVerificationRecord = {
@@ -102,11 +105,11 @@ export const PLAN_OPTIONS: PlanOption[] = [
 
 export const MODEL_OPTIONS: ModelOption[] = [
   {
-    id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
+    id: "gpt-5.1-codex-mini",
+    name: "GPT-5.1 Codex Mini",
     minPlan: "starter",
-    costLabel: "$0.15 in / $0.60 out per 1M tokens",
-    speedLabel: "Fast & efficient",
+    costLabel: "$0.25 in / $2.00 out per 1M tokens",
+    speedLabel: "Optimized for coding",
   },
   {
     id: "gpt-5-mini",
@@ -121,6 +124,32 @@ export const MODEL_OPTIONS: ModelOption[] = [
     minPlan: "starter",
     costLabel: "~$2.50/1M tokens",
     speedLabel: "Balanced",
+  },
+];
+
+export const WEB_SEARCH_OPTIONS: {
+  id: WebSearchProvider;
+  name: string;
+  description: string;
+  costLabel: string;
+}[] = [
+  {
+    id: "brave",
+    name: "Brave Search",
+    description: "Fast, privacy-focused web search via Brave API.",
+    costLabel: "$5 / 1K searches (approx.)",
+  },
+  {
+    id: "perplexity",
+    name: "Perplexity Sonar Pro",
+    description: "AI answers with citations using Perplexity Sonar Pro.",
+    costLabel: "~$10 / 1K searches (approx.)",
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter + Perplexity",
+    description: "Perplexity via OpenRouter with flexible billing options.",
+    costLabel: "~$10 / 1K searches (approx.)",
   },
 ];
 

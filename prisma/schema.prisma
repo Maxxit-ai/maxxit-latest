@@ -983,6 +983,10 @@ model openclaw_instances {
   
   status                     String    @default("pending")
 
+  // Web search provider preference for this instance
+  // null = disabled, "brave" | "perplexity" | "openrouter"
+  web_search_provider        String?
+
   // OpenAI Project & Key Management
   openai_project_id           String?
   openai_service_account_id   String?

@@ -59,6 +59,7 @@ export default async function handler(
         model: instance.default_model,
         status: instance.status,
         containerStatus: instance.container_status,
+        webSearchProvider: (instance as any).web_search_provider,
         telegram: {
           linked: !!instance.telegram_user_id,
           userId: instance.telegram_user_id,

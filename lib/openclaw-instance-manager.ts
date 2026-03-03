@@ -26,7 +26,8 @@ const ec2Client = new EC2Client({
 
 // Configuration
 const OPENCLAW_AMI_ID = process.env.OPENCLAW_AMI_ID || "ami-xxxxxxxxxx"; // AMI with Node.js and npm
-const INSTANCE_TYPE = (process.env.OPENCLAW_INSTANCE_TYPE || "t3.small") as _InstanceType;
+const INSTANCE_TYPE = (process.env.OPENCLAW_INSTANCE_TYPE ||
+  "t3.small") as _InstanceType;
 const SECURITY_GROUP_ID = process.env.OPENCLAW_SECURITY_GROUP_ID || "";
 const SUBNET_ID = process.env.OPENCLAW_SUBNET_ID || "";
 const KEY_NAME = process.env.OPENCLAW_KEY_NAME || "";
@@ -42,6 +43,7 @@ export interface InstanceConfig {
   maxxitApiKey?: string; // For Maxxit Lazy Trading skill
   llmProxyUrl?: string;
   openclawApiKey?: string;
+  webSearchProvider?: string;
 }
 
 export interface InstanceStatus {
@@ -62,7 +64,14 @@ export interface InstanceStatus {
 
 export interface DetailedInstanceStatus {
   instanceId: string | null;
-  state: "pending" | "running" | "stopping" | "stopped" | "terminated" | "not_found" | "error";
+  state:
+  | "pending"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "terminated"
+  | "not_found"
+  | "error";
   systemStatus: "ok" | "initializing" | "impaired" | "not_applicable" | null;
   instanceStatus: "ok" | "initializing" | "impaired" | "not_applicable" | null;
   ready: boolean; // True when state is running AND both status checks are ok
@@ -72,17 +81,21 @@ export interface DetailedInstanceStatus {
   error?: string;
 }
 
-const MODEL_TO_OPENCLAW_ID: Record<string, { primary: string; provider: string }> = {
+const MODEL_TO_OPENCLAW_ID: Record<
+  string,
+  { primary: string; provider: string }
+> = {
+  "gpt-5.1-codex-mini": {
+    primary: "openai/gpt-5.1-codex-mini",
+    provider: "openai",
+  },
   "gpt-5-mini": { primary: "openai/gpt-5-mini", provider: "openai" },
-  "gpt-4o-mini": { primary: "openai/gpt-4o-mini", provider: "openai" },
   "gpt-4o": { primary: "openai/gpt-4o", provider: "openai" },
 };
 
 function getOpenClawModelId(model: string): string {
   return MODEL_TO_OPENCLAW_ID[model]?.primary || "";
 }
-
-
 
 function getUserDataScript(config: InstanceConfig): string {
   const modelId = getOpenClawModelId(config.model);
@@ -194,7 +207,113 @@ su - ubuntu -c "openclaw models set ${modelId}" || {
   echo "$(date): WARNING - Failed to set model, using default"
 }
 
-${config.telegramUserId ? `
+${config.webSearchProvider
+      ? `
+# Configure web search provider: ${config.webSearchProvider}
+echo "$(date): Configuring web search provider: ${config.webSearchProvider}"
+
+OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"
+mkdir -p "$(dirname "$OPENCLAW_ENV")"
+touch "$OPENCLAW_ENV"
+
+# Clean up any previous web search keys to avoid duplicates
+sed -i '/^BRAVE_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true
+sed -i '/^PERPLEXITY_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true
+sed -i '/^OPENROUTER_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true
+
+WEB_PROVIDER="${config.webSearchProvider}"
+WEB_API_KEY=""
+WEB_BASE_URL=""
+
+if [ "$WEB_PROVIDER" = "brave" ]; then
+  echo "$(date): Fetching Brave API key from SSM..."
+  BRAVE_KEY=$(aws ssm get-parameter --name "/openclaw/global/brave-api-key" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+  if [ -n "$BRAVE_KEY" ]; then
+    echo "BRAVE_API_KEY=$BRAVE_KEY" >> "$OPENCLAW_ENV"
+    WEB_API_KEY="$BRAVE_KEY"
+  else
+    echo "$(date): WARNING - No Brave API key found in SSM, web search will be disabled"
+  fi
+elif [ "$WEB_PROVIDER" = "perplexity" ]; then
+  echo "$(date): Fetching Perplexity API key from SSM..."
+  PERPLEXITY_KEY=$(aws ssm get-parameter --name "/openclaw/global/perplexity-api-key" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+  WEB_BASE_URL="https://api.perplexity.ai"
+  if [ -n "$PERPLEXITY_KEY" ]; then
+    echo "PERPLEXITY_API_KEY=$PERPLEXITY_KEY" >> "$OPENCLAW_ENV"
+    WEB_API_KEY="$PERPLEXITY_KEY"
+  else
+    echo "$(date): WARNING - No Perplexity API key found in SSM, web search will be disabled"
+  fi
+elif [ "$WEB_PROVIDER" = "openrouter" ]; then
+  echo "$(date): Fetching OpenRouter API key from SSM..."
+  OPENROUTER_KEY=$(aws ssm get-parameter --name "/openclaw/global/openrouter-api-key" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+  WEB_BASE_URL="https://openrouter.ai/api/v1"
+  if [ -n "$OPENROUTER_KEY" ]; then
+    echo "OPENROUTER_API_KEY=$OPENROUTER_KEY" >> "$OPENCLAW_ENV"
+    WEB_API_KEY="$OPENROUTER_KEY"
+  else
+    echo "$(date): WARNING - No OpenRouter API key found in SSM, web search will be disabled"
+  fi
+fi
+
+chown ubuntu:ubuntu "$OPENCLAW_ENV"
+
+# Write the correct openclaw.json config per OpenClaw docs
+# Brave: tools.web.search = { provider: "brave", apiKey: "..." }
+# Perplexity/OpenRouter: tools.web.search = { provider: "perplexity", perplexity: { apiKey, baseUrl, model } }
+if [ -n "$WEB_API_KEY" ]; then
+  su - ubuntu -c "WEB_PROVIDER='$WEB_PROVIDER' WEB_API_KEY='$WEB_API_KEY' WEB_BASE_URL='$WEB_BASE_URL' node <<'NODE'
+const fs = require('fs');
+const configPath = '/home/ubuntu/.openclaw/openclaw.json';
+let config = {};
+try {
+  config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+} catch {
+  config = {};
+}
+
+config.tools = config.tools || {};
+config.tools.web = config.tools.web || {};
+
+if (process.env.WEB_PROVIDER === 'brave') {
+  // Brave Search: apiKey at tools.web.search level
+  config.tools.web.search = {
+    provider: 'brave',
+    apiKey: process.env.WEB_API_KEY,
+    maxResults: 5,
+    timeoutSeconds: 30,
+  };
+} else {
+  // Perplexity (direct) or OpenRouter (Perplexity via OpenRouter)
+  // Both use provider: 'perplexity' with different baseUrl
+  config.tools.web.search = {
+    provider: 'perplexity',
+    perplexity: {
+      apiKey: process.env.WEB_API_KEY,
+      baseUrl: process.env.WEB_BASE_URL,
+      model: 'perplexity/sonar-pro',
+    },
+  };
+}
+
+fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+console.log('Web search config written successfully');
+NODE" || {
+    echo "$(date): WARNING - Failed to update web search configuration in openclaw.json"
+  }
+  echo "$(date): Web search configured successfully (provider: $WEB_PROVIDER)"
+else
+  echo "$(date): WARNING - No API key available, web search is disabled"
+fi
+`
+      : `
+# Web search not configured for this instance
+echo "$(date): Skipping web search configuration (not selected)"
+`
+    }
+
+${config.telegramUserId
+      ? `
 # Configure secure DM policy (allowlist with user's Telegram ID)
 echo "$(date): Configuring secure DM policy for user ${config.telegramUserId}..."
 su - ubuntu -c "openclaw config set channels.telegram.allowFrom '[\"${config.telegramUserId}\"]' --json" || {
@@ -203,12 +322,15 @@ su - ubuntu -c "openclaw config set channels.telegram.allowFrom '[\"${config.tel
 su - ubuntu -c "openclaw config set channels.telegram.dmPolicy allowlist" || {
   echo "$(date): WARNING - Failed to set dmPolicy"
 }
-` : `
+`
+      : `
 # No Telegram user ID provided, keeping default pairing mode
 echo "$(date): WARNING - No Telegram user ID, pairing will be required"
-`}
+`
+    }
 
-${config.maxxitApiKey ? `
+${config.maxxitApiKey
+      ? `
 # Maxxit Lazy Trading skill setup
 echo "$(date): Setting up Maxxit Lazy Trading skill..."
 
@@ -236,10 +358,12 @@ if [ -n "$MAXXIT_API_KEY" ]; then
 else
   echo "$(date): WARNING - Maxxit API key not found in SSM, skipping skill setup"
 fi
-` : `
+`
+      : `
 # No Maxxit API key provided, skipping lazy trading skill
 echo "$(date): Skipping Maxxit Lazy Trading skill (not configured)"
-`}
+`
+    }
 
 # Restart gateway to apply all config changes
 echo "$(date): Restarting gateway..."
@@ -254,7 +378,8 @@ su - ubuntu -c "openclaw status" || true
 echo "$(date): OpenClaw configuration complete!"
 
 # Send welcome message to user
-${config.telegramChatId ? `
+${config.telegramChatId
+      ? `
 echo "$(date): Sending welcome message to user..."
 # Write message to a file
 cat > /tmp/welcome_msg.txt << 'MSGEOF'
@@ -287,9 +412,11 @@ su - ubuntu -c "bash /tmp/welcome_msg.sh" || {
   echo "$(date): WARNING - Failed to send welcome message"
 }
 rm -f /tmp/welcome_msg.sh /tmp/welcome_msg.txt
-` : `
+`
+      : `
 echo "$(date): No chat ID provided, skipping welcome message"
-`}
+`
+    }
 
 # Signal that setup is fully complete (used by instance-status API)
 mkdir -p /var/log/openclaw
@@ -303,7 +430,7 @@ echo "$(date): Setup complete sentinel written. All done!"
  * Create and launch a new EC2 instance for OpenClaw
  */
 export async function createInstance(
-  config: InstanceConfig
+  config: InstanceConfig,
 ): Promise<{ instanceId: string; publicIp?: string }> {
   try {
     const userData = Buffer.from(getUserDataScript(config)).toString("base64");
@@ -316,7 +443,9 @@ export async function createInstance(
       KeyName: KEY_NAME,
       SecurityGroupIds: SECURITY_GROUP_ID ? [SECURITY_GROUP_ID] : undefined,
       SubnetId: SUBNET_ID || undefined,
-      IamInstanceProfile: IAM_INSTANCE_PROFILE ? { Name: IAM_INSTANCE_PROFILE } : undefined,
+      IamInstanceProfile: IAM_INSTANCE_PROFILE
+        ? { Name: IAM_INSTANCE_PROFILE }
+        : undefined,
       UserData: userData,
       TagSpecifications: [
         {
@@ -367,7 +496,7 @@ export async function createInstance(
   } catch (error) {
     throw new Error(
       `Failed to create EC2 instance: ${error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
 }
@@ -376,7 +505,7 @@ export async function createInstance(
  * Get the status of a user's OpenClaw EC2 instance
  */
 export async function getInstanceStatus(
-  userWallet: string
+  userWallet: string,
 ): Promise<InstanceStatus> {
   try {
     const command = new DescribeInstancesCommand({
@@ -440,7 +569,7 @@ export async function getInstanceStatus(
  * Get instance by instance ID
  */
 export async function getInstanceById(
-  instanceId: string
+  instanceId: string,
 ): Promise<InstanceStatus> {
   try {
     const command = new DescribeInstancesCommand({
@@ -500,7 +629,7 @@ export async function startInstance(instanceId: string): Promise<void> {
   } catch (error) {
     throw new Error(
       `Failed to start instance: ${error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
 }
@@ -518,7 +647,7 @@ export async function stopInstance(instanceId: string): Promise<void> {
   } catch (error) {
     throw new Error(
       `Failed to stop instance: ${error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
 }
@@ -536,7 +665,7 @@ export async function terminateInstance(instanceId: string): Promise<void> {
   } catch (error) {
     throw new Error(
       `Failed to terminate instance: ${error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
 }
@@ -547,7 +676,8 @@ export async function terminateInstance(instanceId: string): Promise<void> {
  * Returns true if setup is complete, false if still in progress or unreachable.
  */
 export async function checkSetupComplete(instanceId: string): Promise<boolean> {
-  const { SSMClient, SendCommandCommand, GetCommandInvocationCommand } = await import("@aws-sdk/client-ssm");
+  const { SSMClient, SendCommandCommand, GetCommandInvocationCommand } =
+    await import("@aws-sdk/client-ssm");
 
   const ssmClient = new SSMClient({
     region: process.env.AWS_REGION || "us-east-1",
@@ -563,10 +693,12 @@ export async function checkSetupComplete(instanceId: string): Promise<boolean> {
         InstanceIds: [instanceId],
         DocumentName: "AWS-RunShellScript",
         Parameters: {
-          commands: ["test -f /var/log/openclaw/setup-complete && echo SETUP_DONE || echo SETUP_PENDING"],
+          commands: [
+            "test -f /var/log/openclaw/setup-complete && echo SETUP_DONE || echo SETUP_PENDING",
+          ],
         },
         TimeoutSeconds: 10,
-      })
+      }),
     );
 
     const commandId = sendResp.Command?.CommandId;
@@ -580,13 +712,17 @@ export async function checkSetupComplete(instanceId: string): Promise<boolean> {
           new GetCommandInvocationCommand({
             CommandId: commandId,
             InstanceId: instanceId,
-          })
+          }),
         );
         if (invocation.Status === "Success") {
           const output = (invocation.StandardOutputContent || "").trim();
           return output === "SETUP_DONE";
         }
-        if (invocation.Status === "Failed" || invocation.Status === "Cancelled" || invocation.Status === "TimedOut") {
+        if (
+          invocation.Status === "Failed" ||
+          invocation.Status === "Cancelled" ||
+          invocation.Status === "TimedOut"
+        ) {
           return false;
         }
         // Still InProgress — keep polling
@@ -609,7 +745,7 @@ export async function checkSetupComplete(instanceId: string): Promise<boolean> {
  */
 export async function runCommandOnInstance(
   instanceId: string,
-  commands: string[]
+  commands: string[],
 ): Promise<{ commandId: string }> {
   const { SSMClient, SendCommandCommand } = await import("@aws-sdk/client-ssm");
 
@@ -630,7 +766,7 @@ export async function runCommandOnInstance(
           commands,
         },
         TimeoutSeconds: 60,
-      })
+      }),
     );
 
     const commandId = response.Command?.CommandId;
@@ -642,7 +778,7 @@ export async function runCommandOnInstance(
   } catch (error) {
     throw new Error(
       `Failed to run command on instance ${instanceId}: ${error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
 }
@@ -662,13 +798,10 @@ export interface RunCommandResult {
 export async function runCommandOnInstanceWithOutput(
   instanceId: string,
   commands: string[],
-  options?: { timeoutSeconds?: number; pollIntervalMs?: number }
+  options?: { timeoutSeconds?: number; pollIntervalMs?: number },
 ): Promise<RunCommandResult> {
-  const {
-    SSMClient,
-    SendCommandCommand,
-    GetCommandInvocationCommand,
-  } = await import("@aws-sdk/client-ssm");
+  const { SSMClient, SendCommandCommand, GetCommandInvocationCommand } =
+    await import("@aws-sdk/client-ssm");
 
   const timeoutSeconds = options?.timeoutSeconds ?? 120;
   const pollIntervalMs = options?.pollIntervalMs ?? 2000;
@@ -690,7 +823,7 @@ export async function runCommandOnInstanceWithOutput(
           commands,
         },
         TimeoutSeconds: timeoutSeconds,
-      })
+      }),
     );
 
     const commandId = sendResponse.Command?.CommandId;
@@ -709,7 +842,7 @@ export async function runCommandOnInstanceWithOutput(
       const elapsedSeconds = (Date.now() - start) / 1000;
       if (elapsedSeconds > timeoutSeconds) {
         throw new Error(
-          `SSM command ${commandId} timed out after ${timeoutSeconds}s`
+          `SSM command ${commandId} timed out after ${timeoutSeconds}s`,
         );
       }
 
@@ -717,7 +850,7 @@ export async function runCommandOnInstanceWithOutput(
         new GetCommandInvocationCommand({
           CommandId: commandId,
           InstanceId: instanceId,
-        })
+        }),
       );
 
       const status = invocation.Status || "Unknown";
@@ -734,7 +867,7 @@ export async function runCommandOnInstanceWithOutput(
 
         if (status !== "Success") {
           throw new Error(
-            `SSM command ${commandId} completed with status ${status}: ${stderr || stdout}`
+            `SSM command ${commandId} completed with status ${status}: ${stderr || stdout}`,
           );
         }
 
@@ -751,9 +884,101 @@ export async function runCommandOnInstanceWithOutput(
   } catch (error) {
     throw new Error(
       `Failed to run command on instance ${instanceId}: ${error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
+}
+
+/**
+ * Generate shell commands to reconfigure web search on a live instance via SSM.
+ * These commands fetch the API key from SSM, update .env, rewrite openclaw.json,
+ * and restart the OpenClaw gateway — all without recreating the EC2 instance.
+ *
+ * @param provider - "brave" | "perplexity" | "openrouter" | null (null = disable)
+ * @returns Array of shell command strings to run via SSM
+ */
+export function getWebSearchReconfigCommands(
+  provider: string | null,
+): string[] {
+  if (!provider) {
+    // Disable web search: clean .env keys, remove search config, restart
+    return [
+      `#!/bin/bash`,
+      `set -e`,
+      `echo "$(date): Disabling web search..."`,
+      `OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"`,
+      `sed -i '/^BRAVE_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true`,
+      `sed -i '/^PERPLEXITY_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true`,
+      `sed -i '/^OPENROUTER_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true`,
+      // Remove search config from openclaw.json
+      `su - ubuntu -c "node <<'NODE'
+const fs = require('fs');
+const configPath = '/home/ubuntu/.openclaw/openclaw.json';
+let config = {};
+try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch { config = {}; }
+if (config.tools && config.tools.web) { delete config.tools.web.search; }
+fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+console.log('Web search config removed');
+NODE"`,
+      `su - ubuntu -c "openclaw gateway restart" || echo "WARNING: gateway restart failed"`,
+      `echo "$(date): Web search disabled successfully"`,
+    ];
+  }
+
+  // Determine SSM key path, env var name, and base URL per provider
+  let ssmKeyPath: string;
+  let envVarName: string;
+  let baseUrl: string;
+
+  if (provider === "brave") {
+    ssmKeyPath = "/openclaw/global/brave-api-key";
+    envVarName = "BRAVE_API_KEY";
+    baseUrl = "";
+  } else if (provider === "perplexity") {
+    ssmKeyPath = "/openclaw/global/perplexity-api-key";
+    envVarName = "PERPLEXITY_API_KEY";
+    baseUrl = "https://api.perplexity.ai";
+  } else {
+    // openrouter
+    ssmKeyPath = "/openclaw/global/openrouter-api-key";
+    envVarName = "OPENROUTER_API_KEY";
+    baseUrl = "https://openrouter.ai/api/v1";
+  }
+
+  return [
+    `#!/bin/bash`,
+    `set -e`,
+    `echo "$(date): Reconfiguring web search to ${provider}..."`,
+    `REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)`,
+    // Fetch the API key from SSM
+    `WEB_API_KEY=$(aws ssm get-parameter --name "${ssmKeyPath}" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")`,
+    `if [ -z "$WEB_API_KEY" ]; then echo "ERROR: No API key found at ${ssmKeyPath}"; exit 1; fi`,
+    // Update .env
+    `OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"`,
+    `sed -i '/^BRAVE_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true`,
+    `sed -i '/^PERPLEXITY_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true`,
+    `sed -i '/^OPENROUTER_API_KEY=/d' "$OPENCLAW_ENV" 2>/dev/null || true`,
+    `echo "${envVarName}=$WEB_API_KEY" >> "$OPENCLAW_ENV"`,
+    `chown ubuntu:ubuntu "$OPENCLAW_ENV"`,
+    // Write openclaw.json config
+    `su - ubuntu -c "WEB_PROVIDER='${provider}' WEB_API_KEY='$WEB_API_KEY' WEB_BASE_URL='${baseUrl}' node <<'NODE'
+const fs = require('fs');
+const configPath = '/home/ubuntu/.openclaw/openclaw.json';
+let config = {};
+try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch { config = {}; }
+config.tools = config.tools || {};
+config.tools.web = config.tools.web || {};
+if (process.env.WEB_PROVIDER === 'brave') {
+  config.tools.web.search = { provider: 'brave', apiKey: process.env.WEB_API_KEY, maxResults: 5, timeoutSeconds: 30 };
+} else {
+  config.tools.web.search = { provider: 'perplexity', perplexity: { apiKey: process.env.WEB_API_KEY, baseUrl: process.env.WEB_BASE_URL, model: 'perplexity/sonar-pro' } };
+}
+fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+console.log('Web search config updated successfully');
+NODE"`,
+    `su - ubuntu -c "openclaw gateway restart" || echo "WARNING: gateway restart failed"`,
+    `echo "$(date): Web search reconfigured to ${provider} successfully"`,
+  ];
 }
 
 /**
@@ -761,7 +986,7 @@ export async function runCommandOnInstanceWithOutput(
  */
 export async function updateInstanceConfig(
   instanceId: string,
-  config: InstanceConfig
+  config: InstanceConfig,
 ): Promise<{ instanceId: string; publicIp?: string }> {
   // EC2 instances can't update user data without recreation
   // Stop the old instance and create a new one
@@ -779,7 +1004,7 @@ export async function updateInstanceConfig(
  * This is useful for monitoring instance initialization after launch
  */
 export async function getDetailedInstanceStatus(
-  instanceId: string
+  instanceId: string,
 ): Promise<DetailedInstanceStatus> {
   try {
     // First get the basic instance info
@@ -805,7 +1030,8 @@ export async function getDetailedInstanceStatus(
     }
 
     const instance = describeResponse.Reservations[0].Instances[0];
-    const state = instance.State?.Name as DetailedInstanceStatus["state"] || "not_found";
+    const state =
+      (instance.State?.Name as DetailedInstanceStatus["state"]) || "not_found";
 
     // If instance is not running, status checks are not applicable
     if (state !== "running") {
@@ -829,9 +1055,13 @@ export async function getDetailedInstanceStatus(
     const statusResponse = await ec2Client.send(statusCommand);
 
     let systemStatus: DetailedInstanceStatus["systemStatus"] = "initializing";
-    let instanceStatus: DetailedInstanceStatus["instanceStatus"] = "initializing";
+    let instanceStatus: DetailedInstanceStatus["instanceStatus"] =
+      "initializing";
 
-    if (statusResponse.InstanceStatuses && statusResponse.InstanceStatuses.length > 0) {
+    if (
+      statusResponse.InstanceStatuses &&
+      statusResponse.InstanceStatuses.length > 0
+    ) {
       const status = statusResponse.InstanceStatuses[0];
 
       // Map AWS status to our simplified status
@@ -841,16 +1071,20 @@ export async function getDetailedInstanceStatus(
       if (systemCheck === "ok") systemStatus = "ok";
       else if (systemCheck === "impaired") systemStatus = "impaired";
       else if (systemCheck === "initializing") systemStatus = "initializing";
-      else if (systemCheck === "not-applicable") systemStatus = "not_applicable";
+      else if (systemCheck === "not-applicable")
+        systemStatus = "not_applicable";
 
       if (instanceCheck === "ok") instanceStatus = "ok";
       else if (instanceCheck === "impaired") instanceStatus = "impaired";
-      else if (instanceCheck === "initializing") instanceStatus = "initializing";
-      else if (instanceCheck === "not-applicable") instanceStatus = "not_applicable";
+      else if (instanceCheck === "initializing")
+        instanceStatus = "initializing";
+      else if (instanceCheck === "not-applicable")
+        instanceStatus = "not_applicable";
     }
 
     // Instance is ready when running and both status checks are ok
-    const ready = state === "running" && systemStatus === "ok" && instanceStatus === "ok";
+    const ready =
+      state === "running" && systemStatus === "ok" && instanceStatus === "ok";
 
     return {
       instanceId: instance.InstanceId || null,
@@ -878,7 +1112,7 @@ export async function getDetailedInstanceStatus(
  * Get instance by user wallet (helper)
  */
 export async function getInstanceByUserWallet(
-  userWallet: string
+  userWallet: string,
 ): Promise<Instance | null> {
   try {
     const command = new DescribeInstancesCommand({
