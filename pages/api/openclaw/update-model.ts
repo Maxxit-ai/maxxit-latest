@@ -84,10 +84,15 @@ export default async function handler(
             userId: instance.id,
             userWallet: instance.user_wallet,
             model: model,
-            telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+            ssmWalletPath: instance.user_wallet
+              .replace(/[^a-zA-Z0-9_.-]/g, "_")
+              .toLowerCase(),
             telegramChatId: instance.telegram_chat_id || undefined,
+            telegramUserId: instance.telegram_user_id || undefined,
+            maxxitApiKey: undefined,
             llmProxyUrl: process.env.LLM_PROXY_URL,
             openclawApiKey: process.env.OPENCLAW_API_KEY,
+            webSearchProvider: (instance as any).web_search_provider ?? undefined,
           });
 
           // Update database with new instance ID

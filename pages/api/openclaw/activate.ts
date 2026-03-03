@@ -96,6 +96,7 @@ export default async function handler(
           llmProxyUrl: process.env.LLM_PROXY_URL,
           openclawApiKey: process.env.OPENCLAW_API_KEY,
           ssmWalletPath: instance.user_wallet.replace(/[^a-zA-Z0-9_.-]/g, "_").toLowerCase(),
+          webSearchProvider: (instance as any).web_search_provider ?? undefined,
         });
 
         instanceId = result.instanceId;
@@ -144,6 +145,7 @@ export default async function handler(
             llmProxyUrl: process.env.LLM_PROXY_URL,
             openclawApiKey: process.env.OPENCLAW_API_KEY,
             ssmWalletPath: instance.user_wallet.replace(/[^a-zA-Z0-9_.-]/g, "_").toLowerCase(),
+            webSearchProvider: (instance as any).web_search_provider ?? undefined,
           });
 
           instanceId = result.instanceId;

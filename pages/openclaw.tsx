@@ -17,6 +17,7 @@ import {
   MODEL_OPTIONS,
   STEPS,
   StepKey,
+  WebSearchProvider,
   postJson,
   OSTIUM_TRADING_CONTRACT,
   OSTIUM_TRADING_ABI,
@@ -113,6 +114,12 @@ export default function OpenClawSetupPage() {
   const [showEnvVarsSection, setShowEnvVarsSection] = useState(false);
   const [revealedEnvVars, setRevealedEnvVars] = useState<Set<string>>(new Set());
   const [deletingEnvKey, setDeletingEnvKey] = useState<string | null>(null);
+
+  // Web search state
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [selectedWebSearchProvider, setSelectedWebSearchProvider] =
+    useState<WebSearchProvider>("brave");
+  const [isUpdatingWebSearch, setIsUpdatingWebSearch] = useState(false);
 
   // Version update state
   const [openclawVersion, setOpenclawVersion] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean } | null>(null);
@@ -262,6 +269,7 @@ export default function OpenClawSetupPage() {
             serviceAccountId: string | null;
             keyCreatedAt: string | null;
           };
+          webSearchProvider?: WebSearchProvider | null;
         };
       };
 
@@ -277,6 +285,7 @@ export default function OpenClawSetupPage() {
         openaiProjectId: inst.openai?.projectId ?? null,
         openaiServiceAccountId: inst.openai?.serviceAccountId ?? null,
         openaiApiKeyCreatedAt: inst.openai?.keyCreatedAt ?? null,
+        webSearchProvider: inst.webSearchProvider ?? null,
       });
 
       setSelectedPlan(inst.plan as PlanId);
@@ -314,6 +323,11 @@ export default function OpenClawSetupPage() {
         setOpenaiKeyCreatedAt(inst.openai.keyCreatedAt || null);
       }
 
+      if (inst.webSearchProvider) {
+        setWebSearchEnabled(true);
+        setSelectedWebSearchProvider(inst.webSearchProvider);
+      }
+
       if (inst.status === "active") {
         setCurrentStepIndex(4);
       } else if (inst.telegram.linked && inst.telegram.userId) {
@@ -340,15 +354,25 @@ export default function OpenClawSetupPage() {
   }, [authenticated, walletAddress, loadExistingProgress]);
 
   const [pendingPaymentPlan, setPendingPaymentPlan] = useState<PlanId | null>(null);
+  const [pendingPaymentWebSearch, setPendingPaymentWebSearch] = useState<WebSearchProvider | null>(null);
 
   useEffect(() => {
-    const { payment, tier } = router.query;
+    const { payment, tier, wsProvider } = router.query;
     if (payment === "success" && tier && walletAddress && authenticated) {
       const planId = (tier as string).toLowerCase() as PlanId;
       if (PLAN_OPTIONS.some((p) => p.id === planId)) {
         setSelectedPlan(planId);
         setShowLanding(false);
         setPendingPaymentPlan(planId);
+        // Restore web search provider from Stripe redirect URL
+        if (wsProvider && typeof wsProvider === "string") {
+          const validProviders: WebSearchProvider[] = ["brave", "perplexity", "openrouter"];
+          if (validProviders.includes(wsProvider as WebSearchProvider)) {
+            setPendingPaymentWebSearch(wsProvider as WebSearchProvider);
+            setWebSearchEnabled(true);
+            setSelectedWebSearchProvider(wsProvider as WebSearchProvider);
+          }
+        }
         router.replace("/openclaw", undefined, { shallow: true });
       }
     } else if (payment === "cancelled") {
@@ -405,12 +429,16 @@ export default function OpenClawSetupPage() {
       (async () => {
         setIsLoading(true);
         try {
+          // Use the web search provider from the redirect URL if available
+          const wsProvider = pendingPaymentWebSearch ?? (webSearchEnabled ? selectedWebSearchProvider : null);
+          setPendingPaymentWebSearch(null);
           const response = await fetch("/api/openclaw/create", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               userWallet: walletAddress,
               plan: pendingPaymentPlan,
+              webSearchProvider: wsProvider,
             }),
           });
           const data = await response.json();
@@ -423,6 +451,7 @@ export default function OpenClawSetupPage() {
               telegramLinked: data.instance.telegramLinked ?? false,
               telegramVerified: false,
               telegramUsername: data.instance.telegramUsername ?? null,
+              webSearchProvider: data.instance.webSearchProvider ?? null,
             });
 
             await handleCreateOpenAIKey();
@@ -686,6 +715,7 @@ export default function OpenClawSetupPage() {
             userWallet: walletAddress,
             returnUrl: `${window.location.origin}/openclaw`,
             source: "openclaw",
+            wsProvider: webSearchEnabled ? selectedWebSearchProvider : undefined,
           }),
         });
 
@@ -729,10 +759,12 @@ export default function OpenClawSetupPage() {
           status: string;
           telegramLinked?: boolean;
           telegramUsername?: string | null;
+          webSearchProvider?: WebSearchProvider | null;
         };
       }>("/api/openclaw/create", {
         userWallet: walletAddress,
         plan: selectedPlan,
+        webSearchProvider: webSearchEnabled ? selectedWebSearchProvider : null,
       });
 
       setInstanceData({
@@ -743,6 +775,7 @@ export default function OpenClawSetupPage() {
         telegramLinked: response.instance.telegramLinked ?? false,
         telegramVerified: false,
         telegramUsername: response.instance.telegramUsername ?? null,
+        webSearchProvider: response.instance.webSearchProvider ?? null,
       });
 
       if (response.alreadyExists) {
@@ -784,6 +817,32 @@ export default function OpenClawSetupPage() {
       setErrorMessage((error as Error).message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleUpdateWebSearch = async (
+    enabled: boolean,
+    provider: WebSearchProvider
+  ) => {
+    if (!walletAddress) return;
+    setIsUpdatingWebSearch(true);
+    try {
+      await postJson<{ success: boolean }>("/api/openclaw/update-web-search", {
+        userWallet: walletAddress,
+        webSearchProvider: enabled ? provider : null,
+      });
+      setWebSearchEnabled(enabled);
+      setSelectedWebSearchProvider(provider);
+      if (instanceData) {
+        setInstanceData({
+          ...instanceData,
+          webSearchProvider: enabled ? provider : null,
+        });
+      }
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setIsUpdatingWebSearch(false);
     }
   };
 
@@ -1307,6 +1366,13 @@ export default function OpenClawSetupPage() {
                 canContinueFromPlanStep={canContinueFromPlanStep}
                 isLoading={isLoading}
                 errorMessage={errorMessage}
+                webSearchEnabled={webSearchEnabled}
+                selectedWebSearchProvider={selectedWebSearchProvider}
+                onWebSearchEnabledChange={setWebSearchEnabled}
+                onSelectWebSearchProvider={setSelectedWebSearchProvider}
+                isUpdatingWebSearch={isUpdatingWebSearch}
+                onUpdateWebSearch={handleUpdateWebSearch}
+                isActive={instanceData?.status === "active"}
                 onContinue={goNext}
                 onPlanContinue={handlePlanContinue}
               />

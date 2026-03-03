@@ -20,7 +20,11 @@ export default async function handler(
   }
 
   try {
-    const { userWallet, plan } = req.body;
+    const { userWallet, plan, webSearchProvider } = req.body as {
+      userWallet?: string;
+      plan?: string;
+      webSearchProvider?: string | null;
+    };
 
     // Validate required fields
     if (!userWallet || !plan) {
@@ -43,6 +47,20 @@ export default async function handler(
     });
 
     if (existing) {
+      const existingAny = existing as any;
+      const incomingProvider =
+        webSearchProvider && ["brave", "perplexity", "openrouter"].includes(webSearchProvider)
+          ? webSearchProvider
+          : null;
+
+      if (incomingProvider !== existingAny.web_search_provider) {
+        await (prisma.openclaw_instances.update as any)({
+          where: { id: existing.id },
+          data: { web_search_provider: incomingProvider, updated_at: new Date() },
+        });
+        existingAny.web_search_provider = incomingProvider;
+      }
+
       return res.status(200).json({
         success: true,
         alreadyExists: true,
@@ -57,6 +75,7 @@ export default async function handler(
           budgetResetAt: existing.budget_reset_at,
           telegramLinked: !!existing.telegram_user_id,
           telegramUsername: existing.telegram_username,
+          webSearchProvider: existingAny.web_search_provider,
         },
       });
     }
@@ -72,7 +91,12 @@ export default async function handler(
     }
 
     // Create instance
-    const instance = await prisma.openclaw_instances.create({
+    const normalizedWebSearchProvider =
+      webSearchProvider && ["brave", "perplexity", "openrouter"].includes(webSearchProvider)
+        ? webSearchProvider
+        : null;
+
+    const instance = await (prisma.openclaw_instances.create as any)({
       data: {
         user_wallet: userWallet,
         plan: plan,
@@ -83,6 +107,7 @@ export default async function handler(
         budget_reset_at: null,
         container_status: "stopped",
         status: "pending_telegram",
+        web_search_provider: normalizedWebSearchProvider,
       },
     });
 
@@ -97,6 +122,7 @@ export default async function handler(
         budgetCents: instance.monthly_llm_budget_cents,
         spentCents: instance.llm_spent_this_month_cents,
         budgetResetAt: instance.budget_reset_at,
+        webSearchProvider: instance.web_search_provider,
       },
       message: "Instance created successfully",
       nextSteps: [
