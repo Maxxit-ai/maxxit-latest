@@ -1,13 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../../../lib/prisma";
 import { resolveLazyTradingApiKey } from "../../../../../lib/lazy-trading-api";
+import { normalizeAlphaVenue } from "../../../../../lib/alpha-trade-reference";
 
 const prismaClient = prisma as any;
 
 /**
  * POST /api/lazy-trading/programmatic/alpha/execute
  *
- * Execute a purchased alpha trade on Ostium using the consumer's own addresses.
+ * Execute a purchased alpha trade using the consumer's own addresses.
+ * Routes to Ostium or Avantis depending on alphaContent.venue.
  */
 export default async function handler(
   req: NextApiRequest,
@@ -39,7 +41,6 @@ export default async function handler(
       });
     }
 
-    // Ownership validation: userAddress must match the authenticated API key holder
     if (userAddress.toLowerCase() !== apiKeyRecord.user_wallet.toLowerCase()) {
       return res.status(403).json({
         success: false,
@@ -56,14 +57,28 @@ export default async function handler(
       });
     }
 
+    const venue = normalizeAlphaVenue(alphaContent.venue);
     const leverage = leverageOverride || alphaLeverage || 10;
 
-    const ostiumServiceUrl =
-      process.env.OSTIUM_SERVICE_URL || "http://localhost:5002";
-
-    const openPositionResponse = await fetch(
-      `${ostiumServiceUrl}/open-position`,
-      {
+    let serviceResponse: Response;
+    if (venue === "AVANTIS") {
+      const avantisServiceUrl = process.env.AVANTIS_SERVICE_URL || "http://localhost:5003";
+      serviceResponse = await fetch(`${avantisServiceUrl}/open-position`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentAddress,
+          userAddress,
+          market: token,
+          side: side.toLowerCase(),
+          collateral,
+          leverage,
+          isTestnet: false,
+        }),
+      });
+    } else {
+      const ostiumServiceUrl = process.env.OSTIUM_SERVICE_URL || "http://localhost:5002";
+      serviceResponse = await fetch(`${ostiumServiceUrl}/open-position`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -75,28 +90,28 @@ export default async function handler(
           leverage,
           isTestnet: process.env.ALPHA_TESTNET_MODE !== "false",
         }),
-      }
-    );
-
-    if (!openPositionResponse.ok) {
-      const errorText = await openPositionResponse.text();
-      console.error("[Alpha Execute] Ostium open-position error:", errorText);
-      return res.status(500).json({
-        success: false,
-        error: "Failed to execute alpha trade on Ostium",
       });
     }
 
-    const positionData = await openPositionResponse.json();
+    if (!serviceResponse.ok) {
+      const errorText = await serviceResponse.text();
+      console.error(`[Alpha Execute] ${venue} open-position error:`, errorText);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to execute alpha trade on ${venue}`,
+      });
+    }
+
+    const positionData = await serviceResponse.json();
 
     await prismaClient.user_api_keys.update({
       where: { id: apiKeyRecord.id },
       data: { last_used_at: new Date() },
     });
 
-    // Fire-and-forget: log alpha-sourced trade for analytics
     console.log("[AlphaExecute] ✅ Alpha trade executed", {
       consumer: apiKeyRecord.user_wallet,
+      venue,
       agentAddress,
       token,
       side,
@@ -106,9 +121,17 @@ export default async function handler(
       tradeId: positionData.tradeId,
     });
 
+    const network =
+      venue === "AVANTIS"
+        ? "base-mainnet"
+        : process.env.ALPHA_TESTNET_MODE !== "false"
+          ? "arbitrum-sepolia"
+          : "arbitrum-one";
+
     return res.status(200).json({
       success: true,
-      message: `Alpha trade executed: ${side.toUpperCase()} ${token}`,
+      message: `Alpha trade executed on ${venue}: ${side.toUpperCase()} ${token}`,
+      venue,
       orderId: positionData.orderId,
       tradeId: positionData.tradeId,
       transactionHash: positionData.transactionHash,
@@ -121,8 +144,9 @@ export default async function handler(
         side,
         leverage,
         collateral,
+        venue,
       },
-      network: "arbitrum-sepolia",
+      network,
     });
   } catch (error: any) {
     console.error("[API /alpha/execute] Error:", error.message);

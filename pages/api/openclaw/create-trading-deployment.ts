@@ -1,7 +1,7 @@
 /**
  * Create a default trading deployment for OpenClaw
  * POST /api/openclaw/create-trading-deployment
- * Body: { agentId: string, userWallet: string }
+ * Body: { agentId: string, userWallet: string, enabledVenues?: string[] }
  *
  * Creates a deployment with default trading preferences (all weights at 50).
  * Called after the user has completed delegation and USDC allowance.
@@ -19,7 +19,7 @@ export default async function handler(
     }
 
     try {
-        const { agentId, userWallet } = req.body;
+        const { agentId, userWallet, enabledVenues } = req.body || {};
 
         if (!agentId || !userWallet) {
             return res
@@ -28,6 +28,15 @@ export default async function handler(
         }
 
         const normalizedWallet = userWallet.toLowerCase();
+        const requestedVenueList = Array.from(
+            new Set(
+                (Array.isArray(enabledVenues) ? enabledVenues : [])
+                    .map((v) => String(v || "").trim().toUpperCase())
+                    .filter((v) => v === "OSTIUM" || v === "AVANTIS")
+            )
+        );
+        const targetEnabledVenues =
+            requestedVenueList.length > 0 ? requestedVenueList : ["OSTIUM"];
 
         // Verify agent exists and belongs to this user
         const agent = await prisma.agents.findFirst({
@@ -41,15 +50,22 @@ export default async function handler(
             return res.status(404).json({ error: "Agent not found or not owned by user" });
         }
 
-        // Verify user has an Ostium agent address
+        // Both Ostium and Avantis use the same agent wallet (stored as ostium_agent_address).
         const userAddress = await prisma.user_agent_addresses.findUnique({
             where: { user_wallet: normalizedWallet },
             select: { ostium_agent_address: true },
         });
 
-        if (!userAddress || !userAddress.ostium_agent_address) {
+        const requiresSharedAgentAddress =
+            targetEnabledVenues.includes("OSTIUM") ||
+            targetEnabledVenues.includes("AVANTIS");
+
+        if (
+            requiresSharedAgentAddress &&
+            (!userAddress || !userAddress.ostium_agent_address)
+        ) {
             return res.status(400).json({
-                error: "Ostium agent address not found. Please create agent first.",
+                error: "Trading agent address not found. Please create agent first.",
             });
         }
 
@@ -62,6 +78,12 @@ export default async function handler(
         });
 
         if (existingDeployment) {
+            const mergedEnabledVenues = Array.from(
+                new Set([
+                    ...(existingDeployment.enabled_venues || []),
+                    ...targetEnabledVenues,
+                ])
+            );
             // Update existing deployment to active
             const updated = await prisma.agent_deployments.update({
                 where: { id: existingDeployment.id },
@@ -69,6 +91,7 @@ export default async function handler(
                     status: "ACTIVE",
                     sub_active: true,
                     module_enabled: true,
+                    enabled_venues: mergedEnabledVenues,
                 },
             });
 
@@ -84,6 +107,7 @@ export default async function handler(
                     userWallet: updated.user_wallet,
                     agentAddress: userAddress.ostium_agent_address,
                     status: updated.status,
+                    enabledVenues: updated.enabled_venues,
                 },
                 message: "Deployment updated",
             });
@@ -95,7 +119,7 @@ export default async function handler(
                 agent_id: agentId,
                 user_wallet: normalizedWallet,
                 safe_wallet: normalizedWallet,
-                enabled_venues: ["OSTIUM"],
+                enabled_venues: targetEnabledVenues,
                 status: "ACTIVE",
                 sub_active: true,
                 module_enabled: true,
@@ -120,6 +144,7 @@ export default async function handler(
                 userWallet: deployment.user_wallet,
                 agentAddress: userAddress.ostium_agent_address,
                 status: deployment.status,
+                enabledVenues: deployment.enabled_venues,
             },
             message: "Deployment created with default preferences",
         });

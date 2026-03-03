@@ -12,6 +12,9 @@ import logging
 from datetime import datetime
 import traceback
 import asyncio
+import json
+import urllib.request
+import urllib.error
 
 # Resource monitoring
 try:
@@ -117,6 +120,79 @@ def get_network_config(request_obj=None, is_testnet_override=None):
     """
     rpc_url = os.getenv('AVANTIS_RPC_URL', 'https://mainnet.base.org')
     return rpc_url, False
+
+
+def get_trade_index_from_sdk_trade(trade_data, default=0):
+    """
+    Normalize trade index extraction across SDK/API object shapes.
+    Prefers SDK field `trade_index` and falls back to common aliases.
+    """
+    if trade_data is None:
+        return default
+
+    # Pydantic model / object access
+    value = getattr(trade_data, 'trade_index', None)
+    if value is None:
+        value = getattr(trade_data, 'index', None)
+    if value is None:
+        value = getattr(trade_data, 'tradeId', None)
+
+    # Dict-like access
+    if value is None and isinstance(trade_data, dict):
+        value = trade_data.get('trade_index')
+    if value is None and isinstance(trade_data, dict):
+        value = trade_data.get('index')
+    if value is None and isinstance(trade_data, dict):
+        value = trade_data.get('tradeId')
+
+    return default if value is None else value
+
+
+def build_avantis_open_trade_id(pair_index, trade_index):
+    """Build a stable open-trade identifier for Avantis: <pairIndex>:<tradeIndex>."""
+    if pair_index is None or trade_index is None:
+        return None
+
+    try:
+        return f"{int(pair_index)}:{int(trade_index)}"
+    except Exception:
+        pair_str = str(pair_index).strip()
+        trade_str = str(trade_index).strip()
+        if not pair_str or not trade_str:
+            return None
+        return f"{pair_str}:{trade_str}"
+
+
+def parse_avantis_open_trade_id(trade_id):
+    """
+    Parse trade identifier from either:
+    - composite string: "<pairIndex>:<tradeIndex>"
+    - scalar index string/int: "<tradeIndex>"
+    Returns: (pair_index_or_none, trade_index_or_none)
+    """
+    if trade_id is None:
+        return None, None
+
+    raw = str(trade_id).strip()
+    if not raw:
+        return None, None
+
+    if ":" in raw:
+        pair_raw, trade_raw = raw.split(":", 1)
+        try:
+            pair_index = int(pair_raw.strip())
+        except Exception:
+            pair_index = None
+        try:
+            trade_index = int(trade_raw.strip())
+        except Exception:
+            trade_index = None
+        return pair_index, trade_index
+
+    try:
+        return None, int(raw)
+    except Exception:
+        return None, None
 
 
 def get_trader_client(provider_url: str = None):
@@ -487,7 +563,7 @@ def get_positions():
                 tp = getattr(trade_data, 'tp', 0)
                 sl = getattr(trade_data, 'sl', 0)
                 open_price = getattr(trade_data, 'open_price', 0)
-                trade_index = getattr(trade_data, 'index', 0)
+                trade_index = get_trade_index_from_sdk_trade(trade_data, 0)
 
                 # Resolve pair name from available markets cache
                 pair_name = f"Pair-{pair_index}"
@@ -509,9 +585,9 @@ def get_positions():
                     "collateral": float(collateral),
                     "entryPrice": float(open_price),
                     "leverage": float(leverage),
-                    "tradeId": str(trade_index),
-                    "pairIndex": str(pair_index),
-                    "tradeIndex": str(trade_index),
+                    "tradeId": build_avantis_open_trade_id(pair_index, trade_index),
+                    "pairIndex": int(pair_index) if pair_index is not None else None,
+                    "tradeIndex": int(trade_index) if trade_index is not None else None,
                     "stopLossPrice": float(sl),
                     "takeProfitPrice": float(tp),
                 })
@@ -891,7 +967,7 @@ def open_position():
                 t_long = getattr(trade_data, 'is_long', None)
 
                 if t_pair == pair_index and t_long == (side.lower() == 'long'):
-                    actual_trade_index = getattr(trade_data, 'index', 0)
+                    actual_trade_index = get_trade_index_from_sdk_trade(trade_data, 0)
                     entry_price = float(getattr(trade_data, 'open_price', 0))
                     logger.info(f"✅ Found trade: index={actual_trade_index}, entry_price={entry_price}")
                     break
@@ -902,11 +978,13 @@ def open_position():
         return jsonify({
             "success": True,
             "orderId": str(tx_hash) if tx_hash else 'pending',
-            "tradeId": str(tx_hash) if tx_hash else 'pending',
+            "tradeId": build_avantis_open_trade_id(pair_index, actual_trade_index) if actual_trade_index is not None else (str(tx_hash) if tx_hash else 'pending'),
             "transactionHash": str(tx_hash),
             "txHash": str(tx_hash),
             "status": "pending",
             "message": "Trade submitted on Avantis",
+            "pairIndex": int(pair_index) if pair_index is not None else None,
+            "tradeIndex": int(actual_trade_index) if actual_trade_index is not None else None,
             "actualTradeIndex": actual_trade_index,
             "entryPrice": entry_price,
             "slSet": sl_configured,
@@ -1005,6 +1083,7 @@ def close_position():
 
         market = data.get('market')
         trade_id = data.get('tradeId')
+        actual_trade_index = data.get('actualTradeIndex')
         user_address = data.get('userAddress')
 
         if not all([private_key, market]):
@@ -1040,19 +1119,27 @@ def close_position():
 
         # Resolve market to pair_index for matching
         target_pair_index, is_available, market_name = validate_market(market)
+        requested_pair_index, requested_trade_index = parse_avantis_open_trade_id(trade_id)
+        if requested_trade_index is None and actual_trade_index is not None:
+            try:
+                requested_trade_index = int(actual_trade_index)
+            except Exception:
+                requested_trade_index = None
 
         # Find matching trade
         trade_to_close = None
         for trade in trades_list:
             trade_data = trade.trade if hasattr(trade, 'trade') else trade
 
-            t_index = getattr(trade_data, 'index', None)
+            t_index = get_trade_index_from_sdk_trade(trade_data, None)
             t_pair = getattr(trade_data, 'pair_index', None)
 
-            # Match by trade index/id if provided
-            if trade_id and str(t_index) == str(trade_id):
+            # Match by explicit trade identifier if provided.
+            if requested_trade_index is not None and str(t_index) == str(requested_trade_index) and (
+                requested_pair_index is None or str(t_pair) == str(requested_pair_index)
+            ):
                 trade_to_close = trade_data
-                logger.info(f"Matched by tradeId: {trade_id}")
+                logger.info(f"Matched by trade identifier: pair={requested_pair_index}, trade={requested_trade_index}")
                 break
 
             # Otherwise match by pair_index (derived from market name)
@@ -1072,7 +1159,7 @@ def close_position():
 
         # Get trade details for close
         t_pair_index = getattr(trade_to_close, 'pair_index', 0)
-        t_trade_index = getattr(trade_to_close, 'index', 0)
+        t_trade_index = get_trade_index_from_sdk_trade(trade_to_close, 0)
         t_collateral = getattr(trade_to_close, 'collateral_in_trade', 0)
 
         logger.info(f"🎯 Closing trade: pair_index={t_pair_index}, trade_index={t_trade_index}, collateral={t_collateral}")
@@ -1237,7 +1324,7 @@ def update_sl_tp():
         trade_to_update = None
         for trade in trades_list:
             trade_data = trade.trade if hasattr(trade, 'trade') else trade
-            t_index = getattr(trade_data, 'index', None)
+            t_index = get_trade_index_from_sdk_trade(trade_data, None)
             t_pair = getattr(trade_data, 'pair_index', None)
 
             if trade_index is not None and str(t_index) == str(trade_index):
@@ -1253,7 +1340,7 @@ def update_sl_tp():
                 "error": f"No open position found for {market}"
             }), 404
 
-        t_trade_index = getattr(trade_to_update, 'index', 0)
+        t_trade_index = get_trade_index_from_sdk_trade(trade_to_update, 0)
         t_pair_index = getattr(trade_to_update, 'pair_index', 0)
         entry_price = float(getattr(trade_to_update, 'open_price', 0))
         is_long = getattr(trade_to_update, 'is_long', True)
@@ -1459,7 +1546,7 @@ def transfer_usdc():
 @app.route('/trade-history', methods=['POST'])
 def trade_history():
     """
-    Get trade history for a user using on-chain event logs.
+    Get trade history for a user using Avantis public history API.
     Body:
     {
         "agentAddress": "0x...",
@@ -1468,14 +1555,14 @@ def trade_history():
     }
     """
     try:
-        data = request.json
+        data = request.json or {}
         logger.info(f"[TRADE-HISTORY] Request data: {data}")
-
-        rpc_url, is_testnet = get_network_config(request)
 
         agent_address = data.get('agentAddress')
         user_address = data.get('userAddress')
         limit = int(data.get('limit', 50))
+        if limit <= 0:
+            limit = 50
 
         # Determine which address to query
         address_to_query = user_address or agent_address
@@ -1490,84 +1577,170 @@ def trade_history():
         except:
             return jsonify({"success": False, "error": f"Invalid address format: {address_to_query}"}), 400
 
-        # Use a read-only client (no signer needed)
-        from avantis_trader_sdk import TraderClient
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Build market lookup by pair index
+        markets_cache = {}
         try:
-            client = loop.run_until_complete(
-                TraderClient.create(provider_url=rpc_url)
+            markets = get_available_markets()
+            for _, market_info in markets.items():
+                idx = market_info.get('index')
+                name = market_info.get('name')
+                if idx is not None and name:
+                    markets_cache[idx] = name
+        except Exception as cache_err:
+            logger.warning(f"Could not load market names cache: {cache_err}")
+
+        # Fetch JSON from Avantis public APIs
+        def fetch_json(url: str):
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "maxxit-avantis-service/1.0"
+                }
             )
+            with urllib.request.urlopen(req, timeout=20) as response:
+                return json.loads(response.read().decode('utf-8'))
 
-            Trading = client.contracts.get("Trading")
-
-            # Get current block
-            current_block = loop.run_until_complete(
-                client.async_web3.eth.get_block_number()
-            )
-
-            # Scan last ~200k blocks (~1 week on Base at 2s/block)
-            from_block = max(0, current_block - 200000)
-
-            logger.info(f"📜 Querying trade history for {address_to_query} from block {from_block} to {current_block}")
-
-            # Query MarketOrderInitiated events filtered by trader
-            event_filter = {
-                'fromBlock': from_block,
-                'toBlock': current_block,
-                'argument_filters': {'trader': address_to_query}
-            }
-            events = loop.run_until_complete(
-                Trading.events.MarketOrderInitiated.get_logs(**event_filter)
-            )
-
-            logger.info(f"📜 Found {len(events)} MarketOrderInitiated events")
-
-            # Load market names cache
-            markets_cache = {}
+        def safe_float(value, default=0.0):
             try:
-                pairs_info = loop.run_until_complete(client.pairs_cache.get_pairs_info())
-                if pairs_info:
-                    for pair in pairs_info:
-                        idx = getattr(pair, 'pair_index', None) or getattr(pair, 'index', None)
-                        name = getattr(pair, 'from_symbol', None) or getattr(pair, 'name', None)
-                        if idx is not None and name:
-                            markets_cache[idx] = name
-            except Exception as cache_err:
-                logger.warning(f"Could not load market names: {cache_err}")
+                if value is None:
+                    return default
+                return float(value)
+            except Exception:
+                return default
 
-        finally:
-            loop.close()
+        logger.info(f"📜 Fetching trade history via Avantis API for {address_to_query}")
 
-        # Parse events into trade history
+        history_rows = []
+        page = 1
+        max_pages = 20
+        total_pages = None
+
+        while len(history_rows) < limit and page <= max_pages:
+            history_url = f"https://api.avantisfi.com/v2/history/portfolio/history/{address_to_query}/{page}"
+            payload = fetch_json(history_url)
+
+            if not isinstance(payload, dict) or not payload.get('success', False):
+                raise Exception(f"Invalid history API response on page {page}")
+
+            portfolio = payload.get('portfolio', [])
+            if not isinstance(portfolio, list) or len(portfolio) == 0:
+                break
+
+            history_rows.extend(portfolio)
+
+            if total_pages is None:
+                page_count = payload.get('pageCount')
+                if isinstance(page_count, int) and page_count > 0:
+                    total_pages = page_count
+
+            if total_pages is not None and page >= total_pages:
+                break
+
+            page += 1
+
+        # Fetch grouped analytics endpoints (best-effort; do not fail history if one endpoint is down)
+        analytics = {
+            "v2ProfitLossByPair": [],
+            "v1TotalSizeByPair": [],
+            "v1WinRateByPair": [],
+            "v1ProfitLossTimeline": [],
+            "summary": {
+                "totalPnl": 0.0,
+                "totalSize": 0.0,
+                "totalCollateral": 0.0,
+                "overallWinRate": 0.0
+            },
+            "errors": []
+        }
+
+        analytics_endpoints = {
+            "v2ProfitLossByPair": f"https://api.avantisfi.com/v2/history/portfolio/profit-loss/{address_to_query}/grouped",
+            "v1TotalSizeByPair": f"https://api.avantisfi.com/v1/history/portfolio/total-size/{address_to_query}/grouped",
+            "v1WinRateByPair": f"https://api.avantisfi.com/v1/history/portfolio/win-rate/{address_to_query}/grouped",
+            "v1ProfitLossTimeline": f"https://api.avantisfi.com/v1/history/portfolio/profit-loss/history/{address_to_query}/0/d",
+        }
+
+        for key, endpoint_url in analytics_endpoints.items():
+            try:
+                payload = fetch_json(endpoint_url)
+                if isinstance(payload, dict) and payload.get('success', False):
+                    if key == "v1WinRateByPair":
+                        analytics[key] = payload.get('dataByPairIndex', []) or []
+                    else:
+                        analytics[key] = payload.get('data', []) or []
+                else:
+                    analytics["errors"].append(f"Invalid payload from {key}")
+            except Exception as analytics_err:
+                analytics["errors"].append(f"{key}: {str(analytics_err)}")
+
+        # Build summary from grouped analytics
+        for row in analytics["v2ProfitLossByPair"]:
+            analytics["summary"]["totalPnl"] += safe_float(row.get("total"))
+
+        for row in analytics["v1TotalSizeByPair"]:
+            analytics["summary"]["totalSize"] += safe_float(row.get("total"))
+            analytics["summary"]["totalCollateral"] += safe_float(row.get("totalCollateral"))
+
+        if analytics["v1WinRateByPair"]:
+            win_rates = [safe_float(x.get("winRate")) for x in analytics["v1WinRateByPair"]]
+            win_rates = [w for w in win_rates if w >= 0]
+            if win_rates:
+                # API can return 0..1 ratio; normalize to percentage.
+                avg_win_rate = sum(win_rates) / len(win_rates)
+                analytics["summary"]["overallWinRate"] = avg_win_rate * 100 if avg_win_rate <= 1 else avg_win_rate
+
+        # Parse v2/history rows into normalized trade history format
         trades = []
-        for event in events:
-            args = event.args
-            pair_index = args.get('pairIndex', 0)
-            is_open = args.get('open', True)
-            is_buy = args.get('isBuy', True)
-            is_pnl = args.get('isPnl', False)
-            collateral_raw = args.get('initialPosToken', 0)
-            leverage_raw = args.get('leverage', 0)
-            timestamp = args.get('timestamp', 0)
-            order_id = args.get('orderId', 0)
+        for row in history_rows[:limit]:
+            args = row.get('event', {}).get('args', {})
+            trade_data = args.get('t', {})
 
-            # Convert values from on-chain format
-            collateral = float(collateral_raw) / 1e6 if collateral_raw else 0
-            leverage = float(leverage_raw) / 1e10 if leverage_raw else 0
+            pair_index = int(trade_data.get('pairIndex', 0) or 0)
+            trade_index = int(trade_data.get('index', 0) or 0)
+            is_buy = bool(trade_data.get('buy', True))
+            collateral = safe_float(trade_data.get('initialPosToken', 0))
+            leverage = safe_float(trade_data.get('leverage', 0))
+            entry_price = safe_float(trade_data.get('openPrice', 0))
+            close_price = safe_float(args.get('price', entry_price))
+            position_size_usdc = safe_float(trade_data.get('positionSizeUSDC', args.get('positionSizeUSDC', 0)))
+            usdc_sent_to_trader = safe_float(args.get('usdcSentToTrader', 0))
+            gross_pnl = safe_float(row.get('_grossPnl', 0))
+
+            history_id = row.get('_id')
+            trade_id = build_avantis_open_trade_id(pair_index, trade_index)
+            order_id = history_id or (trade_id or f"{pair_index}-{trade_index}-{trade_data.get('timestamp', 0)}")
+
+            timestamp = int(trade_data.get('timestamp', 0) or 0)
+
+            # Fallback to ISO timestamp if numeric timestamp is missing
+            if not timestamp:
+                iso_ts = row.get('timeStamp')
+                if iso_ts:
+                    try:
+                        timestamp = int(datetime.fromisoformat(iso_ts.replace('Z', '+00:00')).timestamp())
+                    except Exception:
+                        timestamp = 0
+
             market_name = markets_cache.get(pair_index, f"Pair-{pair_index}")
+            closed_at = row.get('timeStamp')
 
             trades.append({
-                "market": market_name,
+                "id": history_id or order_id,
+                "tradeId": trade_id or str(trade_index),
                 "pairIndex": pair_index,
-                "action": "open" if is_open else "close",
+                "tradeIndex": trade_index,
+                "market": market_name,
                 "side": "long" if is_buy else "short",
-                "collateral": round(collateral, 2),
+                "collateralUsdc": round(collateral, 6),
                 "leverage": round(leverage, 1),
-                "orderId": order_id,
+                "entryPrice": entry_price,
+                "closePrice": close_price,
+                "sizeUsdc": round(position_size_usdc, 6),
+                "pnlUsdc": round(usdc_sent_to_trader - collateral, 6),
+                "grossPnlUsdc": round(gross_pnl, 6),
                 "timestamp": timestamp,
-                "txHash": event.transactionHash.hex() if event.transactionHash else "",
-                "blockNumber": event.blockNumber,
+                "closedAt": closed_at,
             })
 
         # Sort by timestamp descending (newest first)
@@ -1578,10 +1751,21 @@ def trade_history():
             "success": True,
             "trades": trades,
             "total": len(trades),
+            "pageCount": total_pages,
             "address": address_to_query,
-            "blocksScanned": current_block - from_block,
+            "blocksScanned": 0,
+            "source": "avantis_api_v2_history",
+            "analytics": analytics,
         })
 
+    except urllib.error.HTTPError as e:
+        logger.error(f"Trade history API HTTP error: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": f"History API HTTP error: {e.code}"}), 502
+    except urllib.error.URLError as e:
+        logger.error(f"Trade history API network error: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": "History API network error"}), 502
     except Exception as e:
         error_str = str(e)
         logger.error(f"Trade history error: {error_str}")

@@ -156,7 +156,11 @@ export function AvantisConnect({ agentId, agentName, onClose, onSuccess }: Avant
         if (!isCreator && totalCost > 0 && creditBalance < totalCost) { setShowTopUpUI(true); return; }
         setJoiningAgent(true); setError('');
         try {
-            const requestBody: Record<string, unknown> = { agentId, userWallet: user?.wallet?.address };
+            const requestBody: Record<string, unknown> = {
+                agentId,
+                userWallet: user?.wallet?.address,
+                venue: "AVANTIS",
+            };
             if (tradingPreferencesRef.current) requestBody.tradingPreferences = tradingPreferencesRef.current;
             const response = await fetch('/api/agents/join-with-payment', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody),

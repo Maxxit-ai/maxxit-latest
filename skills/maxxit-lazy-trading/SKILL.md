@@ -365,7 +365,9 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/positions" \
 
 ### Get Position History
 
-Get raw trading history for an address (includes open, close, cancelled orders, etc.).
+Get trading history for a wallet.  
+- `venue: "OSTIUM"` (default): uses Ostium history.
+- `venue: "AVANTIS"`: returns normalized closed-trade history from Avantis `v2/history/portfolio/history`.
 
 **Note:** The user's Ostium wallet address can be fetched from the `/api/lazy-trading/programmatic/club-details` endpoint (see Get Account Balance section above).
 
@@ -373,13 +375,14 @@ Get raw trading history for an address (includes open, close, cancelled orders, 
 curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"address": "0x...", "count": 50}'
+  -d '{"venue":"OSTIUM","address":"0x...","count":50}'
 ```
 
 **Request Body:**
 ```json
 {
-  "address": "0x...",  // User's Ostium wallet address (required)
+  "venue": "OSTIUM",    // Optional: "OSTIUM" (default) or "AVANTIS"
+  "address": "0x...",   // Required for OSTIUM; also accepted for AVANTIS as alias of userAddress
   "count": 50           // Number of recent orders to retrieve (default: 50)
 }
 ```
@@ -404,9 +407,21 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
       "tradeId": "trade_123"
     }
   ],
-  "count": 25
+  "count": 25,
+  "venue": "OSTIUM"
 }
 ```
+
+**Avantis history example (same `/history` endpoint):**
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"venue":"AVANTIS","userAddress":"0x...","count":50}'
+```
+
+Returns normalized records like:
+`id`, `tradeId` (`<pairIndex>:<tradeIndex>`), `market`, `side`, `collateralUsdc`, `positionSizeUsdc`, `leverage`, `entryPrice`, `closePrice`, `usdcSentToTrader`, `grossPnlUsdc`, `closedAt`, `timestamp`.
 
 ### Open Position
 
@@ -1488,12 +1503,13 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/positio
   "success": true,
   "positions": [
     {
-      "market": "BTC",
+      "market": "BTC/USD",
       "marketFull": "BTC/USD",
       "side": "long",
       "collateral": 100.0,
       "entryPrice": 95000.0,
       "leverage": 10.0,
+      "tradeId": "0:2",
       "tradeIndex": 2,
       "pairIndex": 0
     }
@@ -1586,7 +1602,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/close-p
   "agentAddress": "0x...",      // REQUIRED — from /club-details. NEVER guess.
   "userAddress": "0x...",       // REQUIRED — from /club-details. NEVER guess.
   "market": "BTC",              // REQUIRED — Token symbol
-  "tradeId": "12345",           // Optional — specific trade ID
+  "tradeId": "0:2",             // Optional — preferred composite ID from /avantis/positions (pairIndex:tradeIndex)
   "actualTradeIndex": 2         // Recommended — from /avantis/positions → tradeIndex
 }
 ```
@@ -1642,21 +1658,23 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/update-
 ### Avantis Trade History
 
 ```bash
-curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/trade-history" \
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
+    "venue": "AVANTIS",
     "userAddress": "0x...",
-    "limit": 50
+    "count": 50
   }'
 ```
 
 **Request Body:**
 ```json
 {
+  "venue": "AVANTIS",          // REQUIRED for Avantis via /history
   "userAddress": "0x...",       // REQUIRED — the trader's wallet address
   "agentAddress": "0x...",     // Alternative to userAddress
-  "limit": 50                  // Optional — max results (default: 50)
+  "count": 50                  // Optional — max results (default: 50)
 }
 ```
 
@@ -1664,23 +1682,28 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/trade-h
 ```json
 {
   "success": true,
-  "total": 4,
-  "address": "0x...",
-  "blocksScanned": 200000,
-  "trades": [
+  "venue": "AVANTIS",
+  "source": "avantis_api_v2_history",
+  "history": [
     {
-      "market": "BTC",
+      "id": "69a6e3b7...",
+      "tradeId": "1:0",
+      "market": "BTC/USD",
       "pairIndex": 1,
-      "action": "close",
+      "tradeIndex": 0,
       "side": "long",
-      "collateral": 10.0,
+      "collateralUsdc": 9.955,
+      "positionSizeUsdc": 1772.544045,
       "leverage": 10.0,
-      "orderId": 12345,
+      "entryPrice": 67120.23805881,
+      "closePrice": 67014.2049318,
+      "usdcSentToTrader": 9.765164,
+      "closedAt": "2026-03-03T13:35:51.000Z",
       "timestamp": 1709000000,
-      "txHash": "0x...",
-      "blockNumber": 25000000
+      "grossPnlUsdc": -0.144682
     }
-  ]
+  ],
+  "count": 4
 }
 ```
 
@@ -1695,6 +1718,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/trade-h
 | `side` | User specifies `"long"` or `"short"` | User input (required) |
 | `collateral` | User specifies USDC amount (min 100) | User input (required) |
 | `leverage` | User specifies | User input |
+| `tradeId` | `/avantis/positions` → `tradeId` (`<pairIndex>:<tradeIndex>`) | Preferred unique open-trade key |
 | `tradeIndex` | `/avantis/positions` → `tradeIndex` | From position data |
 
 ### Avantis Workflow: Open Position on Base Chain
@@ -1757,11 +1781,16 @@ Trustless ZK-verified trading signals. **Producers** generate proofs and flag po
 | `/alpha/purchase/:listingId` | GET | **Phase 1** (no `X-Payment` header): returns 402 + payment details. **Phase 2** (with `X-Payment: txHash`): verifies on-chain, returns alpha. |
 | `/alpha/pay/:listingId` | POST | **Payment helper**: sends USDC from your agent on-chain. Returns `txHash`. Call between Phase 1 and Phase 2. |
 | `/alpha/verify` | POST | Body: `{ listingId, content }`. Verify purchased content hash matches commitment. |
-| `/alpha/execute` | POST | Body: `{ alphaContent, agentAddress, userAddress, collateral, leverageOverride? }`. Execute alpha trade on Ostium. |
-| `/alpha/generate-proof` | POST | (Producer) Generate ZK proof of trading performance. Body: `{ tradeId?: string, autoProcess?: boolean }`. Pass `tradeId` to feature a specific trade; omit for most recent open trade. `autoProcess: false` processesed by the worker (~3-5 min). |
+| `/alpha/execute` | POST | Body: `{ alphaContent, agentAddress, userAddress, collateral, leverageOverride? }`. Execute alpha trade on the venue from `alphaContent.venue` (`OSTIUM` or `AVANTIS`). |
+| `/alpha/generate-proof` | POST | (Producer) Generate ZK proof of trading performance. Body: `{ venue?: \"OSTIUM\" | \"AVANTIS\", tradeId?: string, autoProcess?: boolean }`. Pass `tradeId` to feature a specific trade; omit for most recent open trade. `autoProcess: false` is processed by the worker (~3-5 min). |
 | `/alpha/proof-status` | GET | (Producer) Check proof processing status. Query: `proofId`. |
 | `/alpha/my-proof` | GET | (Producer) Latest proof status and metrics. |
 | `/alpha/flag` | POST | (Producer) Body: `{ proofId, priceUsdc, token, side, leverage? }`. List verified trade as alpha using the proof ID from generate-proof. |
+
+**Venue/trade reference notes:**
+- `tradeId` for `venue: "OSTIUM"` should be the trade index (example: `"123"`).
+- For `venue: "AVANTIS"`, use tradeId from `/avantis/positions`: `"<pairIndex>:<tradeIndex>"` (example: `"1:0"`).
+- Internally, proofs/listings are stored as a prefixed trade reference: `<VENUE>:<ID>` (for example, `OSTIUM:123`, `AVANTIS:1:0`).
 
 ### How x402 Purchase Works (3 API Calls)
 
@@ -1869,7 +1898,7 @@ Step 1: POST /positions (address = user_wallet from /club-details)
    → SAVE: tradeId, market (token), side, leverage from the chosen position
 
 Step 2: POST /alpha/generate-proof
-   → Body: { "tradeId": "{tradeId from Step 1}", "autoProcess": true }
+   → Body: { "venue": "OSTIUM", "tradeId": "{tradeId from Step 1}", "autoProcess": true }
    → SAVE: proofId from response
    → If status is already VERIFIED → go to Step 4
 
@@ -1899,7 +1928,7 @@ Step 5: POST /alpha/flag
 curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/generate-proof" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"tradeId": "1612509", "autoProcess": false}'
+  -d '{"venue":"OSTIUM","tradeId":"1612509","autoProcess":false}'
 
 # Check proof status
 curl -G "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/proof-status" \
@@ -1950,4 +1979,3 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/flag" \
 - Never share your API key
 - API keys can be revoked and regenerated from the dashboard
 - All trades execute on-chain with your delegated wallet permissions
-

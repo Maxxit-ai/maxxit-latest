@@ -1,9 +1,9 @@
 /**
  * Create a trading agent for OpenClaw (no Telegram required)
  * POST /api/openclaw/create-trading-agent
- * Body: { userWallet: string }
+ * Body: { userWallet: string, venue?: "OSTIUM" | "AVANTIS", enabledVenues?: string[] }
  *
- * Creates an agent and generates an Ostium agent address.
+ * Creates an agent and generates a shared trading agent address.
  * Does NOT create a deployment — that happens after delegation + approval.
  */
 
@@ -20,13 +20,25 @@ export default async function handler(
     }
 
     try {
-        const { userWallet } = req.body;
+        const { userWallet, venue, enabledVenues } = req.body || {};
 
         if (!userWallet || typeof userWallet !== "string") {
             return res.status(400).json({ error: "userWallet is required" });
         }
 
         const normalizedWallet = userWallet.toLowerCase();
+        const requestedVenueList = Array.from(
+            new Set(
+                [
+                    ...(Array.isArray(enabledVenues) ? enabledVenues : []),
+                    ...(typeof venue === "string" ? [venue] : []),
+                ]
+                    .map((v) => String(v || "").trim().toUpperCase())
+                    .filter((v) => v === "OSTIUM" || v === "AVANTIS")
+            )
+        );
+        const requestedVenues =
+            requestedVenueList.length > 0 ? requestedVenueList : ["OSTIUM"];
 
         // Check if user already has a trading agent created from OpenClaw
         const existingAgent = await prisma.agents.findFirst({
@@ -37,6 +49,11 @@ export default async function handler(
             include: {
                 agent_deployments: {
                     where: { status: "ACTIVE" },
+                    select: {
+                        id: true,
+                        status: true,
+                        enabled_venues: true,
+                    },
                 },
             },
         });
@@ -50,6 +67,9 @@ export default async function handler(
             console.log(
                 `[OpenClaw] Existing agent found for ${normalizedWallet}: ${existingAgent.id}`
             );
+            const matchingDeployment = existingAgent.agent_deployments.find((d) =>
+                requestedVenues.every((v) => d.enabled_venues?.includes(v))
+            );
             return res.status(200).json({
                 success: true,
                 alreadyExists: true,
@@ -60,8 +80,10 @@ export default async function handler(
                     status: existingAgent.status,
                 },
                 ostiumAgentAddress: agentAddressResult.address,
-                deployment: existingAgent.agent_deployments[0] || null,
-                hasDeployment: existingAgent.agent_deployments.length > 0,
+                avantisAgentAddress: agentAddressResult.address,
+                deployment: matchingDeployment || existingAgent.agent_deployments[0] || null,
+                hasDeployment: !!matchingDeployment,
+                requestedVenues,
             });
         }
 
@@ -110,8 +132,10 @@ export default async function handler(
                 status: agent.status,
             },
             ostiumAgentAddress: agentAddressResult.address,
+            avantisAgentAddress: agentAddressResult.address,
             deployment: null,
             hasDeployment: false,
+            requestedVenues,
         });
     } catch (error: any) {
         console.error("[OpenClaw] Create trading agent error:", error);

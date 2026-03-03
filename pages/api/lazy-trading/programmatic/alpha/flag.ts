@@ -2,6 +2,10 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { createHash } from "crypto";
 import { prisma } from "../../../../../lib/prisma";
 import { resolveLazyTradingApiKey } from "../../../../../lib/lazy-trading-api";
+import {
+  decodeTradeReference,
+  encodeTradeReference,
+} from "../../../../../lib/alpha-trade-reference";
 
 const prismaClient = prisma as any;
 
@@ -103,17 +107,27 @@ export default async function handler(
       });
     }
 
-    const tradeId = proofRecord.trade_id;
-    if (!tradeId) {
+    const tradeRef = proofRecord.trade_id;
+    if (!tradeRef) {
       return res.status(400).json({
         success: false,
         error: "Proof has no trade_id. Re-generate the proof with a tradeId.",
       });
     }
+    const decodedRef = decodeTradeReference(tradeRef);
+    const venue = decodedRef.venue;
+    const tradeId = decodedRef.tradeId;
+    if (!tradeId) {
+      return res.status(400).json({
+        success: false,
+        error: "Proof trade reference is unresolved. Re-generate the proof with a concrete open trade.",
+      });
+    }
+    const normalizedTradeRef = encodeTradeReference(venue, tradeId);
 
     // ── 2. Prevent duplicate listing for same trade ──────────────────
     const existingListing = await prismaClient.alpha_listings.findFirst({
-      where: { trade_id: tradeId, active: true },
+      where: { trade_id: normalizedTradeRef, active: true },
     });
     if (existingListing) {
       return res.status(409).json({
@@ -136,7 +150,7 @@ export default async function handler(
       token: token.toUpperCase(),
       side: side.toLowerCase(),
       leverage: actualLeverage,
-      venue: "OSTIUM",
+      venue,
       proofTxHash: proofRecord.tx_hash || null,
       metrics: {
         tradeCount: proofRecord.trade_count,
@@ -171,7 +185,7 @@ export default async function handler(
       data: {
         agent_id: agent.id,
         commitment: agent.commitment,
-        trade_id: tradeId,
+        trade_id: normalizedTradeRef,
         token: token.toUpperCase(),
         side: side.toLowerCase(),
         leverage: actualLeverage,
@@ -193,6 +207,8 @@ export default async function handler(
       message: "Alpha listed successfully",
       listingId: listing.id,
       tradeId,
+      tradeRef: normalizedTradeRef,
+      venue,
       commitment: agent.commitment,
       priceUsdc: priceUsdc.toString(),
       contentHash,

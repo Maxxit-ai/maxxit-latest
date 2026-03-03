@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../../../lib/prisma";
 import { resolveLazyTradingApiKey } from "../../../../../lib/lazy-trading-api";
+import { decodeTradeReference } from "../../../../../lib/alpha-trade-reference";
 
 const prismaClient = prisma as any;
 
@@ -34,7 +35,6 @@ export default async function handler(
     const agent = await prismaClient.agents.findFirst({
       where: {
         creator_wallet: userWallet,
-        venue: "OSTIUM",
         status: { in: ["PUBLIC", "PRIVATE"] },
       },
       select: {
@@ -47,7 +47,7 @@ export default async function handler(
     if (!agent) {
       return res.status(404).json({
         success: false,
-        error: "No active Ostium agent found for this wallet",
+        error: "No active agent found for this wallet",
       });
     }
 
@@ -72,6 +72,7 @@ export default async function handler(
             (latestProof.win_count / latestProof.trade_count) * 10000
           ) / 100
         : 0;
+    const tradeRef = decodeTradeReference(latestProof.trade_id);
 
     await prismaClient.user_api_keys.update({
       where: { id: apiKeyRecord.id },
@@ -84,6 +85,9 @@ export default async function handler(
       proofId: latestProof.id,
       status: latestProof.status,
       commitment: latestProof.commitment,
+      venue: tradeRef.venue,
+      tradeId: tradeRef.tradeId,
+      tradeRef: latestProof.trade_id || null,
       metrics:
         latestProof.status === "VERIFIED"
           ? {

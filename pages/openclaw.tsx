@@ -86,6 +86,7 @@ export default function OpenClawSetupPage() {
   const [agentSetupSource, setAgentSetupSource] = useState<"ostium" | "aster" | null>(null);
   const [enablingTrading, setEnablingTrading] = useState(false);
   const [hasDeployment, setHasDeployment] = useState(false);
+  const [deploymentEnabledVenues, setDeploymentEnabledVenues] = useState<string[]>([]);
 
   // Aster DEX state
   const [asterEnabled, setAsterEnabled] = useState(false);
@@ -209,7 +210,11 @@ export default function OpenClawSetupPage() {
       const res = await fetch("/api/openclaw/create-trading-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userWallet: walletAddress }),
+        body: JSON.stringify({
+          userWallet: walletAddress,
+          venue: "OSTIUM",
+          enabledVenues: ["OSTIUM"],
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -217,6 +222,11 @@ export default function OpenClawSetupPage() {
         setOstiumAgentAddress(data.ostiumAgentAddress);
         if (data.hasDeployment) {
           setHasDeployment(true);
+          setDeploymentEnabledVenues(
+            Array.isArray(data.deployment?.enabled_venues)
+              ? data.deployment.enabled_venues
+              : []
+          );
           setLazyTradingSetupComplete(true);
           setSkillSubStep("complete");
           return;
@@ -955,7 +965,7 @@ export default function OpenClawSetupPage() {
     }
   };
 
-  const handleCreateTradingDeployment = useCallback(async () => {
+  const handleCreateTradingDeployment = useCallback(async (enabledVenues?: string[]) => {
     if (!tradingAgentId || !walletAddress) return;
     setSkillSubStep("creating-deployment");
     setErrorMessage("");
@@ -963,11 +973,27 @@ export default function OpenClawSetupPage() {
       const res = await fetch("/api/openclaw/create-trading-deployment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: tradingAgentId, userWallet: walletAddress }),
+        body: JSON.stringify({
+          agentId: tradingAgentId,
+          userWallet: walletAddress,
+          enabledVenues,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setHasDeployment(true);
+        const syncedVenues = (
+          Array.isArray(data.deployment?.enabledVenues)
+            ? data.deployment.enabledVenues
+            : Array.isArray(data.deployment?.enabled_venues)
+              ? data.deployment.enabled_venues
+              : Array.isArray(enabledVenues)
+                ? enabledVenues
+                : []
+        );
+        setDeploymentEnabledVenues(syncedVenues);
+        setHasDeployment(
+          syncedVenues.map((v: string) => String(v).toUpperCase()).includes("OSTIUM")
+        );
         setSkillSubStep("complete");
       } else {
         setErrorMessage(data.error || "Failed to create deployment");
@@ -1117,12 +1143,19 @@ export default function OpenClawSetupPage() {
       const res = await fetch("/api/openclaw/create-trading-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userWallet: walletAddress, venue: "AVANTIS" }),
+        body: JSON.stringify({
+          userWallet: walletAddress,
+          venue: "AVANTIS",
+          enabledVenues: ["AVANTIS"],
+        }),
       });
       const data = await res.json();
       if (data.success) {
         const addr = data.avantisAgentAddress || data.ostiumAgentAddress;
         setAvantisAgentAddress(addr);
+        if (Array.isArray(data.deployment?.enabled_venues)) {
+          setDeploymentEnabledVenues(data.deployment.enabled_venues);
+        }
         // Also set the ostium agent address if it exists for shared wallet
         if (!ostiumAgentAddress && data.ostiumAgentAddress) {
           setOstiumAgentAddress(data.ostiumAgentAddress);
@@ -1521,7 +1554,9 @@ export default function OpenClawSetupPage() {
                 enablingTrading={enablingTrading}
                 onSetEnablingTrading={setEnablingTrading}
                 hasDeployment={hasDeployment}
+                deploymentEnabledVenues={deploymentEnabledVenues}
                 onSetHasDeployment={setHasDeployment}
+                onSetDeploymentEnabledVenues={setDeploymentEnabledVenues}
                 asterEnabled={asterEnabled}
                 onSetAsterEnabled={setAsterEnabled}
                 isSavingAsterConfig={isSavingAsterConfig}

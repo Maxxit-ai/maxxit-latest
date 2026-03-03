@@ -74,3 +74,5 @@ maxxit-db-tables
 /docs
 
 /sp1/target
+
+/temp/*

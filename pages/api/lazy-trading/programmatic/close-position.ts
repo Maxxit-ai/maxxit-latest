@@ -82,7 +82,11 @@ export default async function handler(
     // Deactivate the alpha_listing for this trade
     if (tradeId) {
       await prismaClient.alpha_listings.updateMany({
-        where: { trade_id: String(tradeId) },
+        where: {
+          trade_id: {
+            in: [String(tradeId), `OSTIUM:${String(tradeId)}`],
+          },
+        },
         data: { active: false },
       });
     }

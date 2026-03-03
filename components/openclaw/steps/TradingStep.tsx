@@ -37,7 +37,9 @@ type Props = {
   enablingTrading: boolean;
   onSetEnablingTrading: (v: boolean) => void;
   hasDeployment: boolean;
+  deploymentEnabledVenues: string[];
   onSetHasDeployment: (v: boolean) => void;
+  onSetDeploymentEnabledVenues: (venues: string[]) => void;
   // Aster
   asterEnabled: boolean;
   onSetAsterEnabled: (v: boolean) => void;
@@ -64,7 +66,7 @@ type Props = {
   // Navigation
   onBack: () => void;
   onContinue: () => void;
-  onCreateTradingDeployment: () => void;
+  onCreateTradingDeployment: (enabledVenues: string[]) => void;
   onSetupTradingAgent: () => void;
   onEnableTrading: () => void;
   onSetupAvantisAgent: () => void;
@@ -97,7 +99,9 @@ export function TradingStep({
   onSetAgentSetupSource,
   enablingTrading,
   hasDeployment,
+  deploymentEnabledVenues,
   onSetHasDeployment,
+  onSetDeploymentEnabledVenues,
   asterEnabled,
   onSetAsterEnabled,
   isSavingAsterConfig,
@@ -128,6 +132,37 @@ export function TradingStep({
   onEnableAvantisTrading,
   markComplete,
 }: Props) {
+  const ostiumSelected =
+    lazyTradingEnabled || lazyTradingSetupComplete || skillSubStep !== "idle";
+  const avantisSelected =
+    avantisEnabled || avantisSetupComplete || avantisSkillSubStep !== "idle";
+
+  const selectedVenues: string[] = [];
+  if (ostiumSelected) selectedVenues.push("OSTIUM");
+  if (avantisSelected) selectedVenues.push("AVANTIS");
+
+  const ostiumPrereqsReady =
+    skillSubStep === "agent-created" && delegationComplete && allowanceComplete;
+  const avantisPrereqsReady =
+    avantisSkillSubStep === "agent-created" &&
+    avantisDelegationComplete &&
+    avantisAllowanceComplete;
+  const normalizedDeploymentVenues = (deploymentEnabledVenues || []).map((v) =>
+    String(v || "").trim().toUpperCase()
+  );
+  const hasOstiumDeployment = normalizedDeploymentVenues.includes("OSTIUM");
+
+  const isOstiumReady =
+    !ostiumSelected || lazyTradingSetupComplete || hasOstiumDeployment || ostiumPrereqsReady;
+  const isAvantisReady =
+    !avantisSelected || avantisSetupComplete || avantisPrereqsReady;
+
+  const canProceed = selectedVenues.length > 0 && isOstiumReady && isAvantisReady;
+  const hasRequiredDeploymentVenues =
+    selectedVenues.length > 0 &&
+    selectedVenues.every((venue) => normalizedDeploymentVenues.includes(venue));
+  const shouldCreateDeployment = canProceed && !hasRequiredDeploymentVenues;
+
   return (
     <div className="space-y-6">
       <div className="text-center">
@@ -200,6 +235,7 @@ export function TradingStep({
                     onSetDelegationComplete(false);
                     onSetAllowanceComplete(false);
                     onSetHasDeployment(false);
+                    onSetDeploymentEnabledVenues([]);
                   }}
                   className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                 >
@@ -660,7 +696,10 @@ export function TradingStep({
                   We&apos;ll set up on-chain permissions for Avantis on Base.
                 </p>
                 <button
-                  onClick={onSetupAvantisAgent}
+                  onClick={() => {
+                    onSetAvantisEnabled(true);
+                    onSetupAvantisAgent();
+                  }}
                   disabled={avantisSkillSubStep !== "idle"}
                   className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
@@ -787,21 +826,23 @@ export function TradingStep({
         </button>
         <button
           onClick={() => {
-            const isOstiumSetupDone = lazyTradingSetupComplete || hasDeployment;
-            const shouldCreateDeployment =
-              lazyTradingEnabled &&
-              skillSubStep === "agent-created" &&
-              delegationComplete &&
-              allowanceComplete &&
-              !hasDeployment;
-
             if (shouldCreateDeployment) {
-              onCreateTradingDeployment();
+              onCreateTradingDeployment(selectedVenues);
               return;
             }
-            if (!isOstiumSetupDone) {
+            if (selectedVenues.length === 0) {
+              onErrorMessage("Enable at least one trading venue before continuing.");
+              return;
+            }
+            if (!isOstiumReady) {
               onErrorMessage(
                 "Complete Ostium trading setup before continuing."
+              );
+              return;
+            }
+            if (!isAvantisReady) {
+              onErrorMessage(
+                "Complete Avantis trading setup before continuing."
               );
               return;
             }
@@ -810,10 +851,10 @@ export function TradingStep({
           }}
           className="flex-1 py-4 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
         >
-          {lazyTradingSetupComplete || hasDeployment
-            ? "Continue"
-            : lazyTradingEnabled
-              ? "Create Deployment"
+          {shouldCreateDeployment
+            ? "Create Deployment"
+            : canProceed
+              ? "Continue"
               : "Complete setup to continue"}
           <ChevronRight className="w-4 h-4" />
         </button>
