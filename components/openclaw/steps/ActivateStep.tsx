@@ -12,6 +12,8 @@ import { EigenAISection } from "../EigenAISection";
 import { EnvVarsSection } from "../EnvVarsSection";
 import { LlmCreditsSection } from "../LlmCreditsSection";
 import { SoftwareUpdatesSection } from "../SoftwareUpdatesSection";
+import { WebSearchSection } from "../WebSearchSection";
+import { WebSearchProvider } from "../types";
 
 type VersionInfo = {
   installed: string | null;
@@ -88,6 +90,13 @@ type Props = {
   onToggleEigen: () => void;
   onRefreshEigen: () => void;
   onVerifyEigen: (record: EigenVerificationRecord) => void;
+  // Web search
+  webSearchEnabled: boolean;
+  selectedWebSearchProvider: WebSearchProvider;
+  isUpdatingWebSearch: boolean;
+  showWebSearchSection: boolean;
+  onToggleWebSearch: () => void;
+  onUpdateWebSearch: (enabled: boolean, provider: WebSearchProvider) => void;
 };
 
 export function ActivateStep({
@@ -148,6 +157,12 @@ export function ActivateStep({
   onToggleEigen,
   onRefreshEigen,
   onVerifyEigen,
+  webSearchEnabled,
+  selectedWebSearchProvider,
+  isUpdatingWebSearch,
+  showWebSearchSection,
+  onToggleWebSearch,
+  onUpdateWebSearch,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -155,13 +170,12 @@ export function ActivateStep({
         <div className="text-center space-y-6">
           {/* Status icon */}
           <div
-            className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center ${
-              instanceStatusPhase === "ready"
+            className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center ${instanceStatusPhase === "ready"
                 ? "bg-[var(--accent)]"
                 : instanceStatusPhase === "error"
-                ? "bg-red-500"
-                : "bg-[var(--accent)]/20"
-            }`}
+                  ? "bg-red-500"
+                  : "bg-[var(--accent)]/20"
+              }`}
           >
             {instanceStatusPhase === "ready" ? (
               <Check className="w-10 h-10 text-[var(--bg-deep)]" />
@@ -178,23 +192,23 @@ export function ActivateStep({
               {instanceStatusPhase === "ready"
                 ? "OpenClaw is running"
                 : instanceStatusPhase === "error"
-                ? "Something went wrong"
-                : instanceStatusPhase === "configuring"
-                ? "Setting up OpenClaw..."
-                : instanceStatusPhase === "checking"
-                ? "Running status checks..."
-                : instanceStatusPhase === "starting"
-                ? "Starting up..."
-                : "Launching instance..."}
+                  ? "Something went wrong"
+                  : instanceStatusPhase === "configuring"
+                    ? "Setting up OpenClaw..."
+                    : instanceStatusPhase === "checking"
+                      ? "Running status checks..."
+                      : instanceStatusPhase === "starting"
+                        ? "Starting up..."
+                        : "Launching instance..."}
             </h1>
             <p className="text-[var(--text-secondary)]">
               {instanceStatusPhase === "ready"
                 ? "Your instance is live. You should receive a welcome message from your assistant soon as shown below:"
                 : instanceStatusPhase === "error"
-                ? instanceStatusMessage || "Please try again or contact support."
-                : instanceStatusPhase === "configuring"
-                ? "Installing packages and configuring your assistant. This may take 2-3 minutes..."
-                : instanceStatusMessage || "This may take 1-2 minutes..."}
+                  ? instanceStatusMessage || "Please try again or contact support."
+                  : instanceStatusPhase === "configuring"
+                    ? "Installing packages and configuring your assistant. This may take 2-3 minutes..."
+                    : instanceStatusMessage || "This may take 1-2 minutes..."}
             </p>
             {instanceStatusPhase === "ready" && (
               <div className="mt-6 border border-[var(--border)] rounded-lg p-6 bg-[var(--bg-card)]">
@@ -238,18 +252,16 @@ export function ActivateStep({
                 ].map(({ phase, label, active }) => (
                   <div key={phase} className="flex items-center gap-3">
                     <div
-                      className={`w-3 h-3 rounded-full ${
-                        active.includes(instanceStatusPhase ?? "")
+                      className={`w-3 h-3 rounded-full ${active.includes(instanceStatusPhase ?? "")
                           ? "bg-[var(--accent)]"
                           : "bg-[var(--border)]"
-                      }`}
+                        }`}
                     />
                     <span
-                      className={`text-sm ${
-                        instanceStatusPhase === phase
+                      className={`text-sm ${instanceStatusPhase === phase
                           ? "text-[var(--accent)] font-medium"
                           : "text-[var(--text-muted)]"
-                      }`}
+                        }`}
                     >
                       {label}
                     </span>
@@ -307,6 +319,16 @@ export function ActivateStep({
             onTopUp={onTopUp}
           />
 
+          {/* Web Search */}
+          <WebSearchSection
+            webSearchEnabled={webSearchEnabled}
+            selectedWebSearchProvider={selectedWebSearchProvider}
+            isUpdatingWebSearch={isUpdatingWebSearch}
+            showWebSearchSection={showWebSearchSection}
+            onToggle={onToggleWebSearch}
+            onUpdateWebSearch={onUpdateWebSearch}
+          />
+
           {/* Software Updates */}
           <SoftwareUpdatesSection
             walletAddress={walletAddress}
@@ -359,11 +381,10 @@ export function ActivateStep({
             href={`https://t.me/${botUsername}`}
             target="_blank"
             rel="noopener noreferrer"
-            className={`w-full py-4 font-bold rounded-lg flex items-center justify-center gap-2 transition-opacity ${
-              instanceStatusPhase === "ready"
+            className={`w-full py-4 font-bold rounded-lg flex items-center justify-center gap-2 transition-opacity ${instanceStatusPhase === "ready"
                 ? "bg-[#0088cc] text-white hover:opacity-90"
                 : "bg-[#0088cc]/50 text-white/70 cursor-not-allowed"
-            }`}
+              }`}
             onClick={(e) => {
               if (instanceStatusPhase !== "ready") e.preventDefault();
             }}
@@ -439,8 +460,8 @@ export function ActivateStep({
                     {maxxitApiKeyPrefix
                       ? `${maxxitApiKeyPrefix}...`
                       : maxxitApiKey
-                      ? `${maxxitApiKey.slice(0, 12)}...`
-                      : ""}
+                        ? `${maxxitApiKey.slice(0, 12)}...`
+                        : ""}
                   </span>
                 </div>
               </>
