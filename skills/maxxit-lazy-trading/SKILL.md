@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.6
+version: 1.2.7
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -1076,7 +1076,7 @@ Step 5 (optional): POST /set-take-profit and/or POST /set-stop-loss
 |-------|-------|--------------|---------------|-------------|
 | **Ostium** | Arbitrum (mainnet only) | `BTC`, `ETH` | `agentAddress` + `userAddress` | Default for most trades |
 | **Aster** | BNB Chain (testnet only) | `BTCUSDT`, `ETHUSDT` | `userAddress` only | When user specifies BNB Chain or Aster |
-| **Avantis** | Base (mainnet only) | `BTC`, `ETH` | `agentAddress` + `userAddress` | When user specifies Base chain or Avantis |
+| **Avantis** | Base (mainnet only) | Base token for orders (e.g. `BTC`), pair format in symbols/positions (e.g. `BTC/USD`) | `agentAddress` + `userAddress` | When user specifies Base chain or Avantis |
 
 > **Network behavior rule:** Do not ask users to choose mainnet/testnet for these venues. Ostium is fixed to mainnet, Aster is fixed to testnet, and Avantis is fixed to Base mainnet.
 
@@ -1427,11 +1427,11 @@ Step 3: POST /aster/close-position
 
 > Avantis DEX is a perpetual futures exchange on Base chain. Use Avantis endpoints when the user wants to trade on Base. Avantis uses **delegation-based auth** (same pattern as Ostium) — you need both `agentAddress` and `userAddress` from `/club-details`.
 
-**How to check if Avantis is configured:** In the `/club-details` response, `avantis_configured: true` means the user has set up Avantis delegation. If `false`, direct them to set up Avantis at maxxit.ai/openclaw.
+**How to check if Avantis is configured:** Use `/club-details` and check `deployment.enabled_venues`. If it includes `"AVANTIS"`, Avantis is enabled for the current deployment. If not, direct the user to enable Avantis at maxxit.ai/openclaw.
 
 ### Avantis Symbols
 
-Avantis uses `BTC/USD`, `ETH/USD` format. The API endpoint maps the service's `/markets` route.
+Avantis symbols are returned in pair format (e.g. `BTC/USD`, `ETH/USD`). The API endpoint maps the service's `/markets` route.
 
 ```bash
 curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/symbols" \
@@ -1521,14 +1521,14 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/positio
 ### Avantis Open Position
 
 > **⚠️ Dependencies:**
-> 1. `agentAddress` → from `/club-details` → `avantis_agent_address` (NEVER guess)
+> 1. `agentAddress` → from `/club-details` → `ostium_agent_address` (shared agent wallet; NEVER guess)
 > 2. `userAddress` → from `/club-details` → `user_wallet` (NEVER guess)
 > 3. `market` → validate via `/avantis/symbols`. Use base token only (e.g. `BTC`, not `BTC/USD`)
 > 4. `side`, `collateral`, `leverage` → **ASK the user explicitly**
 >
-> **Avantis uses `collateral` (USDC amount), similar to Ostium. Minimum collateral: 100 USDC.**
+> **Avantis uses `collateral` (USDC amount), similar to Ostium.**
 >
-> **⚠️ TP/SL must be set at open time — there are NO separate set-tp / set-sl endpoints for Avantis.**
+> **TP/SL can be set at open (`takeProfitPercent` / `stopLossPercent`) or updated later via `/avantis/update-sl-tp`.**
 
 ```bash
 curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/open-position" \
@@ -1549,11 +1549,11 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/open-po
 **Request Body:**
 ```json
 {
-  "agentAddress": "0x...",      // REQUIRED — from /club-details → avantis_agent_address. NEVER guess.
+  "agentAddress": "0x...",      // REQUIRED — from /club-details → ostium_agent_address (shared wallet). NEVER guess.
   "userAddress": "0x...",       // REQUIRED — from /club-details → user_wallet. NEVER guess.
   "market": "BTC",              // REQUIRED — Base token only (e.g. "ETH", not "ETH/USD")
   "side": "long",               // REQUIRED — "long" or "short". ASK the user.
-  "collateral": 100,            // REQUIRED — Collateral in USDC (min 100). ASK the user.
+  "collateral": 100,            // REQUIRED — Collateral in USDC. ASK the user.
   "leverage": 10,               // Optional (default: 10). ASK the user.
   "takeProfitPercent": 0.30,    // Optional — set TP at open. ASK the user.
   "stopLossPercent": 0.10       // Optional — set SL at open. ASK the user.
@@ -1712,11 +1712,11 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
 | Parameter | Source | How to Get |
 |-----------|--------|-----------|
 | `userAddress` | `/club-details` → `user_wallet` | `GET /club-details` |
-| `agentAddress` | `/club-details` → `avantis_agent_address` | `GET /club-details` |
-| `avantis_configured` | `/club-details` → `avantis_configured` | `GET /club-details` (must be `true`) |
+| `agentAddress` | `/club-details` → `ostium_agent_address` | `GET /club-details` |
+| `avantis_enabled` | `/club-details` → `deployment.enabled_venues` includes `AVANTIS` | `GET /club-details` |
 | `market` | User specifies token | User input (e.g. `BTC`, `ETH`) |
 | `side` | User specifies `"long"` or `"short"` | User input (required) |
-| `collateral` | User specifies USDC amount (min 100) | User input (required) |
+| `collateral` | User specifies USDC amount (must satisfy venue minimums) | User input (required) |
 | `leverage` | User specifies | User input |
 | `tradeId` | `/avantis/positions` → `tradeId` (`<pairIndex>:<tradeIndex>`) | Preferred unique open-trade key |
 | `tradeIndex` | `/avantis/positions` → `tradeIndex` | From position data |
@@ -1725,8 +1725,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
 
 ```
 Step 1: GET /club-details
-   → Extract: user_wallet, avantis_agent_address
-   → Check: avantis_configured == true (if false, tell user to set up Avantis at maxxit.ai/openclaw)
+   → Extract: user_wallet, ostium_agent_address (shared agent wallet)
+   → Check: deployment.enabled_venues includes AVANTIS (if not, tell user to enable Avantis at maxxit.ai/openclaw)
 
 Step 2: GET /avantis/symbols
    → Verify the token is available on Avantis
@@ -1734,7 +1734,7 @@ Step 2: GET /avantis/symbols
 Step 3: ASK the user for ALL trade parameters
    → "Which token?" (e.g. BTC, ETH)
    → "Long or short?"
-   → "How much USDC collateral? (minimum 100 USDC)"
+   → "How much USDC collateral?"
    → "Leverage? (e.g. 10x)"
    → "Would you like to set TP/SL? If so, what percentages?"
 
@@ -1747,7 +1747,7 @@ Step 4: POST /avantis/open-position
 ### Avantis Workflow: Close Position
 
 ```
-Step 1: GET /club-details → Extract user_wallet, avantis_agent_address
+Step 1: GET /club-details → Extract user_wallet, ostium_agent_address (shared agent wallet)
 
 Step 2: POST /avantis/positions (userAddress + agentAddress)
    → Show positions to user, let them pick which to close

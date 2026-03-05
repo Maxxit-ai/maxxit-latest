@@ -1061,6 +1061,21 @@ def close_position():
         data = request.json
         logger.info(f"[CLOSE] Request data: {data}")
 
+        def _normalize_address(addr):
+            if not addr:
+                return None
+            try:
+                return Web3.to_checksum_address(addr)
+            except Exception:
+                return str(addr).lower()
+
+        def _is_zero_address(addr):
+            return str(addr or "").lower() in {
+                "0x0000000000000000000000000000000000000000",
+                "0x0",
+                "",
+            }
+
         rpc_url, is_testnet = get_network_config(request)
 
         # Support both agentAddress and privateKey formats
@@ -1095,6 +1110,7 @@ def close_position():
         # Create client with signer
         client = get_trader_client_with_signer(private_key, rpc_url)
         trader_address = client.get_signer().get_ethereum_address()
+        signer_address = _normalize_address(trader_address)
 
         # Determine whose positions to check
         if use_delegation and user_address:
@@ -1228,6 +1244,16 @@ def close_position():
                 "closePnl": 0,
                 "alreadyClosed": True
             })
+
+        if "execution reverted" in error_str.lower():
+            return jsonify({
+                "success": False,
+                "error": "Close transaction reverted on-chain",
+                "details": {
+                    "message": error_str,
+                    "hint": "Common causes: wrong delegate for user, position already in close flow, or trade state changed between fetch and submit.",
+                },
+            }), 409
 
         return jsonify({"success": False, "error": error_str}), 500
 

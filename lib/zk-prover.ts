@@ -37,9 +37,8 @@ const OSTIUM_SUBGRAPH_URL =
   "https://api.subgraph.ormilabs.com/api/public/67a599d5-c8d2-4cc4-9c4d-2975a97bc5d8/subgraphs/ost-prod/live/gn";
 
 const SP1_PROVER_MODE = process.env.SP1_PROVER_MODE || ""; // "" = simulation
-const SP1_HOST_BINARY =
-  process.env.SP1_HOST_BINARY ||
-  path.join(process.cwd(), "sp1/target/release/ostium-trader-host");
+
+const SP1_HOST_BINARY = path.resolve(process.cwd(), "../ostium-trader-host");
 
 const POSITION_REGISTRY_ADDRESS =
   process.env.POSITION_REGISTRY_ADDRESS || process.env.TRADER_REGISTRY_ADDRESS;
@@ -193,12 +192,41 @@ function normalizeTradeId(input?: string | number | null): string | null {
   return v.length > 0 ? v : null;
 }
 
-function resolveAvantisTradeIdentifierFromPosition(position: AvantisPosition): string | null {
-  const pairIndex = normalizeTradeId(position.pairIndex);
-  const tradeIndex = normalizeTradeId(position.tradeIndex) || normalizeTradeId(position.tradeId);
+function toChecksumAddressIfPossible(address: string): string {
+  try {
+    return ethers.utils.getAddress(String(address || "").trim());
+  } catch {
+    return String(address || "").trim();
+  }
+}
 
+function resolveAvantisPositionIndices(position: AvantisPosition): {
+  pairIndex: string | null;
+  tradeIndex: string | null;
+  rawTradeId: string | null;
+  composite: string | null;
+} {
+  const rawPairIndex = normalizeTradeId(position.pairIndex);
+  const rawTradeIndex = normalizeTradeId(position.tradeIndex);
+  const rawTradeId = normalizeTradeId(position.tradeId);
+  const parsedTradeId = decodeAvantisOpenTradeId(rawTradeId);
+
+  const pairIndex = rawPairIndex || normalizeTradeId(parsedTradeId.pairIndex);
+  const tradeIndex = rawTradeIndex || normalizeTradeId(parsedTradeId.tradeIndex) || rawTradeId;
   const composite = encodeAvantisOpenTradeId(pairIndex, tradeIndex);
+
+  return {
+    pairIndex,
+    tradeIndex,
+    rawTradeId,
+    composite,
+  };
+}
+
+function resolveAvantisTradeIdentifierFromPosition(position: AvantisPosition): string | null {
+  const { pairIndex, tradeIndex, rawTradeId, composite } = resolveAvantisPositionIndices(position);
   if (composite) return composite;
+  if (rawTradeId) return rawTradeId;
   return tradeIndex;
 }
 
@@ -594,9 +622,9 @@ async function fetchAvantisClosedTrades(traderAddress: string): Promise<Subgraph
 }
 
 function avantisPositionToFeatured(position: AvantisPosition, traderAddress: string): FeaturedPosition {
-  const tradeId =
-    toFiniteInt(position.tradeIndex, NaN) || toFiniteInt(position.tradeId, NaN) || 0;
-  const pairIndex = toFiniteInt(position.pairIndex, 0);
+  const resolved = resolveAvantisPositionIndices(position);
+  const tradeId = toFiniteInt(resolved.tradeIndex, 0);
+  const pairIndex = toFiniteInt(resolved.pairIndex, 0);
 
   return {
     trader: traderAddress.toLowerCase(),
@@ -632,22 +660,24 @@ async function resolveAvantisFeaturedPosition(
     const requested = decodeAvantisOpenTradeId(featuredTradeId);
     const targetPair = requested.pairIndex;
     const targetTrade = requested.tradeIndex;
+    const targetComposite = encodeAvantisOpenTradeId(targetPair, targetTrade);
 
     const matched = openPositions.find((position) => {
-      const pPairIndex = normalizeTradeId(position.pairIndex);
-      const pTradeIndex = normalizeTradeId(position.tradeIndex);
-      const pTradeId = normalizeTradeId(position.tradeId);
-      const compositeId = resolveAvantisTradeIdentifierFromPosition(position);
+      const resolved = resolveAvantisPositionIndices(position);
 
       if (targetPair && targetTrade) {
-        return pPairIndex === targetPair && (pTradeIndex === targetTrade || pTradeId === targetTrade);
+        return (
+          (resolved.pairIndex === targetPair && resolved.tradeIndex === targetTrade) ||
+          (targetComposite !== null && resolved.rawTradeId === targetComposite) ||
+          (targetComposite !== null && resolved.composite === targetComposite)
+        );
       }
 
       if (targetTrade) {
         return (
-          pTradeIndex === targetTrade ||
-          pTradeId === targetTrade ||
-          compositeId === targetTrade
+          resolved.tradeIndex === targetTrade ||
+          resolved.rawTradeId === targetTrade ||
+          resolved.composite === targetTrade
         );
       }
 
@@ -757,9 +787,9 @@ function openPositionsToTradeLikeRows(
   openPositions: AvantisPosition[]
 ): SubgraphTrade[] {
   return openPositions.map((position) => {
-    const pairIndex = toFiniteInt(position.pairIndex, 0);
-    const tradeIndex =
-      toFiniteInt(position.tradeIndex, NaN) || toFiniteInt(position.tradeId, NaN) || 0;
+    const resolved = resolveAvantisPositionIndices(position);
+    const pairIndex = toFiniteInt(resolved.pairIndex, 0);
+    const tradeIndex = toFiniteInt(resolved.tradeIndex, 0);
 
     return {
       id: `open-${tradeIndex}-${pairIndex}`,
@@ -797,6 +827,16 @@ async function computeAvantisMetrics(
     fetchAvantisGroupedTotalSize(traderAddress),
     fetchAvantisGroupedWinRate(traderAddress),
   ]);
+
+  if (profitLossResult.status === "rejected") {
+    console.warn(`[sp1] Avantis grouped profit-loss failed for ${traderAddress}: ${profitLossResult.reason?.message || String(profitLossResult.reason)}`);
+  }
+  if (totalSizeResult.status === "rejected") {
+    console.warn(`[sp1] Avantis grouped total-size failed for ${traderAddress}: ${totalSizeResult.reason?.message || String(totalSizeResult.reason)}`);
+  }
+  if (winRateResult.status === "rejected") {
+    console.warn(`[sp1] Avantis grouped win-rate failed for ${traderAddress}: ${winRateResult.reason?.message || String(winRateResult.reason)}`);
+  }
 
   const totalPnl =
     profitLossResult.status === "fulfilled"
@@ -1117,10 +1157,21 @@ export async function generateProof(
     );
 
     if (venue === "AVANTIS") {
+      const avantisTraderAddress = toChecksumAddressIfPossible(traderAddress);
+      if (avantisTraderAddress !== traderAddress) {
+        console.log(
+          `[sp1] Normalized Avantis trader address ${traderAddress} -> ${avantisTraderAddress}`
+        );
+      }
+
       const [closedTrades, featuredResolution] = await Promise.all([
-        fetchAvantisClosedTrades(traderAddress),
-        resolveAvantisFeaturedPosition(traderAddress, featuredTradeId),
+        fetchAvantisClosedTrades(avantisTraderAddress),
+        resolveAvantisFeaturedPosition(avantisTraderAddress, featuredTradeId),
       ]);
+
+      console.log(
+        `[sp1] Avantis closed trades fetched: ${closedTrades.length} for ${avantisTraderAddress}`
+      );
 
       if (featuredResolution.ok === false) {
         return {
@@ -1138,7 +1189,7 @@ export async function generateProof(
       }
 
       const metrics = await computeAvantisMetrics(
-        traderAddress,
+        avantisTraderAddress,
         closedTrades,
         featuredResolution.openPositions
       );

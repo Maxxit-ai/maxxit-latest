@@ -51,8 +51,9 @@ export default async function handler(
 
     if (typeof body.tradeId === "string" && body.tradeId.trim()) {
       const rawTradeId = body.tradeId.trim();
+      const hasExplicitVenuePrefix = /^(OSTIUM|AVANTIS)\s*:/i.test(rawTradeId);
 
-      if (rawTradeId.includes(":")) {
+      if (hasExplicitVenuePrefix) {
         const decoded = decodeTradeReference(rawTradeId);
         if (
           body.venue &&

@@ -23,7 +23,7 @@ function hasRequiredConfiguration(): boolean {
   const requiredKeys = [
     "DATABASE_URL",
     "SP1_PROVER_MODE",
-    "SP1_HOST_BINARY",
+    // "SP1_HOST_BINARY",
     "SP1_PRIVATE_KEY",
     "ARBITRUM_SEPOLIA_RPC",
   ];

@@ -35,8 +35,7 @@ export default async function handler(
                     .filter((v) => v === "OSTIUM" || v === "AVANTIS")
             )
         );
-        const targetEnabledVenues =
-            requestedVenueList.length > 0 ? requestedVenueList : ["OSTIUM"];
+        const targetEnabledVenues = requestedVenueList;
 
         // Verify agent exists and belongs to this user
         const agent = await prisma.agents.findFirst({

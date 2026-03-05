@@ -15,6 +15,7 @@ type Props = {
   // Lazy trading
   lazyTradingEnabled: boolean;
   onSetLazyTradingEnabled: (v: boolean) => void;
+  onEnableLazyTradingSkill: () => void;
   lazyTradingSetupComplete: boolean;
   onSetLazyTradingSetupComplete: (v: boolean) => void;
   maxxitApiKey: string | null;
@@ -80,6 +81,7 @@ export function TradingStep({
   onErrorMessage,
   lazyTradingEnabled,
   onSetLazyTradingEnabled,
+  onEnableLazyTradingSkill,
   lazyTradingSetupComplete,
   onSetLazyTradingSetupComplete,
   maxxitApiKey,
@@ -132,8 +134,12 @@ export function TradingStep({
   onEnableAvantisTrading,
   markComplete,
 }: Props) {
-  const ostiumSelected =
-    lazyTradingEnabled || lazyTradingSetupComplete || skillSubStep !== "idle";
+  const normalizedDeploymentVenues = (deploymentEnabledVenues || []).map((v) =>
+    String(v || "").trim().toUpperCase()
+  );
+  const hasOstiumDeployment = normalizedDeploymentVenues.includes("OSTIUM");
+
+  const ostiumSelected = delegationComplete || allowanceComplete || hasOstiumDeployment;
   const avantisSelected =
     avantisEnabled || avantisSetupComplete || avantisSkillSubStep !== "idle";
 
@@ -147,21 +153,19 @@ export function TradingStep({
     avantisSkillSubStep === "agent-created" &&
     avantisDelegationComplete &&
     avantisAllowanceComplete;
-  const normalizedDeploymentVenues = (deploymentEnabledVenues || []).map((v) =>
-    String(v || "").trim().toUpperCase()
-  );
-  const hasOstiumDeployment = normalizedDeploymentVenues.includes("OSTIUM");
 
   const isOstiumReady =
-    !ostiumSelected || lazyTradingSetupComplete || hasOstiumDeployment || ostiumPrereqsReady;
+    !ostiumSelected || hasOstiumDeployment || ostiumPrereqsReady;
   const isAvantisReady =
     !avantisSelected || avantisSetupComplete || avantisPrereqsReady;
 
-  const canProceed = selectedVenues.length > 0 && isOstiumReady && isAvantisReady;
-  const hasRequiredDeploymentVenues =
-    selectedVenues.length > 0 &&
-    selectedVenues.every((venue) => normalizedDeploymentVenues.includes(venue));
-  const shouldCreateDeployment = canProceed && !hasRequiredDeploymentVenues;
+  const hasRequiredDeploymentVenues = selectedVenues.every((venue) =>
+    normalizedDeploymentVenues.includes(venue)
+  );
+  const hasAnyDexSelection = selectedVenues.length > 0 || asterEnabled;
+  const canProceed = hasAnyDexSelection && isOstiumReady && isAvantisReady;
+  const shouldCreateDeployment = canProceed && (!hasDeployment || !hasRequiredDeploymentVenues);
+  const showDexOptions = lazyTradingEnabled || lazyTradingSetupComplete || hasDeployment;
 
   return (
     <div className="space-y-6">
@@ -175,7 +179,7 @@ export function TradingStep({
         </p>
       </div>
 
-      {/* Ostium / Lazy Trading */}
+      {/* Maxxit Lazy Trading */}
       <div
         className={`border rounded-lg p-5 transition-all ${lazyTradingEnabled
           ? "border-[var(--accent)] bg-[var(--accent)]/5"
@@ -194,37 +198,74 @@ export function TradingStep({
               )}
             </div>
             <p className="text-sm text-[var(--text-secondary)] mb-4">
-              Execute trades on Ostium by sending message to your OpenClaw bot.
+              Execute trades by sending message to your OpenClaw bot.
             </p>
 
             {!lazyTradingEnabled ? (
               <button
-                onClick={() => onSetLazyTradingEnabled(true)}
+                onClick={onEnableLazyTradingSkill}
                 className="text-sm px-4 py-2 border border-[var(--border)] rounded-lg hover:border-[var(--accent)] transition-colors"
               >
                 Enable Skill
               </button>
-            ) : lazyTradingSetupComplete || hasDeployment ? (
-              <div className="space-y-3">
-                <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
-                  <p className="text-sm text-green-400 mb-2">
-                    <strong>Lazy Trading Ready ✓</strong>
+            ) : (
+              <div className="space-y-4">
+                {ostiumAgentAddress ? (
+                  <div className="border border-[var(--border)] rounded-lg p-4">
+                    <p className="text-xs text-[var(--text-muted)] mb-1">
+                      Your Trading Agent Address (for all DEXs)
+                    </p>
+                    <code className="text-sm font-mono break-all text-[var(--accent)]">
+                      {ostiumAgentAddress}
+                    </code>
+                    <p className="text-xs text-[var(--text-muted)] mt-2">
+                      This address is used for Ostium, Aster, and Avantis.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      We&apos;ll create one shared trading agent wallet for all supported DEXs.
+                    </p>
+                    <button
+                      onClick={() => {
+                        onSetAgentSetupSource("ostium");
+                        onSetupTradingAgent();
+                      }}
+                      disabled={skillSubStep === "creating-agent"}
+                      className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      {skillSubStep === "creating-agent" ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          {agentSetupSource === "ostium"
+                            ? "Creating Agent..."
+                            : "Checking Existing Agent..."}
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4" /> Setup Trading Agent
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {hasDeployment || lazyTradingSetupComplete ? (
+                  <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
+                    <p className="text-sm text-green-400 mb-1">
+                      <strong>Skill Ready ✓</strong>
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Deployment is active. You can continue, or manage optional DEX setup below.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Configure each DEX card below, then create deployment with selected venues.
                   </p>
-                  {maxxitApiKey && (
-                    <div className="space-y-1">
-                      <p className="text-xs text-[var(--text-muted)]">
-                        Maxxit API Key (preview)
-                      </p>
-                      <code className="text-xs bg-[var(--bg-card)] px-2 py-1 rounded font-mono break-all">
-                        {`${maxxitApiKey.slice(0, 12)}...`}
-                      </code>
-                    </div>
-                  )}
-                  <p className="text-xs text-[var(--text-muted)] mt-2">
-                    Your trading agent is deployed and ready to execute trades
-                    on Ostium.
-                  </p>
-                </div>
+                )}
+
                 <button
                   onClick={() => {
                     onSetLazyTradingEnabled(false);
@@ -236,56 +277,62 @@ export function TradingStep({
                     onSetAllowanceComplete(false);
                     onSetHasDeployment(false);
                     onSetDeploymentEnabledVenues([]);
+                    onSetAvantisEnabled(false);
+                    onSetAvantisSetupComplete(false);
+                    onSetAvantisSkillSubStep("idle");
+                    onSetAvantisAgentAddress(null);
+                    onSetAvantisDelegationComplete(false);
+                    onSetAvantisAllowanceComplete(false);
                   }}
                   className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                 >
                   Reset Lazy Trading
                 </button>
               </div>
-            ) : skillSubStep === "idle" || skillSubStep === "creating-agent" ? (
-              <div className="space-y-4">
-                <p className="text-sm text-[var(--text-secondary)]">
-                  We&apos;ll create a dedicated trading agent and set up
-                  on-chain permissions.
-                </p>
-                <button
-                  onClick={() => {
-                    onSetAgentSetupSource("ostium");
-                    onSetupTradingAgent();
-                  }}
-                  disabled={skillSubStep === "creating-agent"}
-                  className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {skillSubStep === "creating-agent" &&
-                    agentSetupSource === "ostium" ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Creating
-                      Agent...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4" /> Setup Trading Agent
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => onSetLazyTradingEnabled(false)}
-                  className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : skillSubStep === "agent-created" ? (
-              <div className="space-y-4">
-                <div className="border border-[var(--border)] rounded-lg p-4">
-                  <p className="text-xs text-[var(--text-muted)] mb-1">
-                    Your Trading Agent Address
-                  </p>
-                  <code className="text-sm font-mono break-all text-[var(--accent)]">
-                    {ostiumAgentAddress}
-                  </code>
-                </div>
+            )}
+          </div>
+        </div>
+      </div>
 
+      {showDexOptions && (
+        <>
+      {/* Ostium DEX */}
+      <div
+        className={`border rounded-lg p-5 transition-all ${delegationComplete && allowanceComplete
+          ? "border-[var(--accent)] bg-[var(--accent)]/5"
+          : "border-[var(--border)]"
+          }`}
+      >
+        <div className="flex items-start gap-4">
+          <div className="text-3xl">📊</div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-bold">Ostium DEX</h3>
+              {delegationComplete && allowanceComplete && (
+                <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                  Ready
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              Enable 1-click trading on Ostium via delegation and USDC approval.
+            </p>
+
+            {!ostiumAgentAddress ? (
+              <p className="text-xs text-[var(--text-muted)]">
+                Set up your shared trading agent in the Maxxit Lazy Trading card first.
+              </p>
+            ) : hasOstiumDeployment ? (
+              <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
+                <p className="text-sm text-green-400 mb-1">
+                  <strong>Ostium Trading Ready ✓</strong>
+                </p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Ostium is already included in your active deployment.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
                 <div className="space-y-3">
                   <div
                     className={`flex items-center gap-3 p-3 rounded-lg border ${delegationComplete
@@ -361,50 +408,8 @@ export function TradingStep({
                     Ready to create deployment
                   </div>
                 )}
-
-                <button
-                  onClick={() => {
-                    onSetLazyTradingEnabled(false);
-                    onSetSkillSubStep("idle");
-                    onSetTradingAgentId(null);
-                    onSetOstiumAgentAddress(null);
-                    onSetDelegationComplete(false);
-                    onSetAllowanceComplete(false);
-                  }}
-                  className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                >
-                  Cancel
-                </button>
               </div>
-            ) : skillSubStep === "creating-deployment" ? (
-              <div className="flex items-center justify-center gap-2 py-4 text-[var(--text-secondary)]">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Creating deployment...</span>
-              </div>
-            ) : lazyTradingSetupComplete ? (
-              <div className="space-y-3">
-                <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4 text-center">
-                  <Check className="w-6 h-6 text-green-400 mx-auto mb-1" />
-                  <p className="font-bold text-green-400">
-                    Trading Setup Complete
-                  </p>
-                  <p className="text-xs text-[var(--text-secondary)] mt-1">
-                    Your Ostium 1-click trading agent is ready. Continue to the
-                    next step.
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    onSetLazyTradingEnabled(false);
-                    onSetSkillSubStep("idle");
-                    onSetLazyTradingSetupComplete(false);
-                  }}
-                  className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                >
-                  Reset
-                </button>
-              </div>
-            ) : null}
+            )}
           </div>
         </div>
       </div>
@@ -442,26 +447,9 @@ export function TradingStep({
                 <p className="text-xs text-[var(--text-muted)]">
                   You need a trading agent wallet before enabling Aster.
                 </p>
-                <button
-                  onClick={() => {
-                    onSetAgentSetupSource("aster");
-                    onSetupTradingAgent();
-                  }}
-                  disabled={skillSubStep === "creating-agent"}
-                  className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {skillSubStep === "creating-agent" &&
-                    agentSetupSource === "aster" ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> Creating
-                      Agent...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4" /> Setup Trading Agent
-                    </>
-                  )}
-                </button>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Set up your trading agent in the Maxxit Lazy Trading section first.
+                </p>
               </div>
             ) : asterEnabled ? (
               <div className="space-y-3">
@@ -470,11 +458,7 @@ export function TradingStep({
                     <strong>Aster DEX Enabled ✓</strong>
                   </p>
                   <p className="text-xs text-[var(--text-muted)]">
-                    Your agent wallet{" "}
-                    <code className="bg-[var(--bg-deep)] px-1.5 py-0.5 rounded text-xs">
-                      {ostiumAgentAddress}
-                    </code>{" "}
-                    is authorized for Aster trading.
+                    Your shared agent wallet is authorized for Aster trading.
                   </p>
                 </div>
                 <button
@@ -506,22 +490,13 @@ export function TradingStep({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="bg-[var(--bg-deep)] border border-[var(--border)] rounded-lg p-3">
-                  <p className="text-xs text-[var(--text-muted)] mb-1">
-                    Your Agent Address
-                  </p>
-                  <p className="text-sm font-mono break-all">
-                    {ostiumAgentAddress}
-                  </p>
-                </div>
-
                 <div className="space-y-2">
                   <p className="text-sm font-medium">To enable Aster trading:</p>
                   <ol className="text-sm text-[var(--text-secondary)] list-decimal list-inside space-y-1">
                     <li>Go to Aster&apos;s API Wallet page</li>
                     <li>Click &quot;Authorize new API wallet&quot;</li>
                     <li>
-                      Paste your above given agent address as the &quot;API
+                      Paste the agent address from the Maxxit card as the &quot;API
                       wallet address&quot;
                     </li>
                     <li>
@@ -554,8 +529,7 @@ export function TradingStep({
                         className="w-full"
                       />
                       <p className="text-xs text-center text-[var(--text-muted)] py-1.5 bg-[var(--bg-deep)]">
-                        Step 1: Enter your agent address and select Read, Perps
-                        trading, and Spot trading
+                        Step 1: Enter shared agent address and select Read, Perps trading, and Spot trading
                       </p>
                     </div>
                     <div className="rounded-lg overflow-hidden border border-[var(--border)]">
@@ -662,16 +636,6 @@ export function TradingStep({
                   <p className="text-sm text-green-400 mb-1">
                     <strong>Avantis Trading Ready ✓</strong>
                   </p>
-                  {avantisAgentAddress && (
-                    <div className="space-y-1">
-                      <p className="text-xs text-[var(--text-muted)]">
-                        Agent Address
-                      </p>
-                      <code className="text-xs bg-[var(--bg-card)] px-2 py-1 rounded font-mono break-all">
-                        {avantisAgentAddress}
-                      </code>
-                    </div>
-                  )}
                   <p className="text-xs text-[var(--text-muted)] mt-2">
                     Your agent is authorized to trade on Avantis (Base).
                   </p>
@@ -690,38 +654,14 @@ export function TradingStep({
                   Reset Avantis
                 </button>
               </div>
-            ) : avantisSkillSubStep === "idle" ? (
-              <div className="space-y-4">
-                <p className="text-sm text-[var(--text-secondary)]">
-                  We&apos;ll set up on-chain permissions for Avantis on Base.
+            ) : !ostiumAgentAddress ? (
+              <div className="space-y-3">
+                <p className="text-xs text-[var(--text-muted)]">
+                  Set up your trading agent in the Maxxit Lazy Trading section first.
                 </p>
-                <button
-                  onClick={() => {
-                    onSetAvantisEnabled(true);
-                    onSetupAvantisAgent();
-                  }}
-                  disabled={avantisSkillSubStep !== "idle"}
-                  className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  <Zap className="w-4 h-4" /> Setup Avantis Agent
-                </button>
               </div>
-            ) : avantisSkillSubStep === "creating-agent" ? (
-              <div className="flex items-center justify-center gap-2 py-4 text-[var(--text-secondary)]">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Creating Avantis agent...</span>
-              </div>
-            ) : avantisSkillSubStep === "agent-created" ? (
+            ) : (
               <div className="space-y-4">
-                <div className="border border-[var(--border)] rounded-lg p-4">
-                  <p className="text-xs text-[var(--text-muted)] mb-1">
-                    Your Avantis Agent Address (Base)
-                  </p>
-                  <code className="text-sm font-mono break-all text-[var(--accent)]">
-                    {avantisAgentAddress}
-                  </code>
-                </div>
-
                 <div className="space-y-3">
                   <div
                     className={`flex items-center gap-3 p-3 rounded-lg border ${avantisDelegationComplete
@@ -777,7 +717,10 @@ export function TradingStep({
 
                 {!avantisDelegationComplete || !avantisAllowanceComplete ? (
                   <button
-                    onClick={onEnableAvantisTrading}
+                    onClick={() => {
+                      onSetAvantisEnabled(true);
+                      onEnableAvantisTrading();
+                    }}
                     disabled={enablingAvantisTrading}
                     className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
@@ -802,7 +745,6 @@ export function TradingStep({
                   onClick={() => {
                     onSetAvantisEnabled(false);
                     onSetAvantisSkillSubStep("idle");
-                    onSetAvantisAgentAddress(null);
                     onSetAvantisDelegationComplete(false);
                     onSetAvantisAllowanceComplete(false);
                   }}
@@ -811,10 +753,12 @@ export function TradingStep({
                   Cancel
                 </button>
               </div>
-            ) : null}
+            )}
           </div>
         </div>
       </div>
+      </>
+      )}
 
       <div className="flex gap-3">
         <button
@@ -830,8 +774,8 @@ export function TradingStep({
               onCreateTradingDeployment(selectedVenues);
               return;
             }
-            if (selectedVenues.length === 0) {
-              onErrorMessage("Enable at least one trading venue before continuing.");
+            if (!hasAnyDexSelection) {
+              onErrorMessage("Enable at least one DEX setup (Ostium, Avantis, or Aster) before continuing.");
               return;
             }
             if (!isOstiumReady) {

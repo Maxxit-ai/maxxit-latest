@@ -69,6 +69,32 @@ export default async function handler(
 
         const data = await response.json();
 
+        // Deactivate active alpha listings for this closed trade
+        if (tradeId) {
+            const normalizedTradeId = String(tradeId).trim();
+            const tradeRefs = new Set<string>();
+
+            if (normalizedTradeId) {
+                tradeRefs.add(normalizedTradeId);
+                tradeRefs.add(
+                    normalizedTradeId.toUpperCase().startsWith("AVANTIS:")
+                        ? normalizedTradeId
+                        : `AVANTIS:${normalizedTradeId}`
+                );
+            }
+
+            if (tradeRefs.size > 0) {
+                await prismaClient.alpha_listings.updateMany({
+                    where: {
+                        trade_id: {
+                            in: Array.from(tradeRefs),
+                        },
+                    },
+                    data: { active: false },
+                });
+            }
+        }
+
         await prismaClient.user_api_keys.update({
             where: { id: apiKeyRecord.id },
             data: { last_used_at: new Date() },
