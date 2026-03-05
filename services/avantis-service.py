@@ -640,6 +640,59 @@ def get_markets():
         })
 
 
+@app.route('/price', methods=['GET'])
+def get_price():
+    """
+    Get current market price for a specific token/pair.
+    Query params:
+      - token=BTC   (preferred)
+      - token=BTC/USD (also supported)
+      - market=BTC  (alias)
+    """
+    try:
+        token = (request.args.get('token') or request.args.get('market') or '').strip().upper()
+        if not token:
+            return jsonify({
+                "success": False,
+                "error": "token query parameter is required"
+            }), 400
+
+        pair_index, is_available, market_name = validate_market(token)
+        if not is_available or pair_index is None:
+            return jsonify({
+                "success": False,
+                "error": f"Market {token} is not available on Avantis"
+            }), 400
+
+        rpc_url, _ = get_network_config(request)
+        client = get_trader_client(rpc_url)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            price_data = loop.run_until_complete(
+                client.feed_client.get_price_update_data(pair_index)
+            )
+        finally:
+            loop.close()
+
+        current_price = float(price_data.core.price) if price_data and price_data.core else 0
+        market_symbol = market_name.split('/')[0] if '/' in market_name else market_name
+
+        return jsonify({
+            "success": True,
+            "token": market_symbol,
+            "market": market_name,
+            "pairIndex": int(pair_index),
+            "price": current_price
+        })
+
+    except Exception as e:
+        logger.error(f"Get price error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/open-position', methods=['POST'])
 def open_position():
     """

@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.7
+version: 1.2.8
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -1455,6 +1455,31 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/symbols"
     }
   ],
   "count": 50
+}
+```
+
+### Avantis Get Token Price
+
+Fetch the latest price for a specific token on Avantis.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/price?token=BTC" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `token` | string | Yes | Token symbol or pair (e.g. `BTC` or `BTC/USD`) |
+
+**Response:**
+```json
+{
+  "success": true,
+  "token": "BTC",
+  "market": "BTC/USD",
+  "pairIndex": 0,
+  "price": 95000.12
 }
 ```
 
