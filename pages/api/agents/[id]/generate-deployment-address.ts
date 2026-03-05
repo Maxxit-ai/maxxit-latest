@@ -40,8 +40,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'User wallet required' });
     }
 
-    if (!venue || !['HYPERLIQUID', 'OSTIUM', 'MULTI'].includes(venue)) {
-      return res.status(400).json({ error: 'Valid venue required (HYPERLIQUID, OSTIUM, or MULTI)' });
+    if (!venue || !['HYPERLIQUID', 'OSTIUM', 'AVANTIS', 'MULTI'].includes(venue)) {
+      return res.status(400).json({ error: 'Valid venue required (HYPERLIQUID, OSTIUM, AVANTIS, or MULTI)' });
     }
 
     console.log('[GenerateUserAgentAddress] Getting/creating address for user:', {
@@ -117,6 +117,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    if (venue === 'AVANTIS') {
+      // Avantis currently shares the same per-user trading wallet as Ostium.
+      const result = await getOrCreateOstiumAgentAddress({ userWallet });
+      console.log('[GenerateUserAgentAddress] ✅ Got/created Avantis address:', result.address);
+
+      return res.status(200).json({
+        success: true,
+        venue: 'AVANTIS',
+        address: result.address,
+        encrypted: result.encrypted,
+        message: 'Please delegate and approve this address on Avantis (if not already done)',
+      });
+    }
+
     return res.status(400).json({ error: 'Invalid venue' });
   } catch (error: any) {
     console.error('[GenerateUserAgentAddress] Error:', error);
@@ -126,4 +140,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   // Note: Don't disconnect - using singleton
 }
-

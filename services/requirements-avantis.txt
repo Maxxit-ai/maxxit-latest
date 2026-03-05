@@ -1,0 +1,22 @@
+# Avantis Service Requirements
+# Install: pip install -r requirements-avantis.txt
+
+# Core
+Flask>=3.0.0
+flask-cors>=4.0.0
+
+# Avantis SDK (official Python SDK for Avantis perpetual DEX on Base)
+avantis-trader-sdk
+
+# Database
+psycopg2-binary>=2.9.9
+
+# Additional utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Encryption (for agent private key decryption from user_agent_addresses)
+cryptography>=41.0.0
+
+# Resource monitoring
+psutil

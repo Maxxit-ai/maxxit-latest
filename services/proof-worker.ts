@@ -1,6 +1,11 @@
 import { config } from "dotenv";
 import { prisma } from "../lib/prisma";
 import { generateProof, submitProofToRegistry } from "../lib/zk-prover";
+import {
+  encodeAvantisOpenTradeId,
+  decodeTradeReference,
+  encodeTradeReference,
+} from "../lib/alpha-trade-reference";
 
 config();
 
@@ -18,7 +23,7 @@ function hasRequiredConfiguration(): boolean {
   const requiredKeys = [
     "DATABASE_URL",
     "SP1_PROVER_MODE",
-    "SP1_HOST_BINARY",
+    // "SP1_HOST_BINARY",
     "SP1_PRIVATE_KEY",
     "ARBITRUM_SEPOLIA_RPC",
   ];
@@ -74,10 +79,20 @@ async function resetStaleProvingRecords(): Promise<number> {
   return result.count;
 }
 
-async function processProofRecord(proofId: string, wallet: string, tradeId?: string): Promise<void> {
-  console.log(`[proof-worker] Processing proof ${proofId} for wallet ${wallet}${tradeId ? ` (tradeId=${tradeId})` : ''}`);
+async function processProofRecord(
+  proofId: string,
+  wallet: string,
+  tradeRef?: string
+): Promise<void> {
+  const decodedRef = decodeTradeReference(tradeRef);
+  const venue = decodedRef.venue;
+  const tradeId = decodedRef.tradeId ?? undefined;
 
-  const proofResult = await generateProof(wallet, tradeId);
+  console.log(
+    `[proof-worker] Processing proof ${proofId} for wallet ${wallet} on ${venue}${tradeId ? ` (tradeId=${tradeId})` : ""}`
+  );
+
+  const proofResult = await generateProof(wallet, tradeId, { venue });
   if (!proofResult.success) {
     await prismaClient.proof_records.update({
       where: { id: proofId },
@@ -92,6 +107,14 @@ async function processProofRecord(proofId: string, wallet: string, tradeId?: str
   }
 
   const now = new Date();
+  const resolvedFeaturedTradeId =
+    proofResult.venue === "AVANTIS"
+      ? encodeAvantisOpenTradeId(
+        proofResult.featured?.pairIndex,
+        proofResult.featured?.tradeId
+      ) ?? decodedRef.tradeId
+      : proofResult.featured?.tradeId?.toString() ?? decodedRef.tradeId;
+
   await prismaClient.proof_records.update({
     where: { id: proofId },
     data: {
@@ -101,7 +124,10 @@ async function processProofRecord(proofId: string, wallet: string, tradeId?: str
       trade_count: proofResult.metrics.tradeCount,
       win_count: proofResult.metrics.winCount,
       total_collateral: proofResult.metrics.totalCollateral,
-      trade_id: proofResult.featured?.tradeId?.toString() || tradeId || null,
+      trade_id: encodeTradeReference(
+        proofResult.venue,
+        resolvedFeaturedTradeId
+      ),
       start_block: proofResult.metrics.startBlock
         ? BigInt(proofResult.metrics.startBlock)
         : null,

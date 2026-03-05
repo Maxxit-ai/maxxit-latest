@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: maxxit-avantis-service
+    runtime: python3
+    region: oregon
+    plan: free
+    rootDir: services
+    buildCommand: pip install -r requirements-avantis.txt
+    startCommand: python avantis-service.py
+    envVars:
+      - key: AVANTIS_MAINNET
+        value: "true"
+      - key: AVANTIS_RPC_URL
+        value: "https://mainnet.base.org"
+      - key: AVANTIS_PLATFORM_WALLET
+        sync: false
+      - key: AVANTIS_PROFIT_SHARE
+        value: "10"
+      - key: PORT
+        value: "5003"
+    healthCheckPath: /health

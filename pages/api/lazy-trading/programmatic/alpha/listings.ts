@@ -1,6 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../../../lib/prisma";
 import { resolveLazyTradingApiKey } from "../../../../../lib/lazy-trading-api";
+import {
+  decodeTradeReference,
+  normalizeAlphaVenue,
+} from "../../../../../lib/alpha-trade-reference";
 
 const prismaClient = prisma as any;
 
@@ -54,8 +58,10 @@ export default async function handler(
         id: true,
         commitment: true,
         on_chain_listing_id: true,
+        trade_id: true,
         price_usdc: true,
         active: true,
+        alpha_content: true,
         created_at: true,
       },
     });
@@ -93,14 +99,24 @@ export default async function handler(
       };
     }
 
-    const result = listings.map((listing: any) => ({
-      listingId: listing.id,
-      onChainListingId: listing.on_chain_listing_id,
-      commitment: listing.commitment,
-      priceUsdc: listing.price_usdc.toString(),
-      createdAt: listing.created_at.toISOString(),
-      agentMetrics: proofMap[listing.commitment] || null,
-    }));
+    const result = listings.map((listing: any) => {
+      const venueFromContent =
+        typeof listing.alpha_content?.venue === "string"
+          ? normalizeAlphaVenue(listing.alpha_content.venue)
+          : null;
+      const venueFromTradeRef = decodeTradeReference(listing.trade_id).venue;
+
+      return {
+        listingId: listing.id,
+        onChainListingId: listing.on_chain_listing_id,
+        commitment: listing.commitment,
+        tradeRef: listing.trade_id || null,
+        venue: venueFromContent || venueFromTradeRef,
+        priceUsdc: listing.price_usdc.toString(),
+        createdAt: listing.created_at.toISOString(),
+        agentMetrics: proofMap[listing.commitment] || null,
+      };
+    });
 
     await prismaClient.user_api_keys.update({
       where: { id: apiKeyRecord.id },

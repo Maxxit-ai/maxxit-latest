@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../../../lib/prisma";
 import { resolveLazyTradingApiKey } from "../../../../../lib/lazy-trading-api";
+import { decodeTradeReference } from "../../../../../lib/alpha-trade-reference";
 
 const prismaClient = prisma as any;
 
@@ -54,12 +55,16 @@ export default async function handler(
     const tradeCount = proofRecord.trade_count || 0;
     const winCount = proofRecord.win_count || 0;
     const winRate = tradeCount > 0 ? Math.round((winCount / tradeCount) * 10000) / 100 : 0;
+    const tradeRef = decodeTradeReference(proofRecord.trade_id);
 
     return res.status(200).json({
       success: true,
       proofId: proofRecord.id,
       status: proofRecord.status,
       commitment: proofRecord.commitment,
+      venue: tradeRef.venue,
+      tradeId: tradeRef.tradeId,
+      tradeRef: proofRecord.trade_id || null,
       metrics:
         proofRecord.status === "VERIFIED"
           ? {

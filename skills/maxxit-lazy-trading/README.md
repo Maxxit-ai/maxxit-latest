@@ -1,6 +1,6 @@
 # Maxxit Lazy Trading Skill
 
-Execute perpetual futures trades on Ostium protocol through Maxxit's Lazy Trading API.
+Execute perpetual futures trades on Ostium, Aster, and Avantis through Maxxit's Lazy Trading API.
 
 ## Installation
 
@@ -48,6 +48,8 @@ export MAXXIT_API_URL="https://maxxit.ai"
 ## Supported Venues
 
 - **Ostium** - Perpetual futures on Arbitrum
+- **Aster DEX** - Perpetual futures on BNB Chain (testnet setup in Maxxit)
+- **Avantis DEX** - Perpetual futures on Base mainnet
 - **Alpha Marketplace** - Trustless ZK-verified trading signals (Arbitrum Sepolia testnet)
 
 ## Links
