@@ -20,7 +20,6 @@
  */
 
 import { spawn } from "child_process";
-import * as path from "path";
 import { ethers } from "ethers";
 import {
   decodeAvantisOpenTradeId,
@@ -38,7 +37,7 @@ const OSTIUM_SUBGRAPH_URL =
 
 const SP1_PROVER_MODE = process.env.SP1_PROVER_MODE || ""; // "" = simulation
 
-const SP1_HOST_BINARY = path.resolve(process.cwd(), "../ostium-trader-host");
+const SP1_HOST_BINARY = "/app/ostium-trader-host";
 
 const POSITION_REGISTRY_ADDRESS =
   process.env.POSITION_REGISTRY_ADDRESS || process.env.TRADER_REGISTRY_ADDRESS;
@@ -994,6 +993,7 @@ async function generateSP1Proof(
     console.log(
       `[sp1] Running SP1 host in '${SP1_PROVER_MODE}' mode with ${closedTrades.length} trades + featured tradeId = ${featuredPosition.trade_id}`
     );
+    console.log(`[sp1] Using SP1 host binary: ${SP1_HOST_BINARY}`);
 
     const result = await new Promise<any>((resolve, reject) => {
       const child = spawn(SP1_HOST_BINARY, ["--mode", SP1_PROVER_MODE], {
