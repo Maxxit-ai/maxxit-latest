@@ -1,4 +1,6 @@
 import { config } from "dotenv";
+import * as fs from "fs";
+import * as os from "os";
 import { prisma } from "../lib/prisma";
 import { generateProof, submitProofToRegistry } from "../lib/zk-prover";
 import {
@@ -18,6 +20,115 @@ const SUPPORTED_STATUSES = ["PENDING", "PROVING"] as const;
 
 let isShuttingDown = false;
 let loopHandle: NodeJS.Timeout | null = null;
+
+function readCgroupValue(paths: string[]): string | null {
+  for (const filePath of paths) {
+    try {
+      const value = fs.readFileSync(filePath, "utf8").trim();
+      if (value) return value;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function formatBytes(bytes: number | null | undefined): string | null {
+  if (bytes === null || bytes === undefined || !Number.isFinite(bytes)) {
+    return null;
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
+}
+
+function parseCgroupBytes(raw: string | null): number | null {
+  if (!raw || raw === "max") return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getResourceSnapshot() {
+  const memory = process.memoryUsage();
+  const resource = process.resourceUsage();
+  const cgroupLimit = parseCgroupBytes(
+    readCgroupValue([
+      "/sys/fs/cgroup/memory.max",
+      "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    ])
+  );
+  const cgroupCurrent = parseCgroupBytes(
+    readCgroupValue([
+      "/sys/fs/cgroup/memory.current",
+      "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+    ])
+  );
+
+  return {
+    pid: process.pid,
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    uptimeSec: Math.round(process.uptime()),
+    loadAvg: os.loadavg(),
+    systemMemory: {
+      totalBytes: os.totalmem(),
+      total: formatBytes(os.totalmem()),
+      freeBytes: os.freemem(),
+      free: formatBytes(os.freemem()),
+    },
+    processMemory: {
+      rssBytes: memory.rss,
+      rss: formatBytes(memory.rss),
+      heapTotalBytes: memory.heapTotal,
+      heapTotal: formatBytes(memory.heapTotal),
+      heapUsedBytes: memory.heapUsed,
+      heapUsed: formatBytes(memory.heapUsed),
+      externalBytes: memory.external,
+      external: formatBytes(memory.external),
+      arrayBuffersBytes: memory.arrayBuffers,
+      arrayBuffers: formatBytes(memory.arrayBuffers),
+    },
+    cgroupMemory: {
+      limitBytes: cgroupLimit,
+      limit: formatBytes(cgroupLimit),
+      currentBytes: cgroupCurrent,
+      current: formatBytes(cgroupCurrent),
+    },
+    cpu: {
+      userMicros: resource.userCPUTime,
+      systemMicros: resource.systemCPUTime,
+      maxRssKb: resource.maxRSS,
+    },
+  };
+}
+
+function formatErrorDetails(error: unknown) {
+  if (error instanceof Error) {
+    const errorWithCause = error as Error & { cause?: unknown };
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack || null,
+      cause:
+        errorWithCause.cause instanceof Error
+          ? { name: errorWithCause.cause.name, message: errorWithCause.cause.message }
+          : errorWithCause.cause ?? null,
+    };
+  }
+
+  return {
+    name: typeof error,
+    message: String(error),
+    stack: null,
+    cause: null,
+  };
+}
 
 function hasRequiredConfiguration(): boolean {
   const requiredKeys = [
@@ -198,7 +309,20 @@ async function pollOnce(): Promise<void> {
     try {
       await processProofRecord(candidate.id, userWallet, candidate.trade_id ?? undefined);
     } catch (error: any) {
-      console.error(`[proof-worker] Failed proof ${candidate.id}: ${error.message}`);
+      const errorDetails = formatErrorDetails(error);
+      const resourceSnapshot = getResourceSnapshot();
+      console.error(`[proof-worker] Failed proof ${candidate.id}: ${errorDetails.message}`);
+      console.error(
+        `[proof-worker] Failure diagnostics for ${candidate.id}: ${JSON.stringify(
+          {
+            proofId: candidate.id,
+            wallet: userWallet,
+            tradeRef: candidate.trade_id ?? null,
+            error: errorDetails,
+            resources: resourceSnapshot,
+          }
+        )}`
+      );
       await prismaClient.proof_records.update({
         where: { id: candidate.id },
         data: { status: "FAILED" },

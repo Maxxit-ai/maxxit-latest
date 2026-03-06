@@ -1021,11 +1021,16 @@ async function generateSP1Proof(
         reject(err);
       });
 
-      child.on("close", (code: number | null) => {
+      child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
         clearTimeout(timeout);
 
         if (stderr) {
           console.log(`[sp1] Host stderr: ${stderr}`);
+        }
+
+        if (signal) {
+          reject(new Error(`SP1 host exited due to signal ${signal}: ${stderr}`));
+          return;
         }
 
         if (code !== 0) {

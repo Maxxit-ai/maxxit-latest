@@ -99,6 +99,14 @@ function getOpenClawModelId(model: string): string {
 
 function getUserDataScript(config: InstanceConfig): string {
   const modelId = getOpenClawModelId(config.model);
+  const maxxitToolConfigSnippet = `# Configure OpenClaw tool access for Maxxit-managed deployments
+echo "$(date): Configuring OpenClaw tool profile for Maxxit..."
+su - ubuntu -c "openclaw config set tools.profile full" || {
+  echo "$(date): WARNING - Failed to set tools.profile"
+}
+su - ubuntu -c "openclaw config set tools.sessions.visibility all" || {
+  echo "$(date): WARNING - Failed to set tools.sessions.visibility"
+}`;
 
   return `#!/bin/bash
 set -e
@@ -186,6 +194,8 @@ su - ubuntu -c "$ONBOARD_CMD" || {
   exit 1
 }
 echo "$(date): OpenClaw onboarding complete"
+
+${maxxitToolConfigSnippet}
 
 # Enable Telegram plugin
 echo "$(date): Enabling Telegram plugin..."
