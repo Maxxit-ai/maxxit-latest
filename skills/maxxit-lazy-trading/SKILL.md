@@ -35,8 +35,12 @@ The skill includes standalone Python strategy scripts. Use them when the user wa
   - Mean-reversion system that waits for price to pierce a Bollinger Band and re-enter with RSI confirmation.
 - `donchian-adx-strategy.py`
   - Breakout system that trades Donchian channel breaks only when ADX confirms a strong trend regime.
+- `taker-strategy.py` - Aggressive Taker (Order Flow) HFT strategy. Analyzes Binance taker buy/sell ratios to detect aggressive market participants and catch rapid momentum shifts.
+- `mean-reversion-strategy.py` - RSI + Bollinger Band mean-reversion strategy. A technical approach using price exhaustion points optimized for high-frequency scalping in sideways or boring markets.
+- `breakout-strategy.py` - Volatility breakout strategy with ATR filter. Enters trades when price breaks out of a standard deviation channel while ATR confirms increasing volatility and momentum.
+- `vwap-strategy.py` - VWAP crossover institutional momentum strategy. Uses volume-weighted average price and EMA to confirm institutional trend alignment and confirm trade strength with volume.
 
-All three scripts:
+All scripts:
 - read Binance kline data directly from `https://api.binance.com/api/v3/klines`
 - use `MAXXIT_API_URL` and `MAXXIT_API_KEY`
 - execute through Maxxit programmatic trading endpoints
