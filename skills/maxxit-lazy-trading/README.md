@@ -54,11 +54,25 @@ export MAXXIT_API_URL="https://maxxit.ai"
 
 ## Built-in Strategy Scripts
 
+The skill includes standalone Python strategy scripts. Use them when the user wants the agent to run a predefined trading system.
+
 - `ema-strategy.py` - EMA crossover trend-following strategy
 - `rsi-bollinger-strategy.py` - RSI + Bollinger Band mean reversion strategy
 - `donchian-adx-strategy.py` - Donchian breakout with ADX trend filter
+- `taker-strategy.py` - Aggressive Taker (Order Flow) HFT strategy. Analyzes Binance taker buy/sell ratios to detect aggressive market participants and catch rapid momentum shifts.
+- `mean-reversion-strategy.py` - RSI + Bollinger Band mean-reversion strategy. A technical approach using price exhaustion points optimized for high-frequency scalping in sideways or boring markets.
+- `breakout-strategy.py` - Volatility breakout strategy with ATR filter. Enters trades when price breaks out of a standard deviation channel while ATR confirms increasing volatility and momentum.
+- `vwap-strategy.py` - VWAP crossover institutional momentum strategy. Uses volume-weighted average price and EMA to confirm institutional trend alignment and confirm trade strength with volume.
 
 Each script fetches Binance klines, derives signals locally, and routes execution through the Maxxit Lazy Trading API.
+
+### Command Line Usage
+All scripts support dynamic `--symbol` (e.g. `BTC/USD`) and `--venue` (`OSTIUM` or `AVANTIS`) arguments.
+
+```bash
+python taker-strategy.py --symbol BTC/USD --venue AVANTIS
+python vwap-strategy.py --symbol ETH/USD --venue OSTIUM
+```
 
 ## Links
 

@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.8
+version: 1.2.9
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -35,8 +35,12 @@ The skill includes standalone Python strategy scripts. Use them when the user wa
   - Mean-reversion system that waits for price to pierce a Bollinger Band and re-enter with RSI confirmation.
 - `donchian-adx-strategy.py`
   - Breakout system that trades Donchian channel breaks only when ADX confirms a strong trend regime.
+- `taker-strategy.py` - Aggressive Taker (Order Flow) HFT strategy. Analyzes Binance taker buy/sell ratios to detect aggressive market participants and catch rapid momentum shifts.
+- `mean-reversion-strategy.py` - RSI + Bollinger Band mean-reversion strategy. A technical approach using price exhaustion points optimized for high-frequency scalping in sideways or boring markets.
+- `breakout-strategy.py` - Volatility breakout strategy with ATR filter. Enters trades when price breaks out of a standard deviation channel while ATR confirms increasing volatility and momentum.
+- `vwap-strategy.py` - VWAP crossover institutional momentum strategy. Uses volume-weighted average price and EMA to confirm institutional trend alignment and confirm trade strength with volume.
 
-All three scripts:
+All scripts:
 - read Binance kline data directly from `https://api.binance.com/api/v3/klines`
 - use `MAXXIT_API_URL` and `MAXXIT_API_KEY`
 - execute through Maxxit programmatic trading endpoints
@@ -1088,6 +1092,41 @@ Step 5 (optional): POST /set-take-profit and/or POST /set-stop-loss
 /copy-traders → provides address → /copy-trader-trades → provides trade details
 /club-details → provides your addresses → /open-position → copies the trade
 ```
+
+---
+
+## Automated Trading Strategies
+
+Maxxit provides specialized scripts for different market conditions. These scripts require dynamic parameters passed via command line.
+
+### Execution Policy
+- **Dynamic Arguments**: Scripts MUST be invoked with `--symbol` and `--venue`.
+- **Agent Responsibility**: If the user asks to start a strategy but does not provide the symbol (e.g., "BTC/USD") or the venue (e.g., "AVANTIS"), the agent MUST ask the user for the missing information before executing the script.
+- **Example Command**: `python taker-strategy.py --symbol BTC/USD --venue AVANTIS`
+
+### 1. Aggressive Taker (HFT / Order Flow)
+- **Script**: `taker-strategy.py`
+- **Usage**: `python taker-strategy.py --symbol <SYMBOL> --venue <VENUE>`
+- **Logic Summary**: Monitors the "Taker Buy Ratio" on Binance. When aggressive buyers (takers) dominate sellers beyond a threshold (0.60), it signals a high-conviction momentum move.
+- **Best For**: Capturing rapid price changes in high-volume environments (Active Scalping).
+
+### 2. Mean Reversion (Sideways / Range)
+- **Script**: `mean-reversion-strategy.py`
+- **Usage**: `python mean-reversion-strategy.py --symbol <SYMBOL> --venue <VENUE>`
+- **Logic Summary**: Combines RSI (extreme oversold/overbought) with Bollinger Band touches. It identifies "exhaustion" points where the price is likely to bounce back to the average.
+- **Best For**: Range-bound or sideways markets where there is no clear trend.
+
+### 3. Volatility Breakout (Momentum)
+- **Script**: `breakout-strategy.py`
+- **Usage**: `python breakout-strategy.py --symbol <SYMBOL> --venue <VENUE>`
+- **Logic Summary**: Enters a trade only when price breaks out of a standard deviation channel (Bollinger Bands) *and* volatility (ATR) is increasing. This filters out "fake" breakouts.
+- **Best For**: Catching the start of a strong trend after a period of consolidation.
+
+### 4. VWAP Crossover (Institutional Momentum)
+- **Script**: `vwap-strategy.py`
+- **Usage**: `python vwap-strategy.py --symbol <SYMBOL> --venue <VENUE>`
+- **Logic Summary**: Uses Volume Weighted Average Price (VWAP) combined with a 20 EMA. A "Long" is triggered when price is above both the VWAP and the EMA, signaling that both volume and time-weighted momentum are positive.
+- **Best For**: Intraday momentum trading and confirming trend strength with volume.
 
 ---
 
