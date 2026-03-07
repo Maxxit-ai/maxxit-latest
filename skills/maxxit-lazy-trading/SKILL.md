@@ -1066,6 +1066,41 @@ Step 5 (optional): POST /set-take-profit and/or POST /set-stop-loss
 
 ---
 
+## Automated Trading Strategies
+
+Maxxit provides specialized scripts for different market conditions. These scripts require dynamic parameters passed via command line.
+
+### Execution Policy
+- **Dynamic Arguments**: Scripts MUST be invoked with `--symbol` and `--venue`.
+- **Agent Responsibility**: If the user asks to start a strategy but does not provide the symbol (e.g., "BTC/USD") or the venue (e.g., "AVANTIS"), the agent MUST ask the user for the missing information before executing the script.
+- **Example Command**: `python taker-strategy.py --symbol BTC/USD --venue AVANTIS`
+
+### 1. Aggressive Taker (HFT / Order Flow)
+- **Script**: `taker-strategy.py`
+- **Usage**: `python taker-strategy.py --symbol <SYMBOL> --venue <VENUE>`
+- **Logic Summary**: Monitors the "Taker Buy Ratio" on Binance. When aggressive buyers (takers) dominate sellers beyond a threshold (0.60), it signals a high-conviction momentum move.
+- **Best For**: Capturing rapid price changes in high-volume environments (Active Scalping).
+
+### 2. Mean Reversion (Sideways / Range)
+- **Script**: `mean-reversion-strategy.py`
+- **Usage**: `python mean-reversion-strategy.py --symbol <SYMBOL> --venue <VENUE>`
+- **Logic Summary**: Combines RSI (extreme oversold/overbought) with Bollinger Band touches. It identifies "exhaustion" points where the price is likely to bounce back to the average.
+- **Best For**: Range-bound or sideways markets where there is no clear trend.
+
+### 3. Volatility Breakout (Momentum)
+- **Script**: `breakout-strategy.py`
+- **Usage**: `python breakout-strategy.py --symbol <SYMBOL> --venue <VENUE>`
+- **Logic Summary**: Enters a trade only when price breaks out of a standard deviation channel (Bollinger Bands) *and* volatility (ATR) is increasing. This filters out "fake" breakouts.
+- **Best For**: Catching the start of a strong trend after a period of consolidation.
+
+### 4. VWAP Crossover (Institutional Momentum)
+- **Script**: `vwap-strategy.py`
+- **Usage**: `python vwap-strategy.py --symbol <SYMBOL> --venue <VENUE>`
+- **Logic Summary**: Uses Volume Weighted Average Price (VWAP) combined with a 20 EMA. A "Long" is triggered when price is above both the VWAP and the EMA, signaling that both volume and time-weighted momentum are positive.
+- **Best For**: Intraday momentum trading and confirming trend strength with volume.
+
+---
+
 ## Aster DEX (BNB Chain) Endpoints
 
 > Aster DEX is a perpetual futures exchange on BNB Chain. Use Aster endpoints when the user wants to trade on BNB Chain. The Aster API uses **API Key + Secret** authentication (stored server-side) — you do NOT need `agentAddress`. You only need `userAddress` from `/club-details`.
