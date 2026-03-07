@@ -52,6 +52,14 @@ export MAXXIT_API_URL="https://maxxit.ai"
 - **Avantis DEX** - Perpetual futures on Base mainnet
 - **Alpha Marketplace** - Trustless ZK-verified trading signals (Arbitrum Sepolia testnet)
 
+## Built-in Strategy Scripts
+
+- `ema-strategy.py` - EMA crossover trend-following strategy
+- `rsi-bollinger-strategy.py` - RSI + Bollinger Band mean reversion strategy
+- `donchian-adx-strategy.py` - Donchian breakout with ADX trend filter
+
+Each script fetches Binance klines, derives signals locally, and routes execution through the Maxxit Lazy Trading API.
+
 ## Links
 
 - [Maxxit App](https://maxxit.ai)

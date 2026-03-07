@@ -25,6 +25,31 @@ metadata:
 
 Execute perpetual futures trades on Ostium, Aster DEX, and Avantis DEX through Maxxit's Lazy Trading API. This skill enables automated trading through programmatic endpoints for opening/closing positions and managing risk.
 
+## Built-in Strategy Scripts
+
+The skill includes standalone Python strategy scripts. Use them when the user wants the agent to run a predefined trading system instead of manually specifying each trade.
+
+- `ema-strategy.py`
+  - Trend-following EMA crossover on Binance klines using close prices.
+- `rsi-bollinger-strategy.py`
+  - Mean-reversion system that waits for price to pierce a Bollinger Band and re-enter with RSI confirmation.
+- `donchian-adx-strategy.py`
+  - Breakout system that trades Donchian channel breaks only when ADX confirms a strong trend regime.
+
+All three scripts:
+- read Binance kline data directly from `https://api.binance.com/api/v3/klines`
+- use `MAXXIT_API_URL` and `MAXXIT_API_KEY`
+- execute through Maxxit programmatic trading endpoints
+- maintain per-symbol, per-venue state in the OpenClaw workspace
+
+Example invocations:
+
+```bash
+python3 ema-strategy.py --symbol BTCUSDT --interval 5m --venue avantis
+python3 rsi-bollinger-strategy.py --symbol ETHUSDT --interval 5m --venue ostium
+python3 donchian-adx-strategy.py --symbol BTCUSDT --interval 15m --venue avantis
+```
+
 ## When to Use This Skill
 
 - User wants to execute trades on Ostium
