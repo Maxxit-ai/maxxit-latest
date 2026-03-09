@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.9
+version: 1.2.10
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -64,6 +64,7 @@ python3 donchian-adx-strategy.py --symbol BTCUSDT --interval 15m --venue avantis
 - User wants to see their closed position history or PnL
 - User wants to discover available trading symbols
 - User wants to get market data or LunarCrush metrics for analysis
+- User wants market research, a market summary, or a trade-focused research brief
 - User wants a whole market snapshot for the trading purpose
 - User wants to compare altcoin rankings (AltRank) across different tokens
 - User wants to identify high-sentiment trading opportunities
@@ -164,6 +165,39 @@ The following shows where each required parameter comes from. **Always resolve d
 All requests require an API key with prefix `lt_`. Pass it via:
 - Header: `X-API-KEY: lt_your_api_key`
 - Or: `Authorization: Bearer lt_your_api_key`
+
+## Market Research Workflow
+
+When the user asks for market research, use the Maxxit market research endpoint instead of writing the research from scratch.
+
+Endpoint:
+- `POST /api/lazy-trading/market-research`
+
+Rules:
+- Construct the `content` prompt from the user's ask.
+- Preserve the user's asset, timeframe, strategy, and risk focus.
+- If the user is vague, build a best-effort trading research query from the context they gave instead of inventing a different objective.
+- Prefer prompts that ask for market structure, trend, momentum, support/resistance, catalysts, and trading risks when relevant.
+- Summarize the response and format it for readability.
+
+Prompt construction examples:
+- User: "Research BTC for a swing long."
+  - Query: `Analyze BTC for a swing-long setup. Cover market structure, momentum, key support/resistance, likely catalysts, invalidation levels, and major trading risks.`
+- User: "Give me market research on ETH for today."
+  - Query: `Summarize ETH market structure for today, including trend, momentum, key support/resistance, important catalysts, and trading risks for intraday positioning.`
+- User: "Research SOL before I short it."
+  - Query: `Analyze SOL for a potential short setup. Cover current market structure, weakness signals, resistance levels, downside levels to watch, catalysts, and key squeeze/invalidation risks.`
+
+Example call:
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/market-research" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "content": "Analyze BTC for a swing-long setup. Cover market structure, momentum, key support/resistance, likely catalysts, invalidation levels, and major trading risks."
+  }'
+```
 
 ## API Endpoints
 
