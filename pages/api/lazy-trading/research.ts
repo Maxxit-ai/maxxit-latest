@@ -4,104 +4,58 @@ import { resolveLazyTradingApiKey } from "../../../lib/lazy-trading-api";
 
 const prismaClient = prisma as any;
 
-const SURF_API_BASE = "https://api.asksurf.ai/muninn/v4/chat/sessions";
-const SURF_SESSION_ID = "b0ea3fe6-70af-477d-ac15-49dac1eb55c6";
-const SURF_AUTH_TOKEN = process.env.SURF_API_TOKEN;
-console.log(SURF_AUTH_TOKEN)
+// Surf session service running on the VPS (Playwright-based persistent session)
+const SURF_SERVICE_URL =
+  process.env.SURF_SESSION_SERVICE_URL || "http://localhost:5010";
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ success: false, error: "Method not allowed" });
+    return res
+      .status(405)
+      .json({ success: false, error: "Method not allowed" });
   }
 
   try {
     const apiKeyRecord = await resolveLazyTradingApiKey(req);
     if (!apiKeyRecord) {
-      return res.status(401).json({ success: false, error: "Invalid API key" });
+      return res
+        .status(401)
+        .json({ success: false, error: "Invalid API key" });
     }
 
     const { content } = req.body || {};
 
     if (!content || typeof content !== "string") {
-      return res.status(400).json({ success: false, error: "Missing or invalid 'content' field" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing or invalid 'content' field" });
     }
 
-    if (!SURF_AUTH_TOKEN) {
-      return res.status(500).json({ success: false, error: "SURF_API_TOKEN not configured" });
-    }
-
-    const url = `${SURF_API_BASE}/${SURF_SESSION_ID}/sse?session_type=V2&platform=WEB&lang=en`;
-
-    const response = await fetch(url, {
+    // Call the local surf session service which maintains a persistent
+    // browser profile and handles token capture / SSE parsing internally
+    const response = await fetch(`${SURF_SERVICE_URL}/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        Authorization: `Bearer ${SURF_AUTH_TOKEN}`,
-      },
-      body: JSON.stringify({
-        request_id: crypto.randomUUID().replace(/-/g, "").slice(0, 20),
-        type: "chat_request",
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: content }],
-          },
-        ],
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
     });
 
-    if (!response.ok) {
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
       return res.status(response.status).json({
-        error: `Surf API error: ${response.statusText}`,
+        success: false,
+        error: data.error || "Surf session service error",
       });
     }
 
-    const body = response.body;
-    if (!body) {
-      return res.status(500).json({ error: "No response body from Surf API" });
-    }
-
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let aiText: string | null = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-
-        const jsonStr = line.slice(6).trim();
-        if (!jsonStr) continue;
-
-        try {
-          const parsed = JSON.parse(jsonStr);
-          if (
-            parsed?.type === "stream_event" &&
-            parsed?.event_type === "custom" &&
-            parsed?.data?.event_data?.type === "FINAL"
-          ) {
-            aiText = parsed.data.event_data.ai_text;
-          }
-        } catch {
-          // skip non-JSON lines
-        }
-      }
-    }
-
-    if (!aiText) {
-      return res.status(502).json({ success: false, error: "No FINAL response received from the API" });
+    if (!data.ai_text) {
+      return res.status(502).json({
+        success: false,
+        error: "No response received from research service",
+      });
     }
 
     // Update last used timestamp for API key
@@ -110,7 +64,7 @@ export default async function handler(
       data: { last_used_at: new Date() },
     });
 
-    return res.status(200).json({ success: true, ai_text: aiText });
+    return res.status(200).json({ success: true, ai_text: data.ai_text });
   } catch (error: any) {
     console.error("[API] Lazy trading research error:", error);
     return res.status(500).json({
