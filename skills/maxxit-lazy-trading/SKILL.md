@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.10
+version: 1.2.11
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -171,13 +171,15 @@ All requests require an API key with prefix `lt_`. Pass it via:
 When the user asks for market research, use the Maxxit market research endpoint instead of writing the research from scratch.
 
 Endpoint:
-- `POST /api/lazy-trading/market-research`
+- `POST /api/lazy-trading/research`
 
 Rules:
 - Construct the `content` prompt from the user's ask.
 - Preserve the user's asset, timeframe, strategy, and risk focus.
 - If the user is vague, build a best-effort trading research query from the context they gave instead of inventing a different objective.
 - Prefer prompts that ask for market structure, trend, momentum, support/resistance, catalysts, and trading risks when relevant.
+- Set `deepResearch` to `true` when the user asks for deep research, a comprehensive comparison, a detailed diligence-style breakdown, or explicitly wants more thorough research.
+- Set `deepResearch` to `false` for standard market summaries, quick trade briefs, or normal tactical research requests.
 - Summarize the response and format it for readability.
 
 Prompt construction examples:
@@ -191,11 +193,12 @@ Prompt construction examples:
 Example call:
 
 ```bash
-curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/market-research" \
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/research" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{
-    "content": "Analyze BTC for a swing-long setup. Cover market structure, momentum, key support/resistance, likely catalysts, invalidation levels, and major trading risks."
+    "content": "Analyze BTC for a swing-long setup. Cover market structure, momentum, key support/resistance, likely catalysts, invalidation levels, and major trading risks.",
+    "deepResearch": false
   }'
 ```
 
