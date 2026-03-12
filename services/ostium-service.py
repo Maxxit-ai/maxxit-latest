@@ -75,6 +75,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Silence noisy third-party loggers (gql dumps raw GraphQL bodies incl. full schema)
+logging.getLogger("gql").setLevel(logging.WARNING)
+logging.getLogger("gql.transport").setLevel(logging.WARNING)
+logging.getLogger("gql.transport.requests").setLevel(logging.WARNING)
+logging.getLogger("gql.transport.aiohttp").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("requests").setLevel(logging.WARNING)
+
 # Configuration
 # Flag is explicit: set OSTIUM_MAINNET=true when using mainnet, false for testnet.
 OSTIUM_MAINNET = os.getenv("OSTIUM_MAINNET", "false").lower() == "true"
