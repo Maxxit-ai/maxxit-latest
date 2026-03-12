@@ -53,7 +53,7 @@ except ImportError:
 
 # Monkey-patch the SDK to fix raw_transaction bug
 try:
-    from web3.types import SignedTransaction
+    from eth_account.datastructures import SignedTransaction
 
     if not hasattr(SignedTransaction, "raw_transaction"):
         SignedTransaction.raw_transaction = property(lambda self: self.rawTransaction)
