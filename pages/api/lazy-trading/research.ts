@@ -6,6 +6,10 @@ const prismaClient = prisma as any;
 const RESEARCH_API_URL = "https://research.maxxit.ai/asksurf/ask";
 const RESEARCH_API_KEY = process.env.RESEARCH_API_KEY;
 
+// Deep research can take several minutes; standard queries are faster
+const DEEP_RESEARCH_TIMEOUT_MS = 6 * 60 * 1000;  // 6 min
+const STANDARD_RESEARCH_TIMEOUT_MS = 3 * 60 * 1000; // 3 min
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -37,14 +41,32 @@ export default async function handler(
       return res.status(500).json({ success: false, error: "RESEARCH_API_KEY not configured" });
     }
 
-    const response = await fetch(RESEARCH_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-KEY": RESEARCH_API_KEY,
-      },
-      body: JSON.stringify({ question: content, deepResearch }),
-    });
+    const timeoutMs = deepResearch ? DEEP_RESEARCH_TIMEOUT_MS : STANDARD_RESEARCH_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(RESEARCH_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY": RESEARCH_API_KEY,
+        },
+        body: JSON.stringify({ question: content, deepResearch }),
+        signal: controller.signal,
+      });
+    } catch (fetchError: any) {
+      if (fetchError.name === "AbortError") {
+        return res.status(408).json({
+          success: false,
+          error: `Research timed out after ${timeoutMs / 1000}s. Try a shorter query or set deepResearch: false.`,
+        });
+      }
+      throw fetchError;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
