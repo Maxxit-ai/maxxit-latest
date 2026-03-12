@@ -4,8 +4,8 @@
  * Reads from environment variables to determine whether to use testnet or mainnet
  */
 
-// Environment flag to determine which network to use
-// When true, uses Arbitrum Sepolia testnet; when false, uses Arbitrum mainnet
+// Environment flag to determine which network to use by default.
+// When true, uses Arbitrum mainnet; otherwise Arbitrum Sepolia testnet.
 const IS_MAINNET = process.env.NEXT_PUBLIC_OSTIUM_MAINNET === 'true';
 
 // Testnet Configuration
@@ -38,19 +38,29 @@ const MAINNET_CONFIG = {
   sdkNetwork: 'mainnet'
 };
 
+export type OstiumConfig = typeof TESTNET_CONFIG;
+
+function resolveOstiumConfig(isTestnet?: boolean): OstiumConfig {
+  if (typeof isTestnet === "boolean") {
+    return isTestnet ? TESTNET_CONFIG : MAINNET_CONFIG;
+  }
+  return IS_MAINNET ? MAINNET_CONFIG : TESTNET_CONFIG;
+}
+
 // Select the appropriate configuration based on the environment flag
-const ostiumConfig = IS_MAINNET ? MAINNET_CONFIG : TESTNET_CONFIG;
+const ostiumConfig = resolveOstiumConfig();
 
 // Export the configuration
 export default ostiumConfig;
 
 // Export a helper function to get network-specific values
-export const getOstiumConfig = () => {
-  return ostiumConfig;
-};
+export const getOstiumConfig = (isTestnet?: boolean) => resolveOstiumConfig(isTestnet);
 
 // Export a helper to check if we're on mainnet
 export const isMainnet = () => IS_MAINNET;
+
+export const OSTIUM_TESTNET_CONFIG = TESTNET_CONFIG;
+export const OSTIUM_MAINNET_CONFIG = MAINNET_CONFIG;
 
 // Export individual values for convenience
 export const {

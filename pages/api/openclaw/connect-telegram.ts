@@ -9,7 +9,7 @@ import { storeUserBotToken } from "../../../lib/ssm";
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -35,7 +35,7 @@ export default async function handler(
     }
 
     const getMeRes = await fetch(
-      `https://api.telegram.org/bot${botToken}/getMe`
+      `https://api.telegram.org/bot${botToken}/getMe`,
     );
     const getMeData = await getMeRes.json();
 
@@ -55,14 +55,14 @@ export default async function handler(
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
     if (baseUrl) {
-      const webhookUrl = `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/api/openclaw/telegram-webhook?wallet=${encodeURIComponent(userWallet)}`;
+      const webhookUrl = `${baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`}/api/openclaw/telegram-webhook?wallet=${encodeURIComponent(userWallet)}`;
       const setWebhookRes = await fetch(
         `https://api.telegram.org/bot${botToken}/setWebhook`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: webhookUrl }),
-        }
+        },
       );
       const webhookResult = await setWebhookRes.json();
       if (!webhookResult.ok) {
@@ -75,7 +75,6 @@ export default async function handler(
       data: {
         telegram_bot_username: result.username,
         telegram_linked_at: new Date(),
-        telegram_username: result.username,
         updated_at: new Date(),
       },
     });

@@ -60,6 +60,7 @@ export default async function handler(
                         id: true,
                         status: true,
                         enabled_venues: true,
+                        is_testnet: true,
                     },
                 },
             },

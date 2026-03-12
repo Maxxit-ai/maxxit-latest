@@ -115,6 +115,13 @@ export function canPlanUseModel(planId: string, modelId: string): boolean {
   return PLAN_RANKS[plan.id] >= PLAN_RANKS[model.minPlan];
 }
 
-export function getDefaultModel(planId: string): string {
+export function getDefaultModel(
+  planId: string,
+  options?: { ostiumUseTestnet?: boolean },
+): string {
+  if (options?.ostiumUseTestnet) {
+    return "gpt-5-mini";
+  }
+
   return "gpt-5.1-codex-mini";
 }

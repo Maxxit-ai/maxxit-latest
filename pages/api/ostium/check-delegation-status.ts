@@ -8,8 +8,6 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { ethers } from 'ethers';
 import { getOstiumConfig } from '../../../lib/ostium-config';
 
-const { tradingContract, rpcUrl } = getOstiumConfig();
-
 const TRADING_ABI = [
   'function delegations(address delegator) view returns (address)',
 ];
@@ -20,16 +18,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { userWallet, agentAddress } = req.query;
+    const { userWallet, agentAddress, isTestnet } = req.query;
 
     if (!userWallet || typeof userWallet !== 'string') {
       return res.status(400).json({ error: 'User wallet required' });
     }
 
+    const ostiumConfig = getOstiumConfig(isTestnet === 'true');
     const checksummedUserAddress = ethers.utils.getAddress(userWallet);
-    
-    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-    const tradingContractInstance = new ethers.Contract(tradingContract, TRADING_ABI, provider);
+
+    const provider = new ethers.providers.JsonRpcProvider(ostiumConfig.rpcUrl);
+    const tradingContractInstance = new ethers.Contract(
+      ostiumConfig.tradingContract,
+      TRADING_ABI,
+      provider
+    );
 
     const delegatedAddress = await tradingContractInstance.delegations(checksummedUserAddress);
     
@@ -49,6 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       delegatedAddress,
       isDelegatedToAgent,
       agentAddress: agentAddress || null,
+      isTestnet: isTestnet === 'true',
     });
   } catch (error: any) {
     console.error('[CheckDelegationStatus] Error:', error);

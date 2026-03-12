@@ -11,8 +11,6 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { ethers } from 'ethers';
 import { getOstiumConfig } from '../../../lib/ostium-config';
 
-const { usdcContract, tradingContract, storageContract, rpcUrl } = getOstiumConfig();
-
 const USDC_ABI = [
   'function allowance(address owner, address spender) view returns (uint256)',
   'function balanceOf(address account) view returns (uint256)',
@@ -24,21 +22,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { userWallet } = req.query;
+    const { userWallet, isTestnet } = req.query;
 
     if (!userWallet || typeof userWallet !== 'string') {
       return res.status(400).json({ error: 'User wallet required' });
     }
 
+    const ostiumConfig = getOstiumConfig(isTestnet === 'true');
     const checksummedAddress = ethers.utils.getAddress(userWallet);
 
     // Connect to the appropriate network
-    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-    const usdcContractInstance = new ethers.Contract(usdcContract, USDC_ABI, provider);
+    const provider = new ethers.providers.JsonRpcProvider(ostiumConfig.rpcUrl);
+    const usdcContractInstance = new ethers.Contract(
+      ostiumConfig.usdcContract,
+      USDC_ABI,
+      provider
+    );
 
     // Check USDC allowance - SDK checks STORAGE_CONTRACT, not TRADING_CONTRACT
-    const allowanceStorage = await usdcContractInstance.allowance(checksummedAddress, storageContract);
-    const allowanceTrading = await usdcContractInstance.allowance(checksummedAddress, tradingContract);
+    const allowanceStorage = await usdcContractInstance.allowance(checksummedAddress, ostiumConfig.storageContract);
+    const allowanceTrading = await usdcContractInstance.allowance(checksummedAddress, ostiumConfig.tradingContract);
     const allowanceUsdc = parseFloat(ethers.utils.formatUnits(allowanceStorage, 6)); // Use STORAGE (SDK requirement)
 
     // Check USDC balance
@@ -59,8 +62,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasApproval,
       hasSufficientBalance,
       needsApproval: !hasApproval,
-      storageContract: storageContract,
-      tradingContract: tradingContract,
+      storageContract: ostiumConfig.storageContract,
+      tradingContract: ostiumConfig.tradingContract,
+      isTestnet: isTestnet === 'true',
     });
   } catch (error: any) {
     console.error('[CheckApprovalStatus] Error:', error);
@@ -70,4 +74,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 }
-

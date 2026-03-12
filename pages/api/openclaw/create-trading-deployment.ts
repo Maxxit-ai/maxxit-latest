@@ -1,7 +1,7 @@
 /**
  * Create a default trading deployment for OpenClaw
  * POST /api/openclaw/create-trading-deployment
- * Body: { agentId: string, userWallet: string, enabledVenues?: string[] }
+ * Body: { agentId: string, userWallet: string, enabledVenues?: string[], isTestnet?: boolean }
  *
  * Creates a deployment with default trading preferences (all weights at 50).
  * Called after the user has completed delegation and USDC allowance.
@@ -19,7 +19,7 @@ export default async function handler(
     }
 
     try {
-        const { agentId, userWallet, enabledVenues } = req.body || {};
+        const { agentId, userWallet, enabledVenues, isTestnet } = req.body || {};
 
         if (!agentId || !userWallet) {
             return res
@@ -91,6 +91,7 @@ export default async function handler(
                     sub_active: true,
                     module_enabled: true,
                     enabled_venues: mergedEnabledVenues,
+                    is_testnet: isTestnet === true,
                 },
             });
 
@@ -104,9 +105,10 @@ export default async function handler(
                     id: updated.id,
                     agentId: updated.agent_id,
                     userWallet: updated.user_wallet,
-                    agentAddress: userAddress.ostium_agent_address,
+                    agentAddress: userAddress?.ostium_agent_address,
                     status: updated.status,
                     enabledVenues: updated.enabled_venues,
+                    isTestnet: updated.is_testnet,
                 },
                 message: "Deployment updated",
             });
@@ -122,7 +124,7 @@ export default async function handler(
                 status: "ACTIVE",
                 sub_active: true,
                 module_enabled: true,
-                is_testnet: false,
+                is_testnet: isTestnet === true,
                 risk_tolerance: 50,
                 trade_frequency: 50,
                 social_sentiment_weight: 50,
@@ -141,10 +143,11 @@ export default async function handler(
                 id: deployment.id,
                 agentId: deployment.agent_id,
                 userWallet: deployment.user_wallet,
-                agentAddress: userAddress.ostium_agent_address,
-                status: deployment.status,
-                enabledVenues: deployment.enabled_venues,
-            },
+                agentAddress: userAddress?.ostium_agent_address,
+                    status: deployment.status,
+                    enabledVenues: deployment.enabled_venues,
+                    isTestnet: deployment.is_testnet,
+                },
             message: "Deployment created with default preferences",
         });
     } catch (error: any) {

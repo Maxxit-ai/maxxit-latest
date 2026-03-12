@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { usePrivy } from "@privy-io/react-auth";
 import { Header } from "@components/Header";
@@ -8,22 +8,18 @@ import { Web3CheckoutModal } from "@components/Web3CheckoutModal";
 import { Loader2, Orbit, Zap } from "lucide-react";
 import welcomeImage from "../public/openclaw_welcome.png";
 import { ethers } from "ethers";
+import { getOstiumConfig } from "../lib/ostium-config";
+import { getAvantisConfig } from "../lib/avantis-config";
 
 import {
   EigenVerificationRecord,
   InstanceData,
   PlanId,
   PLAN_OPTIONS,
-  MODEL_OPTIONS,
   STEPS,
   StepKey,
   WebSearchProvider,
   postJson,
-  OSTIUM_TRADING_CONTRACT,
-  OSTIUM_TRADING_ABI,
-  USDC_TOKEN,
-  USDC_ABI,
-  OSTIUM_STORAGE,
   AVANTIS_TRADING_CONTRACT,
   AVANTIS_TRADING_ABI,
   AVANTIS_STORAGE,
@@ -34,11 +30,53 @@ import {
 import { StepIndicator } from "../components/openclaw/StepIndicator";
 import { OpenClawLanding } from "../components/openclaw/OpenClawLanding";
 import { PlanStep } from "../components/openclaw/steps/PlanStep";
-import { ModelStep } from "../components/openclaw/steps/ModelStep";
 import { TelegramStep } from "../components/openclaw/steps/TelegramStep";
 import { TradingStep } from "../components/openclaw/steps/TradingStep";
 import { ActivateStep } from "../components/openclaw/steps/ActivateStep";
 import { EigenAIModal } from "../components/openclaw/EigenAIModal";
+import { OSTIUM_TRADING_ABI, USDC_ABI } from "../components/openclaw/types";
+
+type AgentFundingNetwork =
+  | "arbitrum-mainnet"
+  | "arbitrum-sepolia"
+  | "base-mainnet";
+
+const AGENT_FUNDING_NETWORKS: Record<
+  AgentFundingNetwork,
+  {
+    label: string;
+    chainId: number;
+    chainName: string;
+    currencySymbol: string;
+    rpcUrl: string;
+    blockExplorerUrl: string;
+  }
+> = {
+  "arbitrum-mainnet": {
+    label: "Arbitrum One",
+    chainId: getOstiumConfig(false).chainId,
+    chainName: getOstiumConfig(false).chainName,
+    currencySymbol: getOstiumConfig(false).currencySymbol,
+    rpcUrl: getOstiumConfig(false).rpcUrl,
+    blockExplorerUrl: getOstiumConfig(false).blockExplorerUrl,
+  },
+  "arbitrum-sepolia": {
+    label: "Arbitrum Sepolia",
+    chainId: getOstiumConfig(true).chainId,
+    chainName: getOstiumConfig(true).chainName,
+    currencySymbol: getOstiumConfig(true).currencySymbol,
+    rpcUrl: getOstiumConfig(true).rpcUrl,
+    blockExplorerUrl: getOstiumConfig(true).blockExplorerUrl,
+  },
+  "base-mainnet": {
+    label: "Base Mainnet",
+    chainId: getAvantisConfig().chainId,
+    chainName: getAvantisConfig().chainName,
+    currencySymbol: getAvantisConfig().currencySymbol,
+    rpcUrl: getAvantisConfig().rpcUrl,
+    blockExplorerUrl: getAvantisConfig().blockExplorerUrl,
+  },
+};
 
 export default function OpenClawSetupPage() {
   const router = useRouter();
@@ -51,13 +89,11 @@ export default function OpenClawSetupPage() {
   const [initialLoading, setInitialLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const [completedSteps, setCompletedSteps] = useState<Set<StepKey>>(
-    new Set()
-  );
+  const [completedSteps, setCompletedSteps] = useState<Set<StepKey>>(new Set());
   const [instanceData, setInstanceData] = useState<InstanceData | null>(null);
 
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("starter");
-  const [selectedModel, setSelectedModel] = useState("gpt-4o-mini");
+  const [selectedModel, setSelectedModel] = useState("gpt-5.1-codex-mini");
   const [telegramLinked, setTelegramLinked] = useState(false);
   const [telegramVerified, setTelegramVerified] = useState(false);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
@@ -71,23 +107,54 @@ export default function OpenClawSetupPage() {
   const [isValidatingBot, setIsValidatingBot] = useState(false);
 
   const [lazyTradingEnabled, setLazyTradingEnabled] = useState(false);
-  const [lazyTradingSetupComplete, setLazyTradingSetupComplete] = useState(false);
-  const [isCheckingLazyTradingSetup, setIsCheckingLazyTradingSetup] = useState(false);
+  const [lazyTradingSetupComplete, setLazyTradingSetupComplete] =
+    useState(false);
+  const [isCheckingLazyTradingSetup, setIsCheckingLazyTradingSetup] =
+    useState(false);
   const [maxxitApiKey, setMaxxitApiKey] = useState<string | null>(null);
-  const [maxxitApiKeyPrefix, setMaxxitApiKeyPrefix] = useState<string | null>(null);
+  const [maxxitApiKeyPrefix, setMaxxitApiKeyPrefix] = useState<string | null>(
+    null,
+  );
   const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
 
-  const [skillSubStep, setSkillSubStep] = useState<"idle" | "creating-agent" | "agent-created" | "delegating" | "approving" | "creating-deployment" | "complete">("idle");
+  const [skillSubStep, setSkillSubStep] = useState<
+    | "idle"
+    | "creating-agent"
+    | "agent-created"
+    | "delegating"
+    | "approving"
+    | "creating-deployment"
+    | "complete"
+  >("idle");
   const [tradingAgentId, setTradingAgentId] = useState<string | null>(null);
-  const [ostiumAgentAddress, setOstiumAgentAddress] = useState<string | null>(null);
+  const [ostiumAgentAddress, setOstiumAgentAddress] = useState<string | null>(
+    null,
+  );
   const [delegationComplete, setDelegationComplete] = useState(false);
   const [allowanceComplete, setAllowanceComplete] = useState(false);
+  const [isCheckingOstiumSetup, setIsCheckingOstiumSetup] = useState(false);
   const [skillTxHash, setSkillTxHash] = useState<string | null>(null);
   const [skillCurrentAction, setSkillCurrentAction] = useState("");
-  const [agentSetupSource, setAgentSetupSource] = useState<"ostium" | "aster" | null>(null);
+  const [agentSetupSource, setAgentSetupSource] = useState<
+    "ostium" | "aster" | null
+  >(null);
   const [enablingTrading, setEnablingTrading] = useState(false);
   const [hasDeployment, setHasDeployment] = useState(false);
-  const [deploymentEnabledVenues, setDeploymentEnabledVenues] = useState<string[]>([]);
+  const [deploymentEnabledVenues, setDeploymentEnabledVenues] = useState<
+    string[]
+  >([]);
+  const [ostiumUseTestnet, setOstiumUseTestnet] = useState(false);
+  const [ostiumPromoCode, setOstiumPromoCode] = useState("");
+  const [isEnablingOstiumTestnet, setIsEnablingOstiumTestnet] = useState(false);
+  const [ostiumTestnetMessage, setOstiumTestnetMessage] = useState<
+    string | null
+  >(null);
+  const [agentFundingNetwork, setAgentFundingNetwork] =
+    useState<AgentFundingNetwork>("arbitrum-mainnet");
+  const [agentEthAmount, setAgentEthAmount] = useState("0.005");
+  const [sendingAgentEth, setSendingAgentEth] = useState(false);
+  const [agentEthTxHash, setAgentEthTxHash] = useState<string | null>(null);
+  const [agentEthError, setAgentEthError] = useState<string | null>(null);
 
   // Aster DEX state
   const [asterEnabled, setAsterEnabled] = useState(false);
@@ -96,26 +163,52 @@ export default function OpenClawSetupPage() {
 
   // Avantis DEX state (Base chain)
   const [avantisEnabled, setAvantisEnabled] = useState(false);
-  const [avantisAgentAddress, setAvantisAgentAddress] = useState<string | null>(null);
-  const [avantisDelegationComplete, setAvantisDelegationComplete] = useState(false);
-  const [avantisAllowanceComplete, setAvantisAllowanceComplete] = useState(false);
+  const [avantisAgentAddress, setAvantisAgentAddress] = useState<string | null>(
+    null,
+  );
+  const [avantisDelegationComplete, setAvantisDelegationComplete] =
+    useState(false);
+  const [avantisAllowanceComplete, setAvantisAllowanceComplete] =
+    useState(false);
   const [avantisSetupComplete, setAvantisSetupComplete] = useState(false);
-  const [avantisSkillSubStep, setAvantisSkillSubStep] = useState<"idle" | "creating-agent" | "agent-created" | "complete">("idle");
+  const [avantisSkillSubStep, setAvantisSkillSubStep] = useState<
+    "idle" | "creating-agent" | "agent-created" | "complete"
+  >("idle");
   const [enablingAvantisTrading, setEnablingAvantisTrading] = useState(false);
-  const [avantisSkillCurrentAction, setAvantisSkillCurrentAction] = useState("");
-  const [avantisSkillTxHash, setAvantisSkillTxHash] = useState<string | null>(null);
+  const [avantisSkillCurrentAction, setAvantisSkillCurrentAction] =
+    useState("");
+  const [avantisSkillTxHash, setAvantisSkillTxHash] = useState<string | null>(
+    null,
+  );
 
-  const [openaiKeyStatus, setOpenaiKeyStatus] = useState<"not_created" | "creating" | "created">("not_created");
+  const [openaiKeyStatus, setOpenaiKeyStatus] = useState<
+    "not_created" | "creating" | "created"
+  >("not_created");
   const [openaiKeyPrefix, setOpenaiKeyPrefix] = useState<string | null>(null);
-  const [openaiKeyCreatedAt, setOpenaiKeyCreatedAt] = useState<string | null>(null);
+  const [openaiKeyCreatedAt, setOpenaiKeyCreatedAt] = useState<string | null>(
+    null,
+  );
   const [isCreatingOpenAIKey, setIsCreatingOpenAIKey] = useState(false);
 
   const [instanceStatusPhase, setInstanceStatusPhase] = useState<
-    "launching" | "starting" | "checking" | "configuring" | "ready" | "error" | null
+    | "launching"
+    | "starting"
+    | "checking"
+    | "configuring"
+    | "ready"
+    | "error"
+    | null
   >(null);
-  const [instanceStatusMessage, setInstanceStatusMessage] = useState<string | null>(null);
+  const [instanceStatusMessage, setInstanceStatusMessage] = useState<
+    string | null
+  >(null);
 
-  const [llmBalance, setLlmBalance] = useState<{ balanceCents: number; totalPurchased: number; totalUsed: number; limitReached: boolean } | null>(null);
+  const [llmBalance, setLlmBalance] = useState<{
+    balanceCents: number;
+    totalPurchased: number;
+    totalUsed: number;
+    limitReached: boolean;
+  } | null>(null);
   const [isLoadingLlmBalance, setIsLoadingLlmBalance] = useState(false);
   const [llmBalanceError, setLlmBalanceError] = useState<string | null>(null);
   const [selectedTopUpAmount, setSelectedTopUpAmount] = useState<number>(1000);
@@ -128,9 +221,14 @@ export default function OpenClawSetupPage() {
   const [isAddingEnvVar, setIsAddingEnvVar] = useState(false);
   const [newEnvKey, setNewEnvKey] = useState("");
   const [newEnvValue, setNewEnvValue] = useState("");
-  const [envVarMessage, setEnvVarMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [envVarMessage, setEnvVarMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const [showEnvVarsSection, setShowEnvVarsSection] = useState(false);
-  const [revealedEnvVars, setRevealedEnvVars] = useState<Set<string>>(new Set());
+  const [revealedEnvVars, setRevealedEnvVars] = useState<Set<string>>(
+    new Set(),
+  );
   const [deletingEnvKey, setDeletingEnvKey] = useState<string | null>(null);
 
   // Web search state
@@ -141,19 +239,35 @@ export default function OpenClawSetupPage() {
   const [showWebSearchSection, setShowWebSearchSection] = useState(false);
 
   // Version update state
-  const [openclawVersion, setOpenclawVersion] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean } | null>(null);
-  const [skillVersion, setSkillVersion] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean } | null>(null);
+  const [openclawVersion, setOpenclawVersion] = useState<{
+    installed: string | null;
+    latest: string | null;
+    updateAvailable: boolean;
+  } | null>(null);
+  const [skillVersion, setSkillVersion] = useState<{
+    installed: string | null;
+    latest: string | null;
+    updateAvailable: boolean;
+  } | null>(null);
   const [isCheckingVersions, setIsCheckingVersions] = useState(false);
   const [isUpdatingOpenclaw, setIsUpdatingOpenclaw] = useState(false);
   const [isUpdatingSkill, setIsUpdatingSkill] = useState(false);
   const [showVersionsSection, setShowVersionsSection] = useState(false);
-  const [versionUpdateMessage, setVersionUpdateMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [versionUpdateMessage, setVersionUpdateMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   // EigenAI Signature Verification state
-  const [eigenRecords, setEigenRecords] = useState<EigenVerificationRecord[]>([]);
+  const [eigenRecords, setEigenRecords] = useState<EigenVerificationRecord[]>(
+    [],
+  );
   const [eigenRecordsLoading, setEigenRecordsLoading] = useState(false);
-  const [eigenRecordsError, setEigenRecordsError] = useState<string | null>(null);
-  const [eigenSelectedRecord, setEigenSelectedRecord] = useState<EigenVerificationRecord | null>(null);
+  const [eigenRecordsError, setEigenRecordsError] = useState<string | null>(
+    null,
+  );
+  const [eigenSelectedRecord, setEigenSelectedRecord] =
+    useState<EigenVerificationRecord | null>(null);
   const [eigenModalOpen, setEigenModalOpen] = useState(false);
   const [eigenVerifying, setEigenVerifying] = useState(false);
   const [eigenVerifyResult, setEigenVerifyResult] = useState<{
@@ -165,10 +279,70 @@ export default function OpenClawSetupPage() {
   } | null>(null);
   const [eigenVerifyError, setEigenVerifyError] = useState<string | null>(null);
   const [showEigenSection, setShowEigenSection] = useState(false);
+  const modelSyncTargetRef = useRef<string | null>(null);
 
   const currentStepKey = STEPS[currentStepIndex]?.key;
+  const ostiumConfig = getOstiumConfig(ostiumUseTestnet);
   const canContinueFromPlanStep =
     openaiKeyStatus === "created" && (!!maxxitApiKey || !!maxxitApiKeyPrefix);
+
+  useEffect(() => {
+    if (!ostiumUseTestnet) return;
+
+    const preferredModel = "gpt-5-mini";
+
+    if (selectedModel !== preferredModel) {
+      setSelectedModel(preferredModel);
+    }
+
+    if (
+      !walletAddress ||
+      !instanceData ||
+      instanceData.model === preferredModel ||
+      modelSyncTargetRef.current === preferredModel
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    modelSyncTargetRef.current = preferredModel;
+
+    (async () => {
+      try {
+        const response = await postJson<{
+          success: boolean;
+          instance: {
+            model: string;
+          };
+        }>("/api/openclaw/update-model", {
+          userWallet: walletAddress,
+          model: preferredModel,
+        });
+
+        if (cancelled) return;
+
+        setSelectedModel(response.instance.model);
+        setInstanceData((prev) =>
+          prev ? { ...prev, model: response.instance.model } : prev,
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to sync model for Ostium testnet:", error);
+        }
+      } finally {
+        if (!cancelled) {
+          modelSyncTargetRef.current = null;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (modelSyncTargetRef.current === preferredModel) {
+        modelSyncTargetRef.current = null;
+      }
+    };
+  }, [instanceData, ostiumUseTestnet, selectedModel, walletAddress]);
 
   // Lock body scroll when EigenAI modal is open
   useEffect(() => {
@@ -228,13 +402,18 @@ export default function OpenClawSetupPage() {
       if (data.alreadyExists && data.agent?.id) {
         setTradingAgentId(data.agent.id);
         setOstiumAgentAddress(data.ostiumAgentAddress || null);
-        setAvantisAgentAddress(data.avantisAgentAddress || data.ostiumAgentAddress || null);
+        setAvantisAgentAddress(
+          data.avantisAgentAddress || data.ostiumAgentAddress || null,
+        );
+        setOstiumUseTestnet(data.deployment?.is_testnet === true);
         if (Array.isArray(data.deployment?.enabled_venues)) {
           setDeploymentEnabledVenues(data.deployment.enabled_venues);
         } else {
           setDeploymentEnabledVenues([]);
         }
-        const hasAnyDeployment = Boolean(data.hasDeployment || data.deployment?.id);
+        const hasAnyDeployment = Boolean(
+          data.hasDeployment || data.deployment?.id,
+        );
         if (hasAnyDeployment) {
           setHasDeployment(true);
           setLazyTradingSetupComplete(true);
@@ -248,8 +427,12 @@ export default function OpenClawSetupPage() {
 
         try {
           const [delegRes, approvalRes] = await Promise.all([
-            fetch(`/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${data.ostiumAgentAddress}`),
-            fetch(`/api/ostium/check-approval-status?userWallet=${walletAddress}`),
+            fetch(
+              `/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${data.ostiumAgentAddress}&isTestnet=${data.deployment?.is_testnet === true}`,
+            ),
+            fetch(
+              `/api/ostium/check-approval-status?userWallet=${walletAddress}&isTestnet=${data.deployment?.is_testnet === true}`,
+            ),
           ]);
           if (delegRes.ok) {
             const d = await delegRes.json();
@@ -275,6 +458,9 @@ export default function OpenClawSetupPage() {
       setAvantisAgentAddress(null);
       setHasDeployment(false);
       setDeploymentEnabledVenues([]);
+      setOstiumUseTestnet(false);
+      setOstiumPromoCode("");
+      setOstiumTestnetMessage(null);
       setLazyTradingSetupComplete(false);
       setDelegationComplete(false);
       setAllowanceComplete(false);
@@ -288,10 +474,16 @@ export default function OpenClawSetupPage() {
     setSkillSubStep("creating-agent");
     setErrorMessage("");
     try {
-      const statusRes = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
+      const statusRes = await fetch(
+        `/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`,
+      );
       if (statusRes.ok) {
         const statusData = await statusRes.json();
-        if (statusData.success && statusData.hasSetup && statusData.step === "complete") {
+        if (
+          statusData.success &&
+          statusData.hasSetup &&
+          statusData.step === "complete"
+        ) {
           setLazyTradingSetupComplete(true);
           setSkillSubStep("complete");
           return;
@@ -311,14 +503,21 @@ export default function OpenClawSetupPage() {
       if (data.success) {
         setTradingAgentId(data.agent.id);
         setOstiumAgentAddress(data.ostiumAgentAddress);
-        setAvantisAgentAddress(data.avantisAgentAddress || data.ostiumAgentAddress || null);
-        const hasAnyDeployment = Boolean(data.hasDeployment || data.deployment?.id);
+        setAvantisAgentAddress(
+          data.avantisAgentAddress || data.ostiumAgentAddress || null,
+        );
+        setOstiumUseTestnet(
+          data.deployment?.is_testnet === true || ostiumUseTestnet,
+        );
+        const hasAnyDeployment = Boolean(
+          data.hasDeployment || data.deployment?.id,
+        );
         if (hasAnyDeployment) {
           setHasDeployment(true);
           setDeploymentEnabledVenues(
             Array.isArray(data.deployment?.enabled_venues)
               ? data.deployment.enabled_venues
-              : []
+              : [],
           );
           setLazyTradingSetupComplete(true);
           setSkillSubStep("complete");
@@ -327,8 +526,12 @@ export default function OpenClawSetupPage() {
         setSkillSubStep("agent-created");
         try {
           const [delegRes, approvalRes] = await Promise.all([
-            fetch(`/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${data.ostiumAgentAddress}`),
-            fetch(`/api/ostium/check-approval-status?userWallet=${walletAddress}`),
+            fetch(
+              `/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${data.ostiumAgentAddress}&isTestnet=${ostiumUseTestnet}`,
+            ),
+            fetch(
+              `/api/ostium/check-approval-status?userWallet=${walletAddress}&isTestnet=${ostiumUseTestnet}`,
+            ),
           ]);
           if (delegRes.ok) {
             const d = await delegRes.json();
@@ -338,7 +541,7 @@ export default function OpenClawSetupPage() {
             const a = await approvalRes.json();
             if (a.hasApproval) setAllowanceComplete(true);
           }
-        } catch { }
+        } catch {}
       } else {
         setErrorMessage(data.error || "Failed to create trading agent");
         setSkillSubStep("idle");
@@ -347,14 +550,16 @@ export default function OpenClawSetupPage() {
       setErrorMessage("Failed to create trading agent");
       setSkillSubStep("idle");
     }
-  }, [walletAddress]);
+  }, [walletAddress, ostiumUseTestnet]);
 
   const loadExistingProgress = useCallback(async () => {
     if (!walletAddress) return;
     setInitialLoading(true);
 
     try {
-      const res = await fetch(`/api/openclaw/status?userWallet=${walletAddress}`);
+      const res = await fetch(
+        `/api/openclaw/status?userWallet=${walletAddress}`,
+      );
       if (res.status === 404) {
         setInitialLoading(false);
         return;
@@ -394,7 +599,7 @@ export default function OpenClawSetupPage() {
         status: inst.status,
         telegramLinked: !!inst.telegram.botUsername,
         telegramVerified: inst.telegram.linked,
-        telegramUsername: inst.telegram.botUsername,
+        telegramUsername: inst.telegram.username,
         openaiProjectId: inst.openai?.projectId ?? null,
         openaiServiceAccountId: inst.openai?.serviceAccountId ?? null,
         openaiApiKeyCreatedAt: inst.openai?.keyCreatedAt ?? null,
@@ -405,13 +610,9 @@ export default function OpenClawSetupPage() {
       setSelectedModel(inst.model);
       markComplete("plan");
 
-      if (inst.model) {
-        markComplete("model");
-      }
-
       if (inst.telegram.botUsername) {
         setTelegramLinked(true);
-        setTelegramUsername(inst.telegram.botUsername);
+        setTelegramUsername(inst.telegram.username);
         setBotUsername(inst.telegram.botUsername);
       }
 
@@ -432,7 +633,11 @@ export default function OpenClawSetupPage() {
 
       if (inst.openai?.projectId) {
         setOpenaiKeyStatus("created");
-        setOpenaiKeyPrefix(inst.openai.serviceAccountId ? `sk-svcacct-${inst.openai.serviceAccountId.substring(0, 8)}...` : null);
+        setOpenaiKeyPrefix(
+          inst.openai.serviceAccountId
+            ? `sk-svcacct-${inst.openai.serviceAccountId.substring(0, 8)}...`
+            : null,
+        );
         setOpenaiKeyCreatedAt(inst.openai.keyCreatedAt || null);
       }
 
@@ -442,15 +647,13 @@ export default function OpenClawSetupPage() {
       }
 
       if (inst.status === "active") {
-        setCurrentStepIndex(4);
-      } else if (inst.telegram.linked && inst.telegram.userId) {
         setCurrentStepIndex(3);
-      } else if (inst.telegram.username) {
+      } else if (inst.telegram.linked && inst.telegram.userId) {
         setCurrentStepIndex(2);
-      } else if (inst.model) {
-        setCurrentStepIndex(2);
-      } else {
+      } else if (inst.telegram.username || inst.model) {
         setCurrentStepIndex(1);
+      } else {
+        setCurrentStepIndex(0);
       }
 
       setShowLanding(false);
@@ -466,8 +669,11 @@ export default function OpenClawSetupPage() {
     }
   }, [authenticated, walletAddress, loadExistingProgress]);
 
-  const [pendingPaymentPlan, setPendingPaymentPlan] = useState<PlanId | null>(null);
-  const [pendingPaymentWebSearch, setPendingPaymentWebSearch] = useState<WebSearchProvider | null>(null);
+  const [pendingPaymentPlan, setPendingPaymentPlan] = useState<PlanId | null>(
+    null,
+  );
+  const [pendingPaymentWebSearch, setPendingPaymentWebSearch] =
+    useState<WebSearchProvider | null>(null);
 
   useEffect(() => {
     const { payment, tier, wsProvider } = router.query;
@@ -479,7 +685,11 @@ export default function OpenClawSetupPage() {
         setPendingPaymentPlan(planId);
         // Restore web search provider from Stripe redirect URL
         if (wsProvider && typeof wsProvider === "string") {
-          const validProviders: WebSearchProvider[] = ["brave", "perplexity", "openrouter"];
+          const validProviders: WebSearchProvider[] = [
+            "brave",
+            "perplexity",
+            "openrouter",
+          ];
           if (validProviders.includes(wsProvider as WebSearchProvider)) {
             setPendingPaymentWebSearch(wsProvider as WebSearchProvider);
             setWebSearchEnabled(true);
@@ -496,17 +706,28 @@ export default function OpenClawSetupPage() {
   // Handle LLM top-up success redirect from Stripe
   useEffect(() => {
     const { payment, llm_topup } = router.query;
-    if (payment === "success" && llm_topup === "true" && walletAddress && authenticated) {
+    if (
+      payment === "success" &&
+      llm_topup === "true" &&
+      walletAddress &&
+      authenticated
+    ) {
       router.replace("/openclaw", undefined, { shallow: true });
 
       (async () => {
         try {
-          console.log("[OpenClaw] Calling verify-topup API for wallet:", walletAddress);
-          const verifyRes = await fetch("/api/openclaw/llm-credits/verify-topup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userWallet: walletAddress }),
-          });
+          console.log(
+            "[OpenClaw] Calling verify-topup API for wallet:",
+            walletAddress,
+          );
+          const verifyRes = await fetch(
+            "/api/openclaw/llm-credits/verify-topup",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userWallet: walletAddress }),
+            },
+          );
 
           const data = await verifyRes.json();
           console.log("[OpenClaw] verify-topup response:", data);
@@ -543,7 +764,9 @@ export default function OpenClawSetupPage() {
         setIsLoading(true);
         try {
           // Use the web search provider from the redirect URL if available
-          const wsProvider = pendingPaymentWebSearch ?? (webSearchEnabled ? selectedWebSearchProvider : null);
+          const wsProvider =
+            pendingPaymentWebSearch ??
+            (webSearchEnabled ? selectedWebSearchProvider : null);
           setPendingPaymentWebSearch(null);
           const response = await fetch("/api/openclaw/create", {
             method: "POST",
@@ -583,7 +806,13 @@ export default function OpenClawSetupPage() {
         }
       })();
     }
-  }, [pendingPaymentPlan, walletAddress, isLoading, markComplete, maxxitApiKey]);
+  }, [
+    pendingPaymentPlan,
+    walletAddress,
+    isLoading,
+    markComplete,
+    maxxitApiKey,
+  ]);
 
   // Check if Aster is configured
   useEffect(() => {
@@ -591,7 +820,9 @@ export default function OpenClawSetupPage() {
 
     (async () => {
       try {
-        const res = await fetch(`/api/lazy-trading/check-aster-config?userWallet=${walletAddress}`);
+        const res = await fetch(
+          `/api/lazy-trading/check-aster-config?userWallet=${walletAddress}`,
+        );
         if (res.ok) {
           const data = await res.json();
           if (data.asterEnabled) {
@@ -605,13 +836,20 @@ export default function OpenClawSetupPage() {
   }, [walletAddress, authenticated]);
 
   useEffect(() => {
-    if (!walletAddress || currentStepKey !== "telegram" || !telegramLinked || telegramVerified) {
+    if (
+      !walletAddress ||
+      currentStepKey !== "telegram" ||
+      !telegramLinked ||
+      telegramVerified
+    ) {
       return;
     }
 
     const checkVerification = async () => {
       try {
-        const res = await fetch(`/api/openclaw/status?userWallet=${walletAddress}`);
+        const res = await fetch(
+          `/api/openclaw/status?userWallet=${walletAddress}`,
+        );
         if (res.ok) {
           const data = await res.json();
           if (data.instance?.telegram?.linked) {
@@ -619,21 +857,34 @@ export default function OpenClawSetupPage() {
             markComplete("telegram");
           }
         }
-      } catch { }
+      } catch {}
     };
 
     const interval = setInterval(checkVerification, 3000);
     return () => clearInterval(interval);
-  }, [walletAddress, currentStepKey, telegramLinked, telegramVerified, markComplete]);
+  }, [
+    walletAddress,
+    currentStepKey,
+    telegramLinked,
+    telegramVerified,
+    markComplete,
+  ]);
 
   useEffect(() => {
-    if (!walletAddress || !activated || instanceStatusPhase === "ready" || instanceStatusPhase === null) {
+    if (
+      !walletAddress ||
+      !activated ||
+      instanceStatusPhase === "ready" ||
+      instanceStatusPhase === null
+    ) {
       return;
     }
 
     const checkInstanceStatus = async () => {
       try {
-        const res = await fetch(`/api/openclaw/instance-status?userWallet=${walletAddress}`);
+        const res = await fetch(
+          `/api/openclaw/instance-status?userWallet=${walletAddress}`,
+        );
         if (res.ok) {
           const data = await res.json();
           const { instance } = data;
@@ -645,7 +896,7 @@ export default function OpenClawSetupPage() {
             setInstanceStatusMessage(instance.statusMessage);
           }
         }
-      } catch { }
+      } catch {}
     };
 
     checkInstanceStatus();
@@ -662,7 +913,9 @@ export default function OpenClawSetupPage() {
       setIsLoadingLlmBalance(true);
       setLlmBalanceError(null);
       try {
-        const res = await fetch(`/api/openclaw/llm-credits/balance?userWallet=${walletAddress}`);
+        const res = await fetch(
+          `/api/openclaw/llm-credits/balance?userWallet=${walletAddress}`,
+        );
         if (res.ok) {
           const data = await res.json();
           setLlmBalance({
@@ -691,7 +944,9 @@ export default function OpenClawSetupPage() {
     const fetchEnvVars = async () => {
       setIsLoadingEnvVars(true);
       try {
-        const res = await fetch(`/api/openclaw/env-vars?userWallet=${walletAddress}`);
+        const res = await fetch(
+          `/api/openclaw/env-vars?userWallet=${walletAddress}`,
+        );
         if (res.ok) {
           const data = await res.json();
           setEnvVars(data.envVars || []);
@@ -713,7 +968,9 @@ export default function OpenClawSetupPage() {
       setIsCheckingVersions(true);
       setVersionUpdateMessage(null);
       try {
-        const res = await fetch(`/api/openclaw/versions?userWallet=${walletAddress}`);
+        const res = await fetch(
+          `/api/openclaw/versions?userWallet=${walletAddress}`,
+        );
         const data = await res.json();
         if (res.ok && data.success) {
           setOpenclawVersion(data.openclaw || null);
@@ -756,8 +1013,14 @@ export default function OpenClawSetupPage() {
       .finally(() => setEigenRecordsLoading(false));
   }, [walletAddress, authenticated]);
 
-  const handleEigenVerifySignature = async (record: EigenVerificationRecord) => {
-    if (!record.llm_signature || !record.llm_raw_output || !record.llm_full_prompt) {
+  const handleEigenVerifySignature = async (
+    record: EigenVerificationRecord,
+  ) => {
+    if (
+      !record.llm_signature ||
+      !record.llm_raw_output ||
+      !record.llm_full_prompt
+    ) {
       return;
     }
     setEigenSelectedRecord(record);
@@ -783,7 +1046,9 @@ export default function OpenClawSetupPage() {
       if (data.success !== false) {
         setEigenVerifyResult(data);
       } else {
-        setEigenVerifyError(data.error || data.message || "Verification failed");
+        setEigenVerifyError(
+          data.error || data.message || "Verification failed",
+        );
       }
     } catch (err: any) {
       setEigenVerifyError(err.message || "Request failed");
@@ -828,7 +1093,9 @@ export default function OpenClawSetupPage() {
             userWallet: walletAddress,
             returnUrl: `${window.location.origin}/openclaw`,
             source: "openclaw",
-            wsProvider: webSearchEnabled ? selectedWebSearchProvider : undefined,
+            wsProvider: webSearchEnabled
+              ? selectedWebSearchProvider
+              : undefined,
           }),
         });
 
@@ -878,6 +1145,7 @@ export default function OpenClawSetupPage() {
         userWallet: walletAddress,
         plan: selectedPlan,
         webSearchProvider: webSearchEnabled ? selectedWebSearchProvider : null,
+        ostiumUseTestnet,
       });
 
       setInstanceData({
@@ -914,28 +1182,9 @@ export default function OpenClawSetupPage() {
     }
   };
 
-  const handleSelectModel = async () => {
-    setErrorMessage("");
-    if (!walletAddress) return;
-    setIsLoading(true);
-
-    try {
-      await postJson<{ success: boolean }>("/api/openclaw/update-model", {
-        userWallet: walletAddress,
-        model: selectedModel,
-      });
-      markComplete("model");
-      goNext();
-    } catch (error) {
-      setErrorMessage((error as Error).message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleUpdateWebSearch = async (
     enabled: boolean,
-    provider: WebSearchProvider
+    provider: WebSearchProvider,
   ) => {
     if (!walletAddress) return;
     setIsUpdatingWebSearch(true);
@@ -975,7 +1224,6 @@ export default function OpenClawSetupPage() {
 
       if (response.bot?.username) {
         setBotUsername(response.bot.username);
-        setTelegramUsername(response.bot.username);
       }
       setTelegramLinked(true);
       markComplete("telegram");
@@ -1032,13 +1280,17 @@ export default function OpenClawSetupPage() {
           setInstanceData({
             ...instanceData,
             openaiProjectId: response.projectId || null,
-            openaiServiceAccountId: response.keyPrefix?.replace("sk-svcacct-", "") || null,
+            openaiServiceAccountId:
+              response.keyPrefix?.replace("sk-svcacct-", "") || null,
             openaiApiKeyCreatedAt: response.createdAt || null,
           });
         }
       }
     } catch (error: any) {
-      if (error.message.includes("already exists") || error.message.includes("409")) {
+      if (
+        error.message.includes("already exists") ||
+        error.message.includes("409")
+      ) {
         setOpenaiKeyStatus("created");
       } else {
         setOpenaiKeyStatus("not_created");
@@ -1110,43 +1362,98 @@ export default function OpenClawSetupPage() {
     }
   };
 
-  const handleCreateTradingDeployment = useCallback(async (enabledVenues?: string[]) => {
-    if (!tradingAgentId || !walletAddress) return;
-    setSkillSubStep("creating-deployment");
-    setErrorMessage("");
-    try {
-      const res = await fetch("/api/openclaw/create-trading-deployment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: tradingAgentId,
-          userWallet: walletAddress,
-          enabledVenues,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        const syncedVenues = (
-          Array.isArray(data.deployment?.enabledVenues)
+  const handleCreateTradingDeployment = useCallback(
+    async (enabledVenues?: string[]) => {
+      if (!tradingAgentId || !walletAddress) return;
+      setSkillSubStep("creating-deployment");
+      setErrorMessage("");
+      try {
+        const res = await fetch("/api/openclaw/create-trading-deployment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId: tradingAgentId,
+            userWallet: walletAddress,
+            enabledVenues,
+            isTestnet: ostiumUseTestnet,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          const syncedVenues = Array.isArray(data.deployment?.enabledVenues)
             ? data.deployment.enabledVenues
             : Array.isArray(data.deployment?.enabled_venues)
               ? data.deployment.enabled_venues
               : Array.isArray(enabledVenues)
                 ? enabledVenues
-                : []
-        );
-        setDeploymentEnabledVenues(syncedVenues);
-        setHasDeployment(true);
-        setSkillSubStep("complete");
-      } else {
-        setErrorMessage(data.error || "Failed to create deployment");
+                : [];
+          setDeploymentEnabledVenues(syncedVenues);
+          setHasDeployment(true);
+          setOstiumUseTestnet(data.deployment?.isTestnet === true);
+          setSkillSubStep("complete");
+        } else {
+          setErrorMessage(data.error || "Failed to create deployment");
+          setSkillSubStep("agent-created");
+        }
+      } catch {
+        setErrorMessage("Failed to create deployment");
         setSkillSubStep("agent-created");
       }
-    } catch {
-      setErrorMessage("Failed to create deployment");
-      setSkillSubStep("agent-created");
-    }
-  }, [tradingAgentId, walletAddress]);
+    },
+    [tradingAgentId, walletAddress, ostiumUseTestnet],
+  );
+
+  useEffect(() => {
+    if (!walletAddress || !lazyTradingEnabled || !ostiumAgentAddress) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setIsCheckingOstiumSetup(true);
+      try {
+        const [delegRes, approvalRes] = await Promise.all([
+          fetch(
+            `/api/ostium/check-delegation-status?userWallet=${walletAddress}&agentAddress=${ostiumAgentAddress}&isTestnet=${ostiumUseTestnet}`,
+          ),
+          fetch(
+            `/api/ostium/check-approval-status?userWallet=${walletAddress}&isTestnet=${ostiumUseTestnet}`,
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        const isDelegated = delegRes.ok
+          ? (await delegRes.json()).isDelegatedToAgent === true
+          : false;
+        const hasApproval = approvalRes.ok
+          ? (await approvalRes.json()).hasApproval === true
+          : false;
+
+        setDelegationComplete(isDelegated);
+        setAllowanceComplete(hasApproval);
+
+        if (isDelegated && hasApproval) {
+          setSkillSubStep((prev) =>
+            prev === "idle" ? "agent-created" : prev,
+          );
+          setErrorMessage("");
+        }
+      } catch {
+        if (!cancelled) {
+          setDelegationComplete(false);
+          setAllowanceComplete(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingOstiumSetup(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [walletAddress, lazyTradingEnabled, ostiumAgentAddress, ostiumUseTestnet]);
 
   useEffect(() => {
     if (!lazyTradingEnabled || !walletAddress) return;
@@ -1155,7 +1462,9 @@ export default function OpenClawSetupPage() {
     (async () => {
       setIsCheckingLazyTradingSetup(true);
       try {
-        const res = await fetch(`/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`);
+        const res = await fetch(
+          `/api/lazy-trading/get-setup-status?userWallet=${walletAddress}`,
+        );
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.hasSetup && data.step === "complete") {
@@ -1168,7 +1477,12 @@ export default function OpenClawSetupPage() {
         setIsCheckingLazyTradingSetup(false);
       }
     })();
-  }, [lazyTradingEnabled, walletAddress, lazyTradingSetupComplete, maxxitApiKey]);
+  }, [
+    lazyTradingEnabled,
+    walletAddress,
+    lazyTradingSetupComplete,
+    maxxitApiKey,
+  ]);
 
   // Fetch existing Maxxit API key prefix
   useEffect(() => {
@@ -1176,7 +1490,9 @@ export default function OpenClawSetupPage() {
 
     (async () => {
       try {
-        const res = await fetch(`/api/lazy-trading/api-key?userWallet=${walletAddress}`);
+        const res = await fetch(
+          `/api/lazy-trading/api-key?userWallet=${walletAddress}`,
+        );
         if (!res.ok) return;
         const data = await res.json();
         if (data.success && data.apiKey?.prefix) {
@@ -1190,38 +1506,214 @@ export default function OpenClawSetupPage() {
 
   // ── Extracted handler functions ──────────────────────────────────────────
 
+  const handleEnableOstiumTestnet = async () => {
+    if (!walletAddress) return;
+    setIsEnablingOstiumTestnet(true);
+    setErrorMessage("");
+    setOstiumTestnetMessage(null);
+
+    try {
+      const res = await fetch("/api/openclaw/enable-ostium-testnet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userWallet: walletAddress,
+          promoCode: ostiumPromoCode,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to enable Ostium testnet");
+      }
+
+      setOstiumUseTestnet(true);
+      setOstiumPromoCode("");
+      setOstiumTestnetMessage(
+        data.message ||
+        "Promo code accepted. Testnet USDC has been requested for your wallet.",
+      );
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setIsEnablingOstiumTestnet(false);
+    }
+  };
+
+  const ensureWalletOnChain = useCallback(
+    async (provider: any, networkKey: AgentFundingNetwork) => {
+      const networkConfig = AGENT_FUNDING_NETWORKS[networkKey];
+      const requiredChainHex = `0x${networkConfig.chainId.toString(16)}`;
+      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      const currentNetwork = await ethersProvider.getNetwork();
+
+      if (currentNetwork.chainId === networkConfig.chainId) {
+        return;
+      }
+
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: requiredChainHex }],
+        });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      } catch (switchError: any) {
+        if (switchError.code !== 4902) {
+          throw new Error(`Please switch to ${networkConfig.label}`);
+        }
+
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: requiredChainHex,
+              chainName: networkConfig.chainName,
+              nativeCurrency: {
+                name: "Ether",
+                symbol: networkConfig.currencySymbol,
+                decimals: 18,
+              },
+              rpcUrls: [networkConfig.rpcUrl],
+              blockExplorerUrls: [networkConfig.blockExplorerUrl],
+            },
+          ],
+        });
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: requiredChainHex }],
+        });
+      }
+    },
+    [],
+  );
+
+  const handleSendAgentEth = async () => {
+    if (
+      !walletAddress ||
+      !ostiumAgentAddress ||
+      !agentEthAmount ||
+      parseFloat(agentEthAmount) <= 0
+    ) {
+      setAgentEthError("Please enter a valid ETH amount");
+      return;
+    }
+
+    setSendingAgentEth(true);
+    setAgentEthError(null);
+    setAgentEthTxHash(null);
+
+    try {
+      const provider = (window as any).ethereum;
+      if (!provider) {
+        throw new Error("No wallet provider found.");
+      }
+
+      const ethersProvider = new ethers.providers.Web3Provider(provider);
+      await ethersProvider.send("eth_requestAccounts", []);
+      await ensureWalletOnChain(provider, agentFundingNetwork);
+
+      const freshEthersProvider = new ethers.providers.Web3Provider(provider);
+
+      const amountInWei = ethers.utils.parseEther(agentEthAmount);
+
+      const txHash = await provider.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: walletAddress,
+            to: ostiumAgentAddress,
+            value: amountInWei.toHexString(),
+            gas: `0x${(21000).toString(16)}`,
+          },
+        ],
+      });
+
+      setAgentEthTxHash(txHash);
+      try {
+        await freshEthersProvider.waitForTransaction(txHash);
+      } catch (waitErr: any) {
+        if (
+          waitErr?.code === "NETWORK_ERROR" ||
+          waitErr?.message?.includes("underlying network changed")
+        ) {
+          //txHash is already set, treat as success
+        } else {
+          throw waitErr;
+        }
+      }
+    } catch (error: any) {
+      if (error.code === 4001 || error.message?.includes("rejected")) {
+        setAgentEthError("Transaction rejected");
+      } else {
+        setAgentEthError(error.message || "Failed to send ETH");
+      }
+    } finally {
+      setSendingAgentEth(false);
+    }
+  };
+
   const handleEnableTrading = async () => {
     if (!walletAddress || !ostiumAgentAddress) return;
     setEnablingTrading(true);
     setErrorMessage("");
     try {
+      const requiredChainId = ostiumConfig.chainId;
+      const requiredChainHex = `0x${requiredChainId.toString(16)}`;
+
       // Delegation
       if (!delegationComplete) {
         setSkillCurrentAction("Setting delegation...");
         const provider = (window as any).ethereum;
-        if (!provider) throw new Error("No wallet provider found. Please install MetaMask.");
+        if (!provider)
+          throw new Error("No wallet provider found. Please install MetaMask.");
         await provider.request({ method: "eth_requestAccounts" });
         const ethersProvider = new ethers.providers.Web3Provider(provider);
         const network = await ethersProvider.getNetwork();
-        if (network.chainId !== 42161) {
+        if (network.chainId !== requiredChainId) {
           try {
             await provider.request({
               method: "wallet_switchEthereumChain",
-              params: [{ chainId: "0xa4b1" }],
+              params: [{ chainId: requiredChainHex }],
             });
             await new Promise((r) => setTimeout(r, 500));
           } catch (switchErr: any) {
-            throw new Error(
-              switchErr.code === 4902
-                ? "Please add Arbitrum to your wallet"
-                : "Please switch to Arbitrum network"
-            );
+            if (switchErr.code === 4902) {
+              await provider.request({
+                method: "wallet_addEthereumChain",
+                params: [
+                  {
+                    chainId: requiredChainHex,
+                    chainName: ostiumConfig.chainName,
+                    nativeCurrency: {
+                      name: "Ether",
+                      symbol: ostiumConfig.currencySymbol,
+                      decimals: 18,
+                    },
+                    rpcUrls: [ostiumConfig.rpcUrl],
+                    blockExplorerUrls: [ostiumConfig.blockExplorerUrl],
+                  },
+                ],
+              });
+              await provider.request({
+                method: "wallet_switchEthereumChain",
+                params: [{ chainId: requiredChainHex }],
+              });
+            } else {
+              throw new Error(`Please switch to ${ostiumConfig.chainName}`);
+            }
           }
         }
-        const freshProvider = new ethers.providers.Web3Provider((window as any).ethereum);
+        const freshProvider = new ethers.providers.Web3Provider(
+          (window as any).ethereum,
+        );
         const signer = freshProvider.getSigner();
-        const contract = new ethers.Contract(OSTIUM_TRADING_CONTRACT, OSTIUM_TRADING_ABI, signer);
-        const gasEstimate = await contract.estimateGas.setDelegate(ostiumAgentAddress);
+        const contract = new ethers.Contract(
+          ostiumConfig.tradingContract,
+          OSTIUM_TRADING_ABI,
+          signer,
+        );
+        const gasEstimate =
+          await contract.estimateGas.setDelegate(ostiumAgentAddress);
         const tx = await contract.setDelegate(ostiumAgentAddress, {
           gasLimit: gasEstimate.mul(150).div(100),
         });
@@ -1240,14 +1732,18 @@ export default function OpenClawSetupPage() {
         const ethersProvider = new ethers.providers.Web3Provider(provider);
         await ethersProvider.send("eth_requestAccounts", []);
         const signer = ethersProvider.getSigner();
-        const usdcContract = new ethers.Contract(USDC_TOKEN, USDC_ABI, signer);
+        const usdcContract = new ethers.Contract(
+          ostiumConfig.usdcContract,
+          USDC_ABI,
+          signer,
+        );
         const allowanceAmount = ethers.utils.parseUnits("1000000", 6);
-        const approveData = usdcContract.interface.encodeFunctionData("approve", [
-          OSTIUM_STORAGE,
-          allowanceAmount,
-        ]);
+        const approveData = usdcContract.interface.encodeFunctionData(
+          "approve",
+          [ostiumConfig.storageContract, allowanceAmount],
+        );
         const gasEstimate = await ethersProvider.estimateGas({
-          to: USDC_TOKEN,
+          to: ostiumConfig.usdcContract,
           from: walletAddress,
           data: approveData,
         });
@@ -1256,7 +1752,7 @@ export default function OpenClawSetupPage() {
           params: [
             {
               from: walletAddress,
-              to: USDC_TOKEN,
+              to: ostiumConfig.usdcContract,
               data: approveData,
               gas: gasEstimate.mul(150).div(100).toHexString(),
             },
@@ -1279,41 +1775,50 @@ export default function OpenClawSetupPage() {
     }
   };
 
-  const checkAvantisOnchainSetupStatus = useCallback(async (
-    userWalletAddress: string,
-    agentAddress?: string | null
-  ) => {
-    const provider = new ethers.providers.JsonRpcProvider("https://mainnet.base.org");
-    const checksummedUser = ethers.utils.getAddress(userWalletAddress);
-    const checksummedAgent = agentAddress ? ethers.utils.getAddress(agentAddress) : null;
+  const checkAvantisOnchainSetupStatus = useCallback(
+    async (userWalletAddress: string, agentAddress?: string | null) => {
+      const provider = new ethers.providers.JsonRpcProvider(
+        "https://mainnet.base.org",
+      );
+      const checksummedUser = ethers.utils.getAddress(userWalletAddress);
+      const checksummedAgent = agentAddress
+        ? ethers.utils.getAddress(agentAddress)
+        : null;
 
-    const tradingContract = new ethers.Contract(
-      AVANTIS_TRADING_CONTRACT,
-      ["function delegations(address delegator) view returns (address)"],
-      provider
-    );
-    const usdcContract = new ethers.Contract(
-      AVANTIS_USDC_TOKEN,
-      ["function allowance(address owner, address spender) view returns (uint256)"],
-      provider
-    );
+      const tradingContract = new ethers.Contract(
+        AVANTIS_TRADING_CONTRACT,
+        ["function delegations(address delegator) view returns (address)"],
+        provider,
+      );
+      const usdcContract = new ethers.Contract(
+        AVANTIS_USDC_TOKEN,
+        [
+          "function allowance(address owner, address spender) view returns (uint256)",
+        ],
+        provider,
+      );
 
-    const [delegatedAddress, allowanceRaw] = await Promise.all([
-      tradingContract.delegations(checksummedUser),
-      usdcContract.allowance(checksummedUser, AVANTIS_STORAGE),
-    ]);
+      const [delegatedAddress, allowanceRaw] = await Promise.all([
+        tradingContract.delegations(checksummedUser),
+        usdcContract.allowance(checksummedUser, AVANTIS_STORAGE),
+      ]);
 
-    const isDelegatedToAgent = checksummedAgent
-      ? String(delegatedAddress).toLowerCase() === checksummedAgent.toLowerCase()
-      : String(delegatedAddress) !== ethers.constants.AddressZero;
-    const allowanceUsdc = parseFloat(ethers.utils.formatUnits(allowanceRaw, 6));
-    const hasApproval = allowanceUsdc >= 5;
+      const isDelegatedToAgent = checksummedAgent
+        ? String(delegatedAddress).toLowerCase() ===
+        checksummedAgent.toLowerCase()
+        : String(delegatedAddress) !== ethers.constants.AddressZero;
+      const allowanceUsdc = parseFloat(
+        ethers.utils.formatUnits(allowanceRaw, 6),
+      );
+      const hasApproval = allowanceUsdc >= 5;
 
-    return {
-      isDelegatedToAgent,
-      hasApproval,
-    };
-  }, []);
+      return {
+        isDelegatedToAgent,
+        hasApproval,
+      };
+    },
+    [],
+  );
 
   // Auto-sync Avantis setup state (same UX intent as Ostium checks)
   useEffect(() => {
@@ -1328,7 +1833,7 @@ export default function OpenClawSetupPage() {
       try {
         const status = await checkAvantisOnchainSetupStatus(
           walletAddress,
-          sharedAgentAddress
+          sharedAgentAddress,
         );
         if (cancelled) return;
 
@@ -1376,6 +1881,9 @@ export default function OpenClawSetupPage() {
       if (data.success) {
         const addr = data.avantisAgentAddress || data.ostiumAgentAddress;
         setAvantisAgentAddress(addr);
+        if (data.deployment?.is_testnet === true) {
+          setOstiumUseTestnet(true);
+        }
         if (Array.isArray(data.deployment?.enabled_venues)) {
           setDeploymentEnabledVenues(data.deployment.enabled_venues);
         }
@@ -1389,15 +1897,22 @@ export default function OpenClawSetupPage() {
 
         // Check existing on-chain delegation + approval first
         try {
-          const status = await checkAvantisOnchainSetupStatus(String(walletAddress), addr);
+          const status = await checkAvantisOnchainSetupStatus(
+            String(walletAddress),
+            addr,
+          );
           delegated = status.isDelegatedToAgent;
           approved = status.hasApproval;
         } catch {
           // Best-effort fallback to existing API routes if available
           try {
             const [delegRes, approvalRes] = await Promise.all([
-              fetch(`/api/avantis/check-delegation-status?userWallet=${walletAddress}&agentAddress=${addr}`),
-              fetch(`/api/avantis/check-approval-status?userWallet=${walletAddress}`),
+              fetch(
+                `/api/avantis/check-delegation-status?userWallet=${walletAddress}&agentAddress=${addr}`,
+              ),
+              fetch(
+                `/api/avantis/check-approval-status?userWallet=${walletAddress}`,
+              ),
             ]);
             if (delegRes.ok) {
               const d = await delegRes.json();
@@ -1407,7 +1922,7 @@ export default function OpenClawSetupPage() {
               const a = await approvalRes.json();
               approved = a.hasApproval === true;
             }
-          } catch { }
+          } catch {}
         }
 
         setAvantisDelegationComplete(delegated);
@@ -1440,7 +1955,10 @@ export default function OpenClawSetupPage() {
 
       // Sync state from chain in case user already approved outside this UI
       try {
-        const status = await checkAvantisOnchainSetupStatus(walletAddress, avantisAgentAddress);
+        const status = await checkAvantisOnchainSetupStatus(
+          walletAddress,
+          avantisAgentAddress,
+        );
         setAvantisDelegationComplete(status.isDelegatedToAgent);
         setAvantisAllowanceComplete(status.hasApproval);
         delegationDone = status.isDelegatedToAgent;
@@ -1458,7 +1976,8 @@ export default function OpenClawSetupPage() {
       if (!delegationDone) {
         setAvantisSkillCurrentAction("Setting delegation on Base...");
         const provider = (window as any).ethereum;
-        if (!provider) throw new Error("No wallet provider found. Please install MetaMask.");
+        if (!provider)
+          throw new Error("No wallet provider found. Please install MetaMask.");
         await provider.request({ method: "eth_requestAccounts" });
         const ethersProvider = new ethers.providers.Web3Provider(provider);
         const network = await ethersProvider.getNetwork();
@@ -1473,14 +1992,21 @@ export default function OpenClawSetupPage() {
             throw new Error(
               switchErr.code === 4902
                 ? `Please add ${BASE_CHAIN_NAME} to your wallet`
-                : `Please switch to ${BASE_CHAIN_NAME} network`
+                : `Please switch to ${BASE_CHAIN_NAME} network`,
             );
           }
         }
-        const freshProvider = new ethers.providers.Web3Provider((window as any).ethereum);
+        const freshProvider = new ethers.providers.Web3Provider(
+          (window as any).ethereum,
+        );
         const signer = freshProvider.getSigner();
-        const contract = new ethers.Contract(AVANTIS_TRADING_CONTRACT, AVANTIS_TRADING_ABI, signer);
-        const gasEstimate = await contract.estimateGas.setDelegate(avantisAgentAddress);
+        const contract = new ethers.Contract(
+          AVANTIS_TRADING_CONTRACT,
+          AVANTIS_TRADING_ABI,
+          signer,
+        );
+        const gasEstimate =
+          await contract.estimateGas.setDelegate(avantisAgentAddress);
         const tx = await contract.setDelegate(avantisAgentAddress, {
           gasLimit: gasEstimate.mul(150).div(100),
         });
@@ -1500,12 +2026,16 @@ export default function OpenClawSetupPage() {
         const ethersProvider = new ethers.providers.Web3Provider(provider);
         await ethersProvider.send("eth_requestAccounts", []);
         const signer = ethersProvider.getSigner();
-        const usdcContract = new ethers.Contract(AVANTIS_USDC_TOKEN, USDC_ABI, signer);
+        const usdcContract = new ethers.Contract(
+          AVANTIS_USDC_TOKEN,
+          USDC_ABI,
+          signer,
+        );
         const allowanceAmount = ethers.utils.parseUnits("1000000", 6);
-        const approveData = usdcContract.interface.encodeFunctionData("approve", [
-          AVANTIS_STORAGE,
-          allowanceAmount,
-        ]);
+        const approveData = usdcContract.interface.encodeFunctionData(
+          "approve",
+          [AVANTIS_STORAGE, allowanceAmount],
+        );
         const gasEstimate = await ethersProvider.estimateGas({
           to: AVANTIS_USDC_TOKEN,
           from: walletAddress,
@@ -1562,7 +2092,9 @@ export default function OpenClawSetupPage() {
         setTimeout(async () => {
           try {
             setIsCheckingVersions(true);
-            const vRes = await fetch(`/api/openclaw/versions?userWallet=${walletAddress}`);
+            const vRes = await fetch(
+              `/api/openclaw/versions?userWallet=${walletAddress}`,
+            );
             const vData = await vRes.json();
             if (vRes.ok && vData.success) {
               setOpenclawVersion(vData.openclaw || null);
@@ -1607,7 +2139,9 @@ export default function OpenClawSetupPage() {
         setTimeout(async () => {
           try {
             setIsCheckingVersions(true);
-            const vRes = await fetch(`/api/openclaw/versions?userWallet=${walletAddress}`);
+            const vRes = await fetch(
+              `/api/openclaw/versions?userWallet=${walletAddress}`,
+            );
             const vData = await vRes.json();
             if (vRes.ok && vData.success) {
               setOpenclawVersion(vData.openclaw || null);
@@ -1653,19 +2187,31 @@ export default function OpenClawSetupPage() {
           const existing = prev.findIndex((v) => v.key === newEnvKey.trim());
           if (existing >= 0) {
             const updated = [...prev];
-            updated[existing] = { key: newEnvKey.trim(), value: newEnvValue.trim() };
+            updated[existing] = {
+              key: newEnvKey.trim(),
+              value: newEnvValue.trim(),
+            };
             return updated;
           }
-          return [...prev, { key: newEnvKey.trim(), value: newEnvValue.trim() }];
+          return [
+            ...prev,
+            { key: newEnvKey.trim(), value: newEnvValue.trim() },
+          ];
         });
         setNewEnvKey("");
         setNewEnvValue("");
         setEnvVarMessage({ type: "success", text: data.message });
       } else {
-        setEnvVarMessage({ type: "error", text: data.error || "Failed to add variable" });
+        setEnvVarMessage({
+          type: "error",
+          text: data.error || "Failed to add variable",
+        });
       }
     } catch {
-      setEnvVarMessage({ type: "error", text: "Failed to add environment variable" });
+      setEnvVarMessage({
+        type: "error",
+        text: "Failed to add environment variable",
+      });
     } finally {
       setIsAddingEnvVar(false);
     }
@@ -1690,10 +2236,16 @@ export default function OpenClawSetupPage() {
         });
         setEnvVarMessage({ type: "success", text: data.message });
       } else {
-        setEnvVarMessage({ type: "error", text: data.error || "Failed to delete" });
+        setEnvVarMessage({
+          type: "error",
+          text: data.error || "Failed to delete",
+        });
       }
     } catch {
-      setEnvVarMessage({ type: "error", text: "Failed to delete environment variable" });
+      setEnvVarMessage({
+        type: "error",
+        text: "Failed to delete environment variable",
+      });
     } finally {
       setDeletingEnvKey(null);
     }
@@ -1769,18 +2321,6 @@ export default function OpenClawSetupPage() {
               />
             )}
 
-            {currentStepKey === "model" && (
-              <ModelStep
-                selectedPlan={selectedPlan}
-                selectedModel={selectedModel}
-                onSelectModel={setSelectedModel}
-                isLoading={isLoading}
-                errorMessage={errorMessage}
-                onBack={goBack}
-                onContinue={handleSelectModel}
-              />
-            )}
-
             {currentStepKey === "telegram" && (
               <TelegramStep
                 telegramLinked={telegramLinked}
@@ -1815,6 +2355,7 @@ export default function OpenClawSetupPage() {
                 ostiumAgentAddress={ostiumAgentAddress}
                 onSetOstiumAgentAddress={setOstiumAgentAddress}
                 delegationComplete={delegationComplete}
+                isCheckingOstiumSetup={isCheckingOstiumSetup}
                 onSetDelegationComplete={setDelegationComplete}
                 allowanceComplete={allowanceComplete}
                 onSetAllowanceComplete={setAllowanceComplete}
@@ -1830,6 +2371,21 @@ export default function OpenClawSetupPage() {
                 deploymentEnabledVenues={deploymentEnabledVenues}
                 onSetHasDeployment={setHasDeployment}
                 onSetDeploymentEnabledVenues={setDeploymentEnabledVenues}
+                ostiumUseTestnet={ostiumUseTestnet}
+                ostiumPromoCode={ostiumPromoCode}
+                onOstiumPromoCodeChange={setOstiumPromoCode}
+                isEnablingOstiumTestnet={isEnablingOstiumTestnet}
+                ostiumTestnetMessage={ostiumTestnetMessage}
+                onSetOstiumUseTestnet={setOstiumUseTestnet}
+                onEnableOstiumTestnet={handleEnableOstiumTestnet}
+                agentFundingNetwork={agentFundingNetwork}
+                onAgentFundingNetworkChange={setAgentFundingNetwork}
+                agentEthAmount={agentEthAmount}
+                onAgentEthAmountChange={setAgentEthAmount}
+                sendingAgentEth={sendingAgentEth}
+                agentEthTxHash={agentEthTxHash}
+                agentEthError={agentEthError}
+                onSendAgentEth={handleSendAgentEth}
                 asterEnabled={asterEnabled}
                 onSetAsterEnabled={setAsterEnabled}
                 isSavingAsterConfig={isSavingAsterConfig}
@@ -1904,7 +2460,9 @@ export default function OpenClawSetupPage() {
                 isAddingEnvVar={isAddingEnvVar}
                 newEnvKey={newEnvKey}
                 newEnvValue={newEnvValue}
-                onNewEnvKeyChange={(v) => setNewEnvKey(v.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
+                onNewEnvKeyChange={(v) =>
+                  setNewEnvKey(v.toUpperCase().replace(/[^A-Z0-9_]/g, ""))
+                }
                 onNewEnvValueChange={setNewEnvValue}
                 envVarMessage={envVarMessage}
                 showEnvVarsSection={showEnvVarsSection}
@@ -1943,7 +2501,10 @@ export default function OpenClawSetupPage() {
       {isRedirecting && (
         <div className="fixed inset-0 z-[110] bg-[var(--bg-deep)]/90 backdrop-blur-xl flex items-center justify-center flex-col gap-6 animate-in fade-in duration-500 px-4">
           <div className="relative">
-            <Orbit className="h-16 w-16 text-[var(--accent)] animate-spin" style={{ animation: "spin 3s linear infinite" }} />
+            <Orbit
+              className="h-16 w-16 text-[var(--accent)] animate-spin"
+              style={{ animation: "spin 3s linear infinite" }}
+            />
             <Zap className="h-6 w-6 text-[var(--accent)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
           </div>
           <div className="text-center">

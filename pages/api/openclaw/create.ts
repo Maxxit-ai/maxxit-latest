@@ -13,18 +13,20 @@ import {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const { userWallet, plan, webSearchProvider } = req.body as {
-      userWallet?: string;
-      plan?: string;
-      webSearchProvider?: string | null;
-    };
+    const { userWallet, plan, webSearchProvider, ostiumUseTestnet } =
+      req.body as {
+        userWallet?: string;
+        plan?: string;
+        webSearchProvider?: string | null;
+        ostiumUseTestnet?: boolean;
+      };
 
     // Validate required fields
     if (!userWallet || !plan) {
@@ -49,14 +51,18 @@ export default async function handler(
     if (existing) {
       const existingAny = existing as any;
       const incomingProvider =
-        webSearchProvider && ["brave", "perplexity", "openrouter"].includes(webSearchProvider)
+        webSearchProvider &&
+        ["brave", "perplexity", "openrouter"].includes(webSearchProvider)
           ? webSearchProvider
           : null;
 
       if (incomingProvider !== existingAny.web_search_provider) {
         await (prisma.openclaw_instances.update as any)({
           where: { id: existing.id },
-          data: { web_search_provider: incomingProvider, updated_at: new Date() },
+          data: {
+            web_search_provider: incomingProvider,
+            updated_at: new Date(),
+          },
         });
         existingAny.web_search_provider = incomingProvider;
       }
@@ -81,7 +87,7 @@ export default async function handler(
     }
 
     // Get default model for the plan
-    const defaultModel = getDefaultModel(plan);
+    const defaultModel = getDefaultModel(plan, { ostiumUseTestnet });
 
     // Verify model is allowed for plan
     if (!canPlanUseModel(plan, defaultModel)) {
@@ -92,7 +98,8 @@ export default async function handler(
 
     // Create instance
     const normalizedWebSearchProvider =
-      webSearchProvider && ["brave", "perplexity", "openrouter"].includes(webSearchProvider)
+      webSearchProvider &&
+      ["brave", "perplexity", "openrouter"].includes(webSearchProvider)
         ? webSearchProvider
         : null;
 
@@ -127,7 +134,7 @@ export default async function handler(
       message: "Instance created successfully",
       nextSteps: [
         "Link your Telegram account",
-        "Select your preferred AI model",
+        "Set up your trading skills",
         "Activate your instance",
       ],
     });

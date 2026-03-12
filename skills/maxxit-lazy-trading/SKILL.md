@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.11
+version: 1.2.12
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -96,10 +96,10 @@ python3 donchian-adx-strategy.py --symbol BTCUSDT --interval 15m --venue avantis
    - If user is trading on **Aster**, only suggest Aster endpoints/actions.
    - If user is trading on **Avantis**, only suggest Avantis endpoints/actions.
 4. **Do not ask network clarification**:
-   - **Ostium is mainnet-only** in this setup.
+   - **Ostium defaults to mainnet**, but if the user explicitly asks for **Ostium testnet / Arbitrum Sepolia**, honor that and pass `isTestnet: true` on Ostium endpoints.
    - **Aster is testnet-only** in this setup.
    - **Avantis is mainnet-only** (Base chain) in this setup.
-   - Therefore do **not** ask "mainnet or testnet?" for any venue.
+   - Therefore do **not** ask "mainnet or testnet?" unless the user explicitly requests Ostium testnet.
 5. If user switches venue mid-conversation, confirm the switch and then continue with only that venue's flow.
 
 ---
@@ -535,7 +535,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/open-position" 
   "leverage": 10,               // Optional (default: 10). ASK the user.
   "deploymentId": "uuid...",    // Optional — associated deployment ID
   "signalId": "uuid...",        // Optional — associated signal ID
-  "isTestnet": false            // Optional (default: false)
+  "isTestnet": false            // Optional. Set true only when user explicitly asks for Ostium testnet / Arbitrum Sepolia.
 }
 ```
 
@@ -587,7 +587,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/close-position"
   "market": "BTC",              // REQUIRED — Token symbol
   "tradeId": "12345",           // Optional — from /positions → tradeId
   "actualTradeIndex": 2,         // Highly recommended — from /positions → tradeIndex. NEVER guess.
-  "isTestnet": false            // Optional (default: false)
+  "isTestnet": false            // Optional. Set true only when user explicitly asks for Ostium testnet / Arbitrum Sepolia.
 }
 ```
 
@@ -648,7 +648,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-take-profit
   "entryPrice": 90000,             // REQUIRED — from /open-position or /positions. NEVER guess.
   "pairIndex": 0,                  // REQUIRED — from /positions or /symbols. NEVER guess.
   "side": "long",                  // Optional (default: "long") — from /positions.
-  "isTestnet": false              // Optional (default: false)
+  "isTestnet": false              // Optional. Set true only when user explicitly asks for Ostium testnet / Arbitrum Sepolia.
 }
 ```
 
@@ -709,7 +709,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-stop-loss" 
   "entryPrice": 90000,             // REQUIRED — from /open-position or /positions. NEVER guess.
   "pairIndex": 0,                  // REQUIRED — from /positions or /symbols. NEVER guess.
   "side": "long",                  // Optional (default: "long") — from /positions.
-  "isTestnet": false              // Optional (default: false)
+  "isTestnet": false              // Optional. Set true only when user explicitly asks for Ostium testnet / Arbitrum Sepolia.
 }
 ```
 
@@ -781,7 +781,7 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/price?token=BTC&
 | Parameter | Type | Required | Description |
 |-----------|-------|----------|-------------|
 | `token` | string | Yes | Token symbol to fetch price for (e.g., BTC, ETH, SOL) |
-| `isTestnet` | boolean | No | Use testnet price feed (default: false) |
+| `isTestnet` | boolean | No | Use Ostium testnet / Arbitrum Sepolia when explicitly requested by the user |
 
 **Response:**
 ```json
@@ -846,7 +846,7 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-traders?sou
         "id": "dep-uuid",
         "status": "ACTIVE",
         "safeWallet": "0x...",
-        "isTestnet": false
+        "isTestnet": true
       }
     }
   ],
@@ -1175,11 +1175,11 @@ Maxxit provides specialized scripts for different market conditions. These scrip
 
 | Venue | Chain | Symbol Format | Auth Required | When to Use |
 |-------|-------|--------------|---------------|-------------|
-| **Ostium** | Arbitrum (mainnet only) | `BTC`, `ETH` | `agentAddress` + `userAddress` | Default for most trades |
+| **Ostium** | Arbitrum (mainnet by default, testnet on explicit request) | `BTC`, `ETH` | `agentAddress` + `userAddress` | Default for most trades |
 | **Aster** | BNB Chain (testnet only) | `BTCUSDT`, `ETHUSDT` | `userAddress` only | When user specifies BNB Chain or Aster |
 | **Avantis** | Base (mainnet only) | Base token for orders (e.g. `BTC`), pair format in symbols/positions (e.g. `BTC/USD`) | `agentAddress` + `userAddress` | When user specifies Base chain or Avantis |
 
-> **Network behavior rule:** Do not ask users to choose mainnet/testnet for these venues. Ostium is fixed to mainnet, Aster is fixed to testnet, and Avantis is fixed to Base mainnet.
+> **Network behavior rule:** Do not ask users to choose mainnet/testnet for these venues by default. Ostium uses mainnet unless the user explicitly asks for testnet / Arbitrum Sepolia. Aster is fixed to testnet, and Avantis is fixed to Base mainnet.
 
 **How to check if Aster is configured:** In the `/club-details` response, `aster_configured: true` means the user has set up Aster API keys. If `false`, direct them to set up Aster at maxxit.ai/openclaw.
 

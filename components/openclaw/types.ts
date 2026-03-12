@@ -94,7 +94,6 @@ export type EigenVerificationRecord = {
 
 export const STEPS = [
   { key: "plan", label: "Plan" },
-  { key: "model", label: "Model" },
   { key: "telegram", label: "Telegram" },
   { key: "trading", label: "Trading" },
   { key: "activate", label: "Launch" },
