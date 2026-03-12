@@ -91,6 +91,7 @@ export default async function handler(
       count = 50,
       limit,
       venue,
+      isTestnet,
     } = req.body || {};
 
     const normalizedVenue =
@@ -213,7 +214,7 @@ export default async function handler(
         const avgWinRateRaw =
           winRows.length > 0
             ? winRows.reduce((sum: number, row: any) => sum + (toNumber(row?.winRate) || 0), 0) /
-              winRows.length
+            winRows.length
             : null;
 
         stats = omitNullish({
@@ -255,7 +256,7 @@ export default async function handler(
     const historyResponse = await fetch(historyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, count }),
+      body: JSON.stringify({ address, count, isTestnet }),
     });
 
     if (!historyResponse.ok) {

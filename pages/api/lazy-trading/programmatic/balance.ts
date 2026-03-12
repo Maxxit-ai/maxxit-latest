@@ -30,7 +30,7 @@ export default async function handler(
       return res.status(401).json({ success: false, error: "Invalid API key" });
     }
 
-    const { address } = req.body || {};
+    const { address, isTestnet } = req.body || {};
 
     if (!address) {
       return res.status(400).json({ success: false, error: "address is required" });
@@ -42,7 +42,7 @@ export default async function handler(
     const balanceResponse = await fetch(`${ostiumServiceUrl}/balance`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address }),
+      body: JSON.stringify({ address, isTestnet }),
     });
 
     if (!balanceResponse.ok) {
