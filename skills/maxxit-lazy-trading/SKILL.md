@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.13
+version: 1.2.14
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -63,12 +63,8 @@ python3 donchian-adx-strategy.py --symbol BTCUSDT --interval 15m --venue avantis
 - User wants to view their open positions or portfolio
 - User wants to see their closed position history or PnL
 - User wants to discover available trading symbols
-- User wants to get market data or LunarCrush metrics for analysis
 - User wants market research, a market summary, or a trade-focused research brief
 - User wants a whole market snapshot for the trading purpose
-- User wants to compare altcoin rankings (AltRank) across different tokens
-- User wants to identify high-sentiment trading opportunities
-- User wants to know social volume trends for crypto assets
 - User wants to open a new trading position (long/short)
 - User wants to close an existing position
 - User wants to set or modify take profit levels
@@ -143,7 +139,7 @@ The following shows where each required parameter comes from. **Always resolve d
 
 1. **Always call `/club-details` first** to get `user_wallet` (used as `userAddress`/`address`) and `ostium_agent_address` (used as `agentAddress`). Cache these for the session — they don't change.
 2. **Never hardcode or guess wallet addresses.** They are unique per user and must come from `/club-details`.
-3. **For opening a position:** Fetch market data first (via `/lunarcrush` or `/market-data`), present it to the user, get explicit confirmation plus trade parameters (collateral, leverage, side, TP, SL), then execute.
+3. **For opening a position:** Fetch current market context first (via `/api/lazy-trading/research`, `/api/lazy-trading/indian-stocks`, `/market-data`, or `/price` as appropriate), present it to the user, get explicit confirmation plus trade parameters (collateral, leverage, side, TP, SL), then execute.
    - **Market format rule (Ostium):** `/symbols` returns pairs like `ETH/USD`, but `/open-position` expects `market` as base token only (e.g. `ETH`). Convert by taking the base token before `/`.
 4. **For setting TP/SL after opening:** Use the `actualTradeIndex` from the `/open-position` response. If you don't have it (e.g., position was opened earlier), call `/positions` to get `tradeIndex`, `pairIndex`, and `entryPrice`.
 5. **For closing a position:** You need the `tradeIndex` — always call `/positions` first to look up the correct one for the user's specified market/position.
@@ -269,7 +265,7 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/club-details" \
 
 ### Get Available Symbols
 
-Retrieve all available trading symbols from the Ostium exchange. Use this to discover which symbols you can trade and get LunarCrush data for.
+Retrieve all available trading symbols from the Ostium exchange. Use this to discover which symbols you can trade.
 
 ```bash
 curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/symbols" \
@@ -304,73 +300,6 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/symbols" \
   "count": 45
 }
 ```
-
-### Get LunarCrush Market Data
-
-Retrieve cached LunarCrush market metrics for a specific symbol. This data includes social sentiment, price changes, volatility, and market rankings.
-
-> **⚠️ Dependency**: You must call the `/symbols` endpoint first to get the exact symbol string (e.g., `"BTC/USD"`). The symbol parameter requires an exact match.
-
-```bash
-# First, get available symbols
-SYMBOL=$(curl -s -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/symbols" \
-  -H "X-API-KEY: ${MAXXIT_API_KEY}" | jq -r '.symbols[0].symbol')
-
-# Then, get LunarCrush data for that symbol
-curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/lunarcrush?symbol=${SYMBOL}" \
-  -H "X-API-KEY: ${MAXXIT_API_KEY}"
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "symbol": "BTC/USD",
-  "lunarcrush": {
-    "galaxy_score": 72.5,
-    "alt_rank": 1,
-    "social_volume_24h": 15234,
-    "sentiment": 68.3,
-    "percent_change_24h": 2.45,
-    "volatility": 0.032,
-    "price": "95000.12345678",
-    "volume_24h": "45000000000.00000000",
-    "market_cap": "1850000000000.00000000",
-    "market_cap_rank": 1,
-    "social_dominance": 45.2,
-    "market_dominance": 52.1,
-    "interactions_24h": 890000,
-    "galaxy_score_previous": 70.1,
-    "alt_rank_previous": 1
-  },
-  "updated_at": "2026-02-14T08:30:00.000Z"
-}
-```
-
-**LunarCrush Field Descriptions:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `galaxy_score` | Float | Overall coin quality score (0-100) combining social, market, and developer activity |
-| `alt_rank` | Int | Rank among all cryptocurrencies (lower is better, 1 = best) |
-| `social_volume_24h` | Float | Social media mentions in last 24 hours |
-| `sentiment` | Float | Market sentiment score (0-100, 50 is neutral, >50 is bullish) |
-| `percent_change_24h` | Float | Price change percentage in last 24 hours |
-| `volatility` | Float | Price volatility score (0-1, <0.02 stable, 0.02-0.05 normal, >0.05 risky) |
-| `price` | String | Current price in USD (decimal string for precision) |
-| `volume_24h` | String | Trading volume in last 24 hours (decimal string) |
-| `market_cap` | String | Market capitalization (decimal string) |
-| `market_cap_rank` | Int | Rank by market cap (lower is better) |
-| `social_dominance` | Float | Social volume relative to total market |
-| `market_dominance` | Float | Market cap relative to total market |
-| `interactions_24h` | Float | Social media interactions in last 24 hours |
-| `galaxy_score_previous` | Float | Previous galaxy score (for trend analysis) |
-| `alt_rank_previous` | Int | Previous alt rank (for trend analysis) |
-
-**Data Freshness:**
-- LunarCrush data is cached and updated periodically by a background worker
-- Check the `updated_at` field to see when the data was last refreshed
-- Data is typically refreshed every few hours
 
 ### Get Account Balance
 
@@ -521,8 +450,8 @@ Open a new perpetual futures position on Ostium.
 > 4. `side`, `collateral`, `leverage` → **ASK the user explicitly**, do not assume
 >
 > **📊 Recommended Pre-Trade Flow:**
-> 1. Call `/lunarcrush?symbol=TOKEN/USD` or `/market-data` to get market conditions
-> 2. Present the market data to the user (price, sentiment, volatility)
+> 1. Call `/api/lazy-trading/research` for crypto trade research, or `/market-data` / `/price` for current market conditions
+> 2. Present the market context to the user (price, structure, momentum, volatility when available)
 > 3. Ask the user: "Do you want to proceed? Specify: collateral (USDC), leverage, long/short"
 > 4. Only after user confirms → call `/open-position`
 >
@@ -746,7 +675,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-stop-loss" 
 
 ### Get All Market Data
 
-Retrieve the complete market snapshot from Ostium, including all symbols and their full LunarCrush metrics. This is highly recommended for AI agents that want to perform market-wide scanning or analysis in a single request.
+Retrieve the complete market snapshot from Ostium, including all symbols and their current metrics. This is useful for market-wide scanning or analysis in a single request.
 
 ```bash
 curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/market-data" \
@@ -764,21 +693,11 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/market-data" \
       "group": "crypto",
       "maxLeverage": 150,
       "metrics": {
-        "galaxy_score": 72.5,
-        "alt_rank": 1,
-        "social_volume_24h": 15234,
-        "sentiment": 68.3,
+        "price": "95000.12345678",
         "percent_change_24h": 2.45,
         "volatility": 0.032,
-        "price": "95000.12345678",
         "volume_24h": "45000000000.00000000",
-        "market_cap": "1850000000000.00000000",
-        "market_cap_rank": 1,
-        "social_dominance": 45.2,
-        "market_dominance": 52.1,
-        "interactions_24h": 890000,
-        "galaxy_score_previous": 70.1,
-        "alt_rank_previous": 1
+        "market_cap": "1850000000000.00000000"
       },
       "updated_at": "2026-02-14T08:30:00.000Z"
     },
@@ -1007,11 +926,11 @@ Step 2: GET /symbols
    → Convert pair format to market token for /open-position:
      "ETH/USD" -> "ETH"
 
-Step 3: GET /lunarcrush?symbol=TOKEN/USD  (or GET /market-data for all)
-   → Get market data: price, sentiment, volatility, galaxy_score
+Step 3: POST /api/lazy-trading/research  (or GET /market-data or GET /price for current context)
+   → Get trade context: market structure, momentum, support/resistance, catalysts, and current price
    → Present this data to the user:
-     "BTC is currently at $95,000 with sentiment 68.3 (bullish) and volatility 0.032 (normal).
-      Galaxy Score: 72.5/100. Do you want to proceed?"
+     "BTC is trading around $95,000 with bullish structure and clear support/resistance levels.
+      Do you want to proceed?"
 
 Step 4: ASK the user for trade parameters
    → "Please confirm: collateral (USDC), leverage, long or short?"

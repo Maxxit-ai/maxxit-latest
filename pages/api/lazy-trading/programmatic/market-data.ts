@@ -36,23 +36,6 @@ export default async function handler(
                 symbol: pair.symbol,
                 group: pair.group || "Other",
                 maxLeverage: pair.max_leverage,
-                metrics: {
-                    galaxy_score: pair.galaxy_score,
-                    alt_rank: pair.alt_rank,
-                    social_volume_24h: pair.social_volume_24h,
-                    sentiment: pair.sentiment,
-                    percent_change_24h: pair.percent_change_24h,
-                    volatility: pair.volatility,
-                    price: pair.price ? pair.price.toString() : null,
-                    volume_24h: pair.volume_24h ? pair.volume_24h.toString() : null,
-                    market_cap: pair.market_cap ? pair.market_cap.toString() : null,
-                    market_cap_rank: pair.market_cap_rank,
-                    social_dominance: pair.social_dominance,
-                    market_dominance: pair.market_dominance,
-                    interactions_24h: pair.interactions_24h,
-                    galaxy_score_previous: pair.galaxy_score_previous,
-                    alt_rank_previous: pair.alt_rank_previous,
-                },
                 updated_at: pair.updated_at,
             };
         });
