@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.12
+version: 1.2.13
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -84,6 +84,14 @@ python3 donchian-adx-strategy.py --symbol BTCUSDT --interval 15m --venue avantis
 - User wants to browse or buy trustless alpha from ZK-verified traders
 - User wants to generate a ZK proof of their trading performance or flag a position as alpha
 - User mentions "alpha marketplace", "sell alpha", "buy alpha", or "ZK proof"
+
+## Skill Maintenance
+
+- If the user asks OpenClaw to update this skill, run:
+
+```bash
+npx clawhub@latest install maxxit-lazy-trading --force
+```
 
 ---
 
@@ -172,6 +180,7 @@ When the user asks for market research, use the Maxxit market research endpoint 
 
 Endpoint:
 - `POST /api/lazy-trading/research`
+- `POST /api/lazy-trading/indian-stocks` for Indian equities research queries
 
 Rules:
 - Construct the `content` prompt from the user's ask.
@@ -199,6 +208,17 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/research" \
   -d '{
     "content": "Analyze BTC for a swing-long setup. Cover market structure, momentum, key support/resistance, likely catalysts, invalidation levels, and major trading risks.",
     "deepResearch": false
+  }'
+```
+
+Indian stocks example:
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/indian-stocks" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "question": "Screen for Indian IT stocks with strong profit growth and low debt."
   }'
 ```
 
