@@ -258,6 +258,16 @@ export default function OpenClawSetupPage() {
     text: string;
   } | null>(null);
 
+  // Zerodha (Indian Stocks) state
+  const [zerodhaStatus, setZerodhaStatus] = useState<
+    "idle" | "connected" | "error"
+  >("idle");
+  const [zerodhaUserName, setZerodhaUserName] = useState<string | null>(null);
+  const [zerodhaIsAuthenticating, setZerodhaIsAuthenticating] = useState(false);
+  const [zerodhaIsSavingCreds, setZerodhaIsSavingCreds] = useState(false);
+  const [kiteApiKey, setKiteApiKey] = useState("");
+  const [kiteApiSecret, setKiteApiSecret] = useState("");
+
   // EigenAI Signature Verification state
   const [eigenRecords, setEigenRecords] = useState<EigenVerificationRecord[]>(
     [],
@@ -703,6 +713,21 @@ export default function OpenClawSetupPage() {
     }
   }, [router.query, walletAddress, authenticated]);
 
+  // Handle Zerodha callback redirect (?zerodha=success or ?zerodha=error)
+  useEffect(() => {
+    const { zerodha, message } = router.query;
+    if (zerodha === "success") {
+      setZerodhaStatus("connected");
+      router.replace("/openclaw", undefined, { shallow: true });
+    } else if (zerodha === "error") {
+      setZerodhaStatus("error");
+      if (typeof message === "string") {
+        setErrorMessage(decodeURIComponent(message));
+      }
+      router.replace("/openclaw", undefined, { shallow: true });
+    }
+  }, [router.query, router]);
+
   // Handle LLM top-up success redirect from Stripe
   useEffect(() => {
     const { payment, llm_topup } = router.query;
@@ -939,7 +964,7 @@ export default function OpenClawSetupPage() {
   }, [walletAddress, authenticated, llmBalanceRefreshKey]);
 
   useEffect(() => {
-    if (!walletAddress || !activated || instanceStatusPhase !== "ready") return;
+    if (!walletAddress || !authenticated) return;
 
     const fetchEnvVars = async () => {
       setIsLoadingEnvVars(true);
@@ -959,7 +984,66 @@ export default function OpenClawSetupPage() {
     };
 
     fetchEnvVars();
-  }, [walletAddress, activated, instanceStatusPhase]);
+  }, [walletAddress, authenticated]);
+
+  useEffect(() => {
+    if (!walletAddress || !authenticated) return;
+
+    const envVarMap = new Map(envVars.map((envVar) => [envVar.key, envVar.value]));
+
+    const savedApiKey = envVarMap.get("KITE_API_KEY") || "";
+    const savedApiSecret = envVarMap.get("KITE_API_SECRET") || "";
+
+    if (!kiteApiKey && savedApiKey) {
+      setKiteApiKey(savedApiKey);
+    }
+
+    if (!kiteApiSecret && savedApiSecret) {
+      setKiteApiSecret(savedApiSecret);
+    }
+
+    const hasKiteConfig = Boolean(savedApiKey || savedApiSecret);
+    if (!hasKiteConfig) {
+      setZerodhaUserName(null);
+      setZerodhaStatus("idle");
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchZerodhaSession = async () => {
+      try {
+        const res = await fetch(
+          `/api/lazy-trading/programmatic/zerodha/session?userWallet=${walletAddress}`,
+        );
+        const data = await res.json();
+
+        if (cancelled) return;
+
+        if (res.ok && data.authenticated) {
+          setZerodhaStatus("connected");
+          setZerodhaUserName(
+            data.profile?.user_name || data.profile?.user_shortname || null,
+          );
+          return;
+        }
+
+        setZerodhaUserName(envVarMap.get("KITE_USER_NAME") || null);
+        setZerodhaStatus("idle");
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Failed to fetch Zerodha session:", error);
+        setZerodhaUserName(envVarMap.get("KITE_USER_NAME") || null);
+        setZerodhaStatus("error");
+      }
+    };
+
+    fetchZerodhaSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, envVars, kiteApiKey, kiteApiSecret, walletAddress]);
 
   useEffect(() => {
     if (!walletAddress || !activated || instanceStatusPhase !== "ready") return;
@@ -2251,6 +2335,66 @@ export default function OpenClawSetupPage() {
     }
   };
 
+  const handleSaveZerodhaCreds = async () => {
+    if (!walletAddress || !kiteApiKey.trim() || !kiteApiSecret.trim()) return;
+    setZerodhaIsSavingCreds(true);
+    setErrorMessage("");
+    try {
+      const saveKey = async (key: string, value: string) => {
+        const saveRes = await fetch("/api/openclaw/env-vars", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userWallet: walletAddress, key, value }),
+        });
+        const saveData = await saveRes.json();
+        if (!saveRes.ok || !saveData.success) {
+          throw new Error(
+            saveData.error || `Failed to save environment variable "${key}"`,
+          );
+        }
+        return saveData;
+      };
+
+      await saveKey("KITE_API_KEY", kiteApiKey.trim());
+      await saveKey("KITE_API_SECRET", kiteApiSecret.trim());
+      setEnvVars((prev) => {
+        const next = prev.filter(
+          (envVar) =>
+            envVar.key !== "KITE_API_KEY" && envVar.key !== "KITE_API_SECRET",
+        );
+        next.push({ key: "KITE_API_KEY", value: kiteApiKey.trim() });
+        next.push({ key: "KITE_API_SECRET", value: kiteApiSecret.trim() });
+        return next;
+      });
+      setEnvVarMessage({ type: "success", text: "Zerodha credentials saved to SSM" });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to save Zerodha credentials",
+      );
+    } finally {
+      setZerodhaIsSavingCreds(false);
+    }
+  };
+
+  const handleAuthenticateZerodha = async () => {
+    if (!walletAddress) return;
+    setZerodhaIsAuthenticating(true);
+    setErrorMessage("");
+    try {
+      window.open(
+        `/api/lazy-trading/programmatic/zerodha/login?userWallet=${encodeURIComponent(walletAddress)}&redirect=1`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+    } catch {
+      setErrorMessage("Failed to authenticate with Zerodha");
+    } finally {
+      setZerodhaIsAuthenticating(false);
+    }
+  };
+
   const handleRefreshEigen = () => {
     if (!walletAddress) return;
     setEigenRecordsLoading(true);
@@ -2407,6 +2551,16 @@ export default function OpenClawSetupPage() {
                 enablingAvantisTrading={enablingAvantisTrading}
                 avantisSkillCurrentAction={avantisSkillCurrentAction}
                 avantisSkillTxHash={avantisSkillTxHash}
+                zerodhaStatus={zerodhaStatus}
+                zerodhaUserName={zerodhaUserName}
+                zerodhaIsAuthenticating={zerodhaIsAuthenticating}
+                zerodhaIsSavingCreds={zerodhaIsSavingCreds}
+                kiteApiKey={kiteApiKey}
+                kiteApiSecret={kiteApiSecret}
+                onKiteApiKeyChange={setKiteApiKey}
+                onKiteApiSecretChange={setKiteApiSecret}
+                onSaveZerodhaCreds={handleSaveZerodhaCreds}
+                onAuthenticateZerodha={handleAuthenticateZerodha}
                 onBack={goBack}
                 onContinue={goNext}
                 onCreateTradingDeployment={handleCreateTradingDeployment}

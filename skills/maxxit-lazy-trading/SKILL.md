@@ -5,7 +5,6 @@ version: 1.2.14
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
-repository: https://github.com/Maxxit-ai/maxxit-latest
 disableModelInvocation: true
 requires:
   env:
@@ -185,6 +184,21 @@ Rules:
 - Prefer prompts that ask for market structure, trend, momentum, support/resistance, catalysts, and trading risks when relevant.
 - Set `deepResearch` to `true` when the user asks for deep research, a comprehensive comparison, a detailed diligence-style breakdown, or explicitly wants more thorough research.
 - Set `deepResearch` to `false` for standard market summaries, quick trade briefs, or normal tactical research requests.
+- For `POST /api/lazy-trading/indian-stocks`, OpenClaw must decide the request options from the user's query and should not ask the user to choose `chat_model`, `response_length`, or `thinking_level`.
+- Always send `question` plus the inferred request options:
+  - `chat_model`: `analytical` or `strategic`
+  - `response_length`: `short`, `medium`, or `long`
+  - `thinking_level`: only include this when `chat_model` is `strategic`
+- Use `chat_model: "strategic"` when the user wants a trading plan, swing-trade setups, long/short ideas, entry zones, stop loss, target levels, timing for this week, or tactical positioning. In strategic mode, include `thinking_level` automatically:
+  - use `balanced` by default
+  - use `low` for quick, lightweight tactical asks
+  - use `deep` only when the user explicitly asks for a more thoughtful or more detailed strategy answer
+- Use `chat_model: "analytical"` for screens, rankings, fundamentals, valuation, sector comparisons, capex-cycle beneficiaries, earnings quality, balance sheet analysis, and diligence-style research. Do not send `thinking_level` in analytical mode.
+- Infer `response_length` from the user’s ask:
+  - use `short` for quick answers, concise trade ideas, and direct setup requests
+  - use `medium` by default for normal research requests
+  - use `long` for ranked lists, detailed comparisons, deep dives, or multi-factor explanations
+- If the user’s wording contains both analytical and tactical elements, prioritize the main deliverable. If the answer must provide actionable trade setups, choose `strategic`; if the answer is mainly screening, ranking, valuation, or fundamental comparison, choose `analytical`.
 - Summarize the response and format it for readability.
 
 Prompt construction examples:
@@ -214,7 +228,23 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/indian-stocks" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{
-    "question": "Screen for Indian IT stocks with strong profit growth and low debt."
+    "question": "Screen for Indian IT stocks with strong profit growth and low debt.",
+    "chat_model": "analytical",
+    "response_length": "medium"
+  }'
+```
+
+Indian stocks tactical example:
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/indian-stocks" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "question": "Which Indian banking stocks look strongest for a swing trade this week? Give long ideas only, with entry zone, stop loss, target range, and the reasoning behind each setup.",
+    "chat_model": "strategic",
+    "response_length": "short",
+    "thinking_level": "balanced"
   }'
 ```
 
@@ -1825,7 +1855,219 @@ Step 3: POST /avantis/close-position
 
 ---
 
-## Alpha Marketplace (Arbitrum Sepolia)
+## Zerodha (Indian Stocks) Endpoints
+
+> Zerodha is an Indian stock broker supporting equities on NSE and BSE. Use Zerodha endpoints when the user wants to trade Indian stocks, mentions NSE/BSE, or says "Indian stocks", "equities", or "Zerodha".
+
+### When to Use Zerodha
+
+- User wants to trade Indian stocks on NSE or BSE
+- User mentions "Indian stocks", "equities", "NSE", "BSE", "Zerodha", or "Kite"
+- User asks about their Zerodha portfolio, holdings, or positions
+- User wants to place, modify, or cancel orders on Indian exchanges
+- User wants to fetch instrument lists or market data for Indian equities
+
+### Venue Routing
+
+| Keywords | Route |
+|----------|-------|
+| "Indian stocks", "NSE", "BSE", "equities", "Zerodha", "Kite" | Zerodha endpoints |
+
+### Environment Variables
+
+| Variable | Description | Source |
+|----------|-------------|--------|
+| `KITE_API_KEY` | Zerodha Kite Connect API key | SSM (set in OpenClaw UI) |
+| `KITE_API_SECRET` | Zerodha Kite Connect API secret | SSM (set in OpenClaw UI) |
+| `KITE_ACCESS_TOKEN` | Short-lived access token (expires daily) | SSM (auto-stored after OAuth) |
+| `KITE_USER_NAME` | Zerodha display name for status/UI | SSM (auto-stored after OAuth) |
+
+### Auth Pre-Flight
+
+Before any Zerodha trading call, check session validity:
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/session" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}"
+```
+
+If `authenticated: false` or `expired: true`, tell the user:
+> "Your Zerodha session has expired. Please re-authenticate on the OpenClaw page at maxxit.ai/openclaw."
+
+**Important**: All Zerodha requests must include:
+- `X-API-KEY` header (normal Maxxit auth)
+- `X-KITE-API-KEY` header
+- `X-KITE-ACCESS-TOKEN` header
+
+### Zerodha Endpoints
+
+All base path: `${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/`
+
+#### GET /zerodha/login
+
+Generate a Zerodha login URL for the user.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/login" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "login_url": "https://kite.zerodha.com/connect/login?v=3&api_key=..."
+}
+```
+
+#### GET /zerodha/session
+
+Check Zerodha session status. Returns `authenticated: true` if session is valid.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/session" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}"
+```
+
+#### DELETE /zerodha/session
+
+Invalidate Zerodha session and remove token from SSM.
+
+#### GET /zerodha/portfolio
+
+Fetch portfolio data. Use `?type=profile|holdings|positions|margins` to select specific data. Default fetches all.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/portfolio" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}"
+```
+
+With filter:
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/portfolio?type=holdings" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}"
+```
+
+#### GET /zerodha/orders
+
+List all orders. Use `?orderId=<id>` for specific order history.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/orders" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}"
+```
+
+#### POST /zerodha/orders
+
+Place a new order.
+
+```bash
+curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/orders" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "variety": "regular",
+    "exchange": "NSE",
+    "tradingsymbol": "RELIANCE",
+    "transaction_type": "BUY",
+    "quantity": 1,
+    "product": "CNC",
+    "order_type": "MARKET"
+  }'
+```
+
+**Required fields:** `exchange`, `tradingsymbol`, `transaction_type`, `quantity`, `product`, `order_type`
+
+**Common values:**
+| Field | Values |
+|-------|--------|
+| `variety` | `regular`, `amo`, `bo`, `co` |
+| `exchange` | `NSE`, `BSE`, `NFO`, `BFO`, `CDS`, `MCX` |
+| `transaction_type` | `BUY`, `SELL` |
+| `product` | `CNC` (delivery), `MIS` (intraday) |
+| `order_type` | `MARKET`, `LIMIT`, `SL`, `SL-M` |
+
+#### PUT /zerodha/orders?orderId=<id>
+
+Modify an existing order.
+
+```bash
+curl -L -X PUT "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/orders?orderId=ORD123" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"variety": "regular", "price": 2500, "order_type": "LIMIT"}'
+```
+
+#### DELETE /zerodha/orders?orderId=<id>
+
+Cancel an order.
+
+```bash
+curl -L -X DELETE "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/orders?orderId=ORD123" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"variety": "regular"}'
+```
+
+#### GET /zerodha/instruments
+
+Fetch available instruments. Use `?exchange=NSE|BSE|NFO|BFO|CDS|MCX` to filter.
+
+```bash
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/instruments?exchange=NSE" \
+  -H "X-API-KEY: ${MAXXIT_API_KEY}" \
+  -H "X-KITE-API-KEY: ${KITE_API_KEY}" \
+  -H "X-KITE-ACCESS-TOKEN: ${KITE_ACCESS_TOKEN}"
+```
+
+### Zerodha Workflow: Trading Indian Stocks
+
+```
+Step 1: GET /zerodha/session
+   → Check if authenticated. If not → tell user to re-auth on OpenClaw page.
+
+Step 2: GET /zerodha/instruments?exchange=NSE
+   → Verify the symbol exists on the exchange.
+
+Step 3: GET /zerodha/portfolio?type=holdings
+   → Show current holdings and positions to user.
+
+Step 4: ASK user for trade parameters
+   → Exchange (NSE/BSE), symbol, BUY/SELL, quantity, product (CNC/MIS), order type
+
+Step 5: POST /zerodha/orders
+   → Place the order with confirmed parameters.
+
+Step 6: GET /zerodha/orders?orderId=<id>
+   → Verify order status.
+```
+
+### Zerodha Error Handling
+
+| Status | Meaning |
+|--------|---------|
+| 401 | Session expired. Tell user to re-authenticate. |
+| 400 | Missing or invalid parameters. |
+| 405 | Wrong HTTP method. |
+| 500 | Internal error or Zerodha API failure. |
+
+---
 
 Trustless ZK-verified trading signals. **Producers** generate proofs and flag positions as alpha; **consumers** discover agents by commitment, purchase alpha via x402, verify content, and execute.
 

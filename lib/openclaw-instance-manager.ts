@@ -167,10 +167,10 @@ fi
 # Install openclaw globally via npm
 # NOTE: npm install -g must run as root to write to /usr/lib/node_modules
 echo "$(date): Installing openclaw globally via npm..."
-npm install -g openclaw || {
+npm install -g openclaw@2026.3.2 || {
   echo "$(date): First install attempt failed, clearing npm cache and retrying..."
   npm cache clean --force
-  npm install -g openclaw || {
+  npm install -g openclaw@2026.3.2 || {
     echo "$(date): ERROR - Failed to install openclaw after retry"
     exit 1
   }
@@ -189,11 +189,25 @@ echo "$(date): OpenClaw installed successfully"
 
 # Run OpenClaw onboarding as ubuntu user
 echo "$(date): Running OpenClaw onboarding..."
-su - ubuntu -c "$ONBOARD_CMD" || {
-  echo "$(date): ERROR - OpenClaw onboarding failed"
-  exit 1
-}
+ONBOARD_LOG="/var/log/openclaw/onboard.log"
+if ! su - ubuntu -c "$ONBOARD_CMD" 2>&1 | tee "$ONBOARD_LOG"; then
+  if grep -q "Gateway did not become reachable" "$ONBOARD_LOG" && \
+     su - ubuntu -c "test -f /home/ubuntu/.openclaw/openclaw.json"; then
+    echo "$(date): WARNING - OpenClaw onboarding hit gateway reachability timeout after writing config. Continuing with explicit gateway restart."
+  else
+    echo "$(date): ERROR - OpenClaw onboarding failed"
+    exit 1
+  fi
+fi
 echo "$(date): OpenClaw onboarding complete"
+
+# Gateway sometimes misses the first reachability window during daemon install.
+echo "$(date): Ensuring OpenClaw gateway is running..."
+su - ubuntu -c "systemctl --user daemon-reload" || true
+su - ubuntu -c "systemctl --user restart openclaw-gateway.service" || \
+su - ubuntu -c "openclaw gateway restart" || {
+  echo "$(date): WARNING - Failed to restart OpenClaw gateway after onboarding"
+}
 
 ${maxxitToolConfigSnippet}
 
@@ -374,6 +388,54 @@ fi
 echo "$(date): Skipping Maxxit Lazy Trading skill (not configured)"
 `
     }
+
+# Zerodha credential setup
+echo "$(date): Fetching Zerodha credentials from SSM..."
+KITE_API_KEY=$(aws ssm get-parameter --name "/openclaw/users/${config.ssmWalletPath}/env/KITE_API_KEY" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+KITE_API_SECRET=$(aws ssm get-parameter --name "/openclaw/users/${config.ssmWalletPath}/env/KITE_API_SECRET" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+KITE_ACCESS_TOKEN=$(aws ssm get-parameter --name "/openclaw/users/${config.ssmWalletPath}/env/KITE_ACCESS_TOKEN" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+KITE_USER_NAME=$(aws ssm get-parameter --name "/openclaw/users/${config.ssmWalletPath}/env/KITE_USER_NAME" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
+
+OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"
+touch "$OPENCLAW_ENV"
+
+for key in KITE_API_KEY KITE_API_SECRET KITE_ACCESS_TOKEN KITE_USER_NAME; do
+  sed -i "/^\${key}=/d" "$OPENCLAW_ENV" 2>/dev/null || true
+done
+
+if [ -n "$KITE_API_KEY" ]; then
+  echo "KITE_API_KEY=$KITE_API_KEY" >> "$OPENCLAW_ENV"
+fi
+
+if [ -n "$KITE_API_SECRET" ]; then
+  echo "KITE_API_SECRET=$KITE_API_SECRET" >> "$OPENCLAW_ENV"
+fi
+
+if [ -n "$KITE_ACCESS_TOKEN" ]; then
+  echo "KITE_ACCESS_TOKEN=$KITE_ACCESS_TOKEN" >> "$OPENCLAW_ENV"
+fi
+
+if [ -n "$KITE_USER_NAME" ]; then
+  echo "KITE_USER_NAME=$KITE_USER_NAME" >> "$OPENCLAW_ENV"
+fi
+
+chown ubuntu:ubuntu "$OPENCLAW_ENV"
+echo "$(date): Zerodha credentials synced to .env (API key: \${KITE_API_KEY:+set}, access token: \${KITE_ACCESS_TOKEN:+set})"
+
+# Fetch all custom env vars from SSM and write to .env
+# This picks up user-stored env vars like KITE_API_KEY, KITE_API_SECRET, KITE_ACCESS_TOKEN, etc.
+echo "$(date): Fetching custom environment variables from SSM..."
+OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"
+CUSTOM_ENV_PREFIX="/openclaw/users/${config.ssmWalletPath}/env/"
+aws ssm get-parameters-by-path --path "$CUSTOM_ENV_PREFIX" --with-decryption \
+  --query "Parameters[*].[Name,Value]" --output text --region $REGION 2>/dev/null | \
+  while IFS=$'\t' read -r name value; do
+    key=$(basename "$name")
+    sed -i "/^\${key}=/d" "$OPENCLAW_ENV" 2>/dev/null || true
+    echo "\${key}=\${value}" >> "$OPENCLAW_ENV"
+  done
+chown ubuntu:ubuntu "$OPENCLAW_ENV"
+echo "$(date): Custom environment variables written to .env"
 
 # Restart gateway to apply all config changes
 echo "$(date): Restarting gateway..."
