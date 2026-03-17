@@ -140,7 +140,7 @@ def main() -> None:
     log(f"Starting Aggressive Taker Bot | Market: {MARKET} | Venue: {VENUE}")
 
     # 1. Get Club Details
-    club = api_get(session, "club-details")
+    club = api_get(session, "user-details")
     if not club:
         return
     user_address = club.get("user_wallet")

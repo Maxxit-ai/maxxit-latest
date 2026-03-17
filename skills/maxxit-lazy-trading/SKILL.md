@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.15
+version: 1.2.16
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API, and trade Indian stocks through Zerodha Kite. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, researching Indian equities, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -117,8 +117,8 @@ The following shows where each required parameter comes from. **Always resolve d
 
 | Parameter | Source | Endpoint to Fetch From |
 |-----------|--------|------------------------|
-| `userAddress` / `address` | `/club-details` response → `user_wallet` | `GET /club-details` |
-| `agentAddress` | `/club-details` response → `ostium_agent_address` | `GET /club-details` |
+| `userAddress` / `address` | `/user-details` response → `user_wallet` | `GET /user-details` |
+| `agentAddress` | `/user-details` response → `ostium_agent_address` | `GET /user-details` |
 | `tradeIndex` | `/open-position` response → `actualTradeIndex` **OR** `/positions` response → `tradeIndex` | `POST /open-position` or `POST /positions` |
 | `pairIndex` | `/positions` response → `pairIndex` **OR** `/symbols` response → symbol `id` | `POST /positions` or `GET /symbols` |
 | `entryPrice` | `/open-position` response → `entryPrice` **OR** `/positions` response → `entryPrice` | `POST /open-position` or `POST /positions` |
@@ -136,21 +136,23 @@ The following shows where each required parameter comes from. **Always resolve d
 
 ### Mandatory Workflow Rules
 
-1. **Always call `/club-details` first** to get `user_wallet` (used as `userAddress`/`address`) and `ostium_agent_address` (used as `agentAddress`). Cache these for the session — they don't change.
-2. **Never hardcode or guess wallet addresses.** They are unique per user and must come from `/club-details`.
-3. **For opening a position:** Fetch current market context first (via `/api/lazy-trading/research`, `/api/lazy-trading/indian-stocks`, `/market-data`, or `/price` as appropriate), present it to the user, get explicit confirmation plus trade parameters (collateral, leverage, side, TP, SL), then execute.
+1. **Always call `/user-details` first** to get `user_wallet` (used as `userAddress`/`address`). Cache it for the session — it doesn't change.
+2. **Treat `/user-details` as identity-first.** It always returns `user_wallet` for a valid API key, even if no lazy-trading agent exists yet. In that case, `lazy_trading_ready` will be `false`, `agent` will be `null`, and `ostium_agent_address` will be `null`.
+3. **Only use `ostium_agent_address` when the venue needs an agent.** Ostium and Avantis require it. Zerodha does not. Aster only needs `user_wallet`, but `aster_configured` must be `true`.
+4. **Never hardcode or guess wallet addresses.** They are unique per user and must come from `/user-details`.
+5. **For opening a position:** Fetch current market context first (via `/api/lazy-trading/research`, `/api/lazy-trading/indian-stocks`, `/market-data`, or `/price` as appropriate), present it to the user, get explicit confirmation plus trade parameters (collateral, leverage, side, TP, SL), then execute.
    - **Market format rule (Ostium):** `/symbols` returns pairs like `ETH/USD`, but `/open-position` expects `market` as base token only (e.g. `ETH`). Convert by taking the base token before `/`.
-4. **For setting TP/SL after opening:** Use the `actualTradeIndex` from the `/open-position` response. If you don't have it (e.g., position was opened earlier), call `/positions` to get `tradeIndex`, `pairIndex`, and `entryPrice`.
-5. **For closing a position:** You need the `tradeIndex` — always call `/positions` first to look up the correct one for the user's specified market/position.
-6. **Ask the user for trade parameters** — never assume collateral amount, leverage, TP%, or SL%. Present defaults but let the user confirm or override.
-7. **Validate the market exists** by calling `/symbols` before trading if you're unsure whether a token is available on Ostium.
-8. **For Alpha consumer flow:** Follow the exact order: `/alpha/agents` → `/alpha/listings` → `/alpha/purchase` (402) → `/alpha/pay` → `/alpha/purchase` (with `X-Payment`) → `/alpha/verify` → `/club-details` → `/alpha/execute`. Never skip steps. For `/alpha/verify`, pass the `content` object **exactly** as received from purchase — do not modify keys or values.
+6. **For setting TP/SL after opening:** Use the `actualTradeIndex` from the `/open-position` response. If you don't have it (e.g., position was opened earlier), call `/positions` to get `tradeIndex`, `pairIndex`, and `entryPrice`.
+7. **For closing a position:** You need the `tradeIndex` — always call `/positions` first to look up the correct one for the user's specified market/position.
+8. **Ask the user for trade parameters** — never assume collateral amount, leverage, TP%, or SL%. Present defaults but let the user confirm or override.
+9. **Validate the market exists** by calling `/symbols` before trading if you're unsure whether a token is available on Ostium.
+10. **For Alpha consumer flow:** Follow the exact order: `/alpha/agents` → `/alpha/listings` → `/alpha/purchase` (402) → `/alpha/pay` → `/alpha/purchase` (with `X-Payment`) → `/alpha/verify` → `/user-details` → `/alpha/execute`. Never skip steps. For `/alpha/verify`, pass the `content` object **exactly** as received from purchase — do not modify keys or values.
 
 ### Pre-Flight Checklist (Run Mentally Before Every API Call)
 
 ```
-✅ Do I have the user's wallet address? → If not, call /club-details
-✅ Do I have the agent address? → If not, call /club-details
+✅ Do I have the user's wallet address? → If not, call /user-details
+✅ Does this flow require an agent address? → If yes, call /user-details and verify ostium_agent_address is non-null
 ✅ Does this endpoint need a tradeIndex? → If not in hand, call /positions
 ✅ Does this endpoint need entryPrice/pairIndex? → If not in hand, call /positions
 ✅ Did I ask the user for all trade parameters? → collateral, leverage, side, TP%, SL%
@@ -158,7 +160,7 @@ The following shows where each required parameter comes from. **Always resolve d
 ✅ (Alpha) Do I have commitment? → If not, call /alpha/agents
 ✅ (Alpha) Do I have listingId? → If not, call /alpha/listings
 ✅ (Alpha) For /verify: Am I passing content exactly as received? → No modifications
-✅ (Alpha) For /execute: Do I have agentAddress + userAddress? → Call /club-details
+✅ (Alpha) For /execute: Do I have agentAddress + userAddress? → Call /user-details
 ```
 
 ---
@@ -254,12 +256,12 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/indian-stocks" \
 
 > All endpoints under `/api/lazy-trading/programmatic/*` are for **Ostium** unless explicitly prefixed with `/aster/`.
 
-### Get Account Details
+### Get User Details
 
-Retrieve lazy trading account information including agent status, Telegram connection, and trading preferences.
+Retrieve lazy trading user information including wallet identity, agent status, Telegram connection, and trading preferences.
 
 ```bash
-curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/club-details" \
+curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/user-details" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}"
 ```
 
@@ -268,6 +270,7 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/club-details" \
 {
   "success": true,
   "user_wallet": "0x...",
+  "lazy_trading_ready": true,
   "agent": {
     "id": "agent-uuid",
     "name": "Lazy Trader - Username",
@@ -289,7 +292,23 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/club-details" \
     "trade_frequency": "moderate"
   },
   "ostium_agent_address": "0x...",
-  "aster_configured": "true",
+  "aster_configured": true
+}
+```
+
+If the user has not set up a lazy-trading agent yet, `/user-details` still returns `200` and identity data, for example:
+
+```json
+{
+  "success": true,
+  "user_wallet": "0x...",
+  "lazy_trading_ready": false,
+  "agent": null,
+  "telegram_user": null,
+  "deployment": null,
+  "trading_preferences": null,
+  "ostium_agent_address": null,
+  "aster_configured": false
 }
 ```
 
@@ -335,7 +354,7 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/symbols" \
 
 Retrieve USDC and ETH balance for the user's Ostium wallet address.
 
-> **⚠️ Dependency**: The `address` field is the user's Ostium wallet address (`user_wallet`). You MUST fetch it from `/club-details` first — do NOT hardcode or assume any address.
+> **⚠️ Dependency**: The `address` field is the user's Ostium wallet address (`user_wallet`). You MUST fetch it from `/user-details` first — do NOT hardcode or assume any address.
 
 ```bash
 curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/balance" \
@@ -358,7 +377,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/balance" \
 
 Get all open positions for the user's Ostium trading account. **This endpoint is critical** — it returns `tradeIndex`, `pairIndex`, and `entryPrice` which are required for closing positions and setting TP/SL.
 
-> **⚠️ Dependency**: The `address` field must come from `/club-details` → `user_wallet`. NEVER guess it.
+> **⚠️ Dependency**: The `address` field must come from `/user-details` → `user_wallet`. NEVER guess it.
 >
 > **🔑 This endpoint provides values needed by**: `/close-position` (needs `tradeIndex`), `/set-take-profit` (needs `tradeIndex`, `pairIndex`, `entryPrice`), `/set-stop-loss` (needs `tradeIndex`, `pairIndex`, `entryPrice`).
 
@@ -372,7 +391,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/positions" \
 **Request Body:**
 ```json
 {
-  "address": "0x..."  // REQUIRED — from /club-details → user_wallet. NEVER guess this.
+  "address": "0x..."  // REQUIRED — from /user-details → user_wallet. NEVER guess this.
 }
 ```
 
@@ -414,7 +433,7 @@ Get trading history for a wallet.
 - `venue: "OSTIUM"` (default): uses Ostium history.
 - `venue: "AVANTIS"`: returns normalized closed-trade history from Avantis `v2/history/portfolio/history`.
 
-**Note:** The user's Ostium wallet address can be fetched from the `/api/lazy-trading/programmatic/club-details` endpoint (see Get Account Balance section above).
+**Note:** The user's Ostium wallet address can be fetched from the `/api/lazy-trading/programmatic/user-details` endpoint (see Get Account Balance section above).
 
 ```bash
 curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
@@ -473,8 +492,8 @@ Returns normalized records like:
 Open a new perpetual futures position on Ostium.
 
 > **⚠️ Dependencies — ALL must be resolved BEFORE calling this endpoint:**
-> 1. `agentAddress` → from `/club-details` → `ostium_agent_address` (NEVER guess)
-> 2. `userAddress` → from `/club-details` → `user_wallet` (NEVER guess)
+> 1. `agentAddress` → from `/user-details` → `ostium_agent_address` (NEVER guess)
+> 2. `userAddress` → from `/user-details` → `user_wallet` (NEVER guess)
 > 3. `market` → validate via `/symbols` endpoint if unsure the token exists
 >    - If `/symbols` returns `ETH/USD`, pass `market: "ETH"` to `/open-position` (not `ETH/USD`)
 > 4. `side`, `collateral`, `leverage` → **ASK the user explicitly**, do not assume
@@ -506,8 +525,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/open-position" 
 **Request Body:**
 ```json
 {
-  "agentAddress": "0x...",      // REQUIRED — from /club-details → ostium_agent_address. NEVER guess.
-  "userAddress": "0x...",       // REQUIRED — from /club-details → user_wallet. NEVER guess.
+  "agentAddress": "0x...",      // REQUIRED — from /user-details → ostium_agent_address. NEVER guess.
+  "userAddress": "0x...",       // REQUIRED — from /user-details → user_wallet. NEVER guess.
   "market": "BTC",              // REQUIRED — Base token only for Ostium (e.g. "ETH", not "ETH/USD"). Validate via /symbols if unsure.
   "side": "long",               // REQUIRED — "long" or "short". ASK the user.
   "collateral": 100,            // REQUIRED — Collateral in USDC. ASK the user.
@@ -540,8 +559,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/open-position" 
 Close an existing perpetual futures position on Ostium.
 
 > **⚠️ Dependencies — resolve BEFORE calling this endpoint:**
-> 1. `agentAddress` → from `/club-details` → `ostium_agent_address`
-> 2. `userAddress` → from `/club-details` → `user_wallet`
+> 1. `agentAddress` → from `/user-details` → `ostium_agent_address`
+> 2. `userAddress` → from `/user-details` → `user_wallet`
 > 3. `tradeIndex` → call `/positions` first to find the position you want to close, then use its `tradeIndex`
 >
 > **NEVER guess the `tradeIndex` or `tradeId`.** Always fetch from `/positions` endpoint.
@@ -561,8 +580,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/close-position"
 **Request Body:**
 ```json
 {
-  "agentAddress": "0x...",      // REQUIRED — from /club-details → ostium_agent_address. NEVER guess.
-  "userAddress": "0x...",       // REQUIRED — from /club-details → user_wallet. NEVER guess.
+  "agentAddress": "0x...",      // REQUIRED — from /user-details → ostium_agent_address. NEVER guess.
+  "userAddress": "0x...",       // REQUIRED — from /user-details → user_wallet. NEVER guess.
   "market": "BTC",              // REQUIRED — Token symbol
   "tradeId": "12345",           // Optional — from /positions → tradeId
   "actualTradeIndex": 2,         // Highly recommended — from /positions → tradeIndex. NEVER guess.
@@ -590,8 +609,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/close-position"
 Set or update take-profit level for an existing position on Ostium.
 
 > **⚠️ Dependencies — you need ALL of these before calling:**
-> 1. `agentAddress` → from `/club-details` → `ostium_agent_address`
-> 2. `userAddress` → from `/club-details` → `user_wallet`
+> 1. `agentAddress` → from `/user-details` → `ostium_agent_address`
+> 2. `userAddress` → from `/user-details` → `user_wallet`
 > 3. `tradeIndex` → from `/open-position` response → `actualTradeIndex`, **OR** from `/positions` → `tradeIndex`
 > 4. `entryPrice` → from `/open-position` response → `entryPrice`, **OR** from `/positions` → `entryPrice`
 > 5. `pairIndex` → from `/positions` → `pairIndex`, **OR** from `/symbols` → symbol `id`
@@ -619,8 +638,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-take-profit
 **Request Body:**
 ```json
 {
-  "agentAddress": "0x...",        // REQUIRED — from /club-details. NEVER guess.
-  "userAddress": "0x...",         // REQUIRED — from /club-details. NEVER guess.
+  "agentAddress": "0x...",        // REQUIRED — from /user-details. NEVER guess.
+  "userAddress": "0x...",         // REQUIRED — from /user-details. NEVER guess.
   "market": "BTC",                // REQUIRED — Token symbol
   "tradeIndex": 2,                // REQUIRED — from /open-position or /positions. NEVER guess.
   "takeProfitPercent": 0.30,       // Optional (default: 0.30 = 30%). ASK the user.
@@ -645,8 +664,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-take-profit
 Set or update stop-loss level for an existing position on Ostium.
 
 > **⚠️ Dependencies — identical to Set Take Profit. You need ALL of these before calling:**
-> 1. `agentAddress` → from `/club-details` → `ostium_agent_address`
-> 2. `userAddress` → from `/club-details` → `user_wallet`
+> 1. `agentAddress` → from `/user-details` → `ostium_agent_address`
+> 2. `userAddress` → from `/user-details` → `user_wallet`
 > 3. `tradeIndex` → from `/open-position` response → `actualTradeIndex`, **OR** from `/positions` → `tradeIndex`
 > 4. `entryPrice` → from `/open-position` response → `entryPrice`, **OR** from `/positions` → `entryPrice`
 > 5. `pairIndex` → from `/positions` → `pairIndex`, **OR** from `/symbols` → symbol `id`
@@ -658,7 +677,7 @@ Set or update stop-loss level for an existing position on Ostium.
 
 ```bash
 # Same dependency resolution as Set Take Profit (see above for full example)
-# Step 1: Get addresses from /club-details
+# Step 1: Get addresses from /user-details
 # Step 2: Get position details from /positions
 # Step 3: Set stop loss with user-specified stopLossPercent
 
@@ -680,8 +699,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/set-stop-loss" 
 **Request Body:**
 ```json
 {
-  "agentAddress": "0x...",        // REQUIRED — from /club-details. NEVER guess.
-  "userAddress": "0x...",         // REQUIRED — from /club-details. NEVER guess.
+  "agentAddress": "0x...",        // REQUIRED — from /user-details. NEVER guess.
+  "userAddress": "0x...",         // REQUIRED — from /user-details. NEVER guess.
   "market": "BTC",                // REQUIRED — Token symbol
   "tradeIndex": 2,                // REQUIRED — from /open-position or /positions. NEVER guess.
   "stopLossPercent": 0.10,         // Optional (default: 0.10 = 10%). ASK the user.
@@ -769,7 +788,7 @@ Discover other OpenClaw Traders and top-performing traders to potentially copy-t
 
 > **⚠️ Dependency Chain**: This endpoint provides the wallet addresses needed by `/copy-trader-trades`. You MUST call this endpoint FIRST to get trader addresses — do NOT guess or hardcode addresses.
 >
-> **🚫 Self-copy guard**: Never use your own `user_wallet` from `/club-details` as a copy-trader address.
+> **🚫 Self-copy guard**: Never use your own `user_wallet` from `/user-details` as a copy-trader address.
 
 ```bash
 # Get all traders (OpenClaw + Leaderboard)
@@ -848,7 +867,7 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-traders?sou
 **Key fields to use in next steps:**
 - `openclawTraders[].creatorWallet` → use as `address` in `/copy-trader-trades`
 - `topTraders[].walletAddress` → use as `address` in `/copy-trader-trades`
-- Exclude any address equal to your own `/club-details.user_wallet`
+- Exclude any address equal to your own `/user-details.user_wallet`
 
 ### Get Trader's Recent Trades (Copy Trading — Step 2)
 
@@ -918,7 +937,7 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/copy-trader-trad
 | `stopLossPrice` | Stop loss price (null if not set) |
 | `timestamp` | When the trade was opened |
 
-> **Next step**: After reviewing the trades, use `/open-position` to open a similar position. You'll need your own `agentAddress` and `userAddress` from `/club-details`.
+> **Next step**: After reviewing the trades, use `/open-position` to open a similar position. You'll need your own `agentAddress` and `userAddress` from `/user-details`.
 
 ## Signal Format Examples
 
@@ -946,7 +965,7 @@ These are the mandatory step-by-step workflows for common trading operations. **
 ### Workflow 1: Opening a New Position (Full Flow)
 
 ```
-Step 1: GET /club-details
+Step 1: GET /user-details
    → Extract: user_wallet (→ userAddress), ostium_agent_address (→ agentAddress)
    → Cache these for the session
 
@@ -1012,7 +1031,7 @@ Step 10: POST /alpha/flag
 ### Workflow 2: Closing an Existing Position
 
 ```
-Step 1: GET /club-details
+Step 1: GET /user-details
    → Extract: user_wallet, ostium_agent_address
 
 Step 2: POST /positions (address = user_wallet from Step 1)
@@ -1029,7 +1048,7 @@ Step 3: POST /close-position
 ### Workflow 3: Setting TP/SL on an Existing Position
 
 ```
-Step 1: GET /club-details
+Step 1: GET /user-details
    → Extract: user_wallet, ostium_agent_address
 
 Step 2: POST /positions (address = user_wallet from Step 1)
@@ -1047,7 +1066,7 @@ Step 4: POST /set-take-profit and/or POST /set-stop-loss
 ### Workflow 4: Checking Portfolio & Market Overview
 
 ```
-Step 1: GET /club-details
+Step 1: GET /user-details
    → Extract: user_wallet
 
 Step 2: POST /balance (address = user_wallet)
@@ -1066,7 +1085,7 @@ Step 4 (optional): GET /market-data
 Step 1: GET /copy-traders?source=openclaw
    → Discover other OpenClaw Trader agents
    → Extract: creatorWallet from the trader you want to copy
-   → Exclude your own wallet (`/club-details.user_wallet`) if it appears
+   → Exclude your own wallet (`/user-details.user_wallet`) if it appears
    → IMPORTANT: This is a REQUIRED first step — you cannot call
      /copy-trader-trades without an address from this endpoint
 
@@ -1076,7 +1095,7 @@ Step 2: GET /copy-trader-trades?address={creatorWallet}
    → Decide: "Should I copy this trade?"
    → DEPENDENCY: The address param comes from Step 1 (creatorWallet or walletAddress)
 
-Step 3: GET /club-details
+Step 3: GET /user-details
    → Get YOUR OWN userAddress (user_wallet) and agentAddress (ostium_agent_address)
    → These are needed to execute your own trade
 
@@ -1096,7 +1115,7 @@ Step 5 (optional): POST /set-take-profit and/or POST /set-stop-loss
 **Dependency Chain Summary:**
 ```
 /copy-traders → provides address → /copy-trader-trades → provides trade details
-/club-details → provides your addresses → /open-position → copies the trade
+/user-details → provides your addresses → /open-position → copies the trade
 ```
 
 ---
@@ -1138,7 +1157,7 @@ Maxxit provides specialized scripts for different market conditions. These scrip
 
 ## Aster DEX (BNB Chain) Endpoints
 
-> Aster DEX is a perpetual futures exchange on BNB Chain. Use Aster endpoints when the user wants to trade on BNB Chain. The Aster API uses **API Key + Secret** authentication (stored server-side) — you do NOT need `agentAddress`. You only need `userAddress` from `/club-details`.
+> Aster DEX is a perpetual futures exchange on BNB Chain. Use Aster endpoints when the user wants to trade on BNB Chain. The Aster API uses **API Key + Secret** authentication (stored server-side) — you do NOT need `agentAddress`. You only need `userAddress` from `/user-details`.
 
 ### Venue Selection
 
@@ -1150,7 +1169,7 @@ Maxxit provides specialized scripts for different market conditions. These scrip
 
 > **Network behavior rule:** Do not ask users to choose mainnet/testnet for these venues by default. Ostium uses mainnet unless the user explicitly asks for testnet / Arbitrum Sepolia. Aster is fixed to testnet, and Avantis is fixed to Base mainnet.
 
-**How to check if Aster is configured:** In the `/club-details` response, `aster_configured: true` means the user has set up Aster API keys. If `false`, direct them to set up Aster at maxxit.ai/openclaw.
+**How to check if Aster is configured:** In the `/user-details` response, `aster_configured: true` means the user has set up Aster API keys. If `false`, direct them to set up Aster at maxxit.ai/openclaw.
 
 ### Aster Symbols
 
@@ -1218,7 +1237,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/balance" 
 **Request Body:**
 ```json
 {
-  "userAddress": "0x..."    // REQUIRED — from /club-details → user_wallet. NEVER guess.
+  "userAddress": "0x..."    // REQUIRED — from /user-details → user_wallet. NEVER guess.
 }
 ```
 
@@ -1281,7 +1300,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/history" 
 **Request Body:**
 ```json
 {
-  "userAddress": "0x...",        // REQUIRED — from /club-details → user_wallet
+  "userAddress": "0x...",        // REQUIRED — from /user-details → user_wallet
   "symbol": "BTC",               // REQUIRED — token or full symbol (BTC or BTCUSDT)
   "limit": 100,                  // Optional — default depends on exchange (max 1000)
   "orderId": 12345,              // Optional — fetch from this orderId onward
@@ -1321,7 +1340,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/open-posi
 **Request Body:**
 ```json
 {
-  "userAddress": "0x...",     // REQUIRED — from /club-details → user_wallet. NEVER guess.
+  "userAddress": "0x...",     // REQUIRED — from /user-details → user_wallet. NEVER guess.
   "symbol": "BTC",           // REQUIRED — Token name or full symbol (BTCUSDT). ASK the user.
   "side": "long",            // REQUIRED — "long" or "short". ASK the user.
   "quantity": 0.01,          // REQUIRED — Position size in BASE asset (e.g. 0.01 BTC). ASK the user.
@@ -1437,8 +1456,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/change-le
 
 | Parameter | Source | How to Get |
 |-----------|--------|-----------|
-| `userAddress` | `/club-details` → `user_wallet` | `GET /club-details` |
-| `aster_configured` | `/club-details` → `aster_configured` | `GET /club-details` (must be `true`) |
+| `userAddress` | `/user-details` → `user_wallet` | `GET /user-details` |
+| `aster_configured` | `/user-details` → `aster_configured` | `GET /user-details` (must be `true`) |
 | `symbol` | User specifies token | User input (auto-resolved: `BTC` → `BTCUSDT`) |
 | `side` | User specifies `"long"` or `"short"` | User input (required) |
 | `quantity` | User specifies in base asset units (e.g. `0.01 BTC`) | User input (required). If user provides USDT/collateral amount, ask for quantity instead. Do not calculate in the workflow. |
@@ -1449,7 +1468,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/aster/change-le
 ### Aster Workflow: Open Position on BNB Chain
 
 ```
-Step 1: GET /club-details
+Step 1: GET /user-details
    → Extract: user_wallet
    → Check: aster_configured == true (if false, tell user to set up Aster at maxxit.ai/openclaw)
 
@@ -1481,7 +1500,7 @@ Step 6 (if user wants TP/SL): POST /aster/set-take-profit and/or POST /aster/set
 ### Aster Workflow: Close Position
 
 ```
-Step 1: GET /club-details → Extract user_wallet
+Step 1: GET /user-details → Extract user_wallet
 
 Step 2: POST /aster/positions (userAddress = user_wallet)
    → Show positions to user, let them pick which to close
@@ -1495,9 +1514,9 @@ Step 3: POST /aster/close-position
 
 ## Avantis DEX (Base Chain) Endpoints
 
-> Avantis DEX is a perpetual futures exchange on Base chain. Use Avantis endpoints when the user wants to trade on Base. Avantis uses **delegation-based auth** (same pattern as Ostium) — you need both `agentAddress` and `userAddress` from `/club-details`.
+> Avantis DEX is a perpetual futures exchange on Base chain. Use Avantis endpoints when the user wants to trade on Base. Avantis uses **delegation-based auth** (same pattern as Ostium) — you need both `agentAddress` and `userAddress` from `/user-details`.
 
-**How to check if Avantis is configured:** Use `/club-details` and check `deployment.enabled_venues`. If it includes `"AVANTIS"`, Avantis is enabled for the current deployment. If not, direct the user to enable Avantis at maxxit.ai/openclaw.
+**How to check if Avantis is configured:** Use `/user-details` and check `deployment.enabled_venues`. If it includes `"AVANTIS"`, Avantis is enabled for the current deployment. If not, direct the user to enable Avantis at maxxit.ai/openclaw.
 
 ### Avantis Symbols
 
@@ -1567,7 +1586,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/balance
 **Request Body:**
 ```json
 {
-  "userAddress": "0x..."    // REQUIRED — from /club-details → user_wallet. NEVER guess.
+  "userAddress": "0x..."    // REQUIRED — from /user-details → user_wallet. NEVER guess.
 }
 ```
 
@@ -1616,8 +1635,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/positio
 ### Avantis Open Position
 
 > **⚠️ Dependencies:**
-> 1. `agentAddress` → from `/club-details` → `ostium_agent_address` (shared agent wallet; NEVER guess)
-> 2. `userAddress` → from `/club-details` → `user_wallet` (NEVER guess)
+> 1. `agentAddress` → from `/user-details` → `ostium_agent_address` (shared agent wallet; NEVER guess)
+> 2. `userAddress` → from `/user-details` → `user_wallet` (NEVER guess)
 > 3. `market` → validate via `/avantis/symbols`. Use base token only (e.g. `BTC`, not `BTC/USD`)
 > 4. `side`, `collateral`, `leverage` → **ASK the user explicitly**
 >
@@ -1644,8 +1663,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/open-po
 **Request Body:**
 ```json
 {
-  "agentAddress": "0x...",      // REQUIRED — from /club-details → ostium_agent_address (shared wallet). NEVER guess.
-  "userAddress": "0x...",       // REQUIRED — from /club-details → user_wallet. NEVER guess.
+  "agentAddress": "0x...",      // REQUIRED — from /user-details → ostium_agent_address (shared wallet). NEVER guess.
+  "userAddress": "0x...",       // REQUIRED — from /user-details → user_wallet. NEVER guess.
   "market": "BTC",              // REQUIRED — Base token only (e.g. "ETH", not "ETH/USD")
   "side": "long",               // REQUIRED — "long" or "short". ASK the user.
   "collateral": 100,            // REQUIRED — Collateral in USDC. ASK the user.
@@ -1694,8 +1713,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/close-p
 **Request Body:**
 ```json
 {
-  "agentAddress": "0x...",      // REQUIRED — from /club-details. NEVER guess.
-  "userAddress": "0x...",       // REQUIRED — from /club-details. NEVER guess.
+  "agentAddress": "0x...",      // REQUIRED — from /user-details. NEVER guess.
+  "userAddress": "0x...",       // REQUIRED — from /user-details. NEVER guess.
   "market": "BTC",              // REQUIRED — Token symbol
   "tradeId": "0:2",             // Optional — preferred composite ID from /avantis/positions (pairIndex:tradeIndex)
   "actualTradeIndex": 2         // Recommended — from /avantis/positions → tradeIndex
@@ -1722,8 +1741,8 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/avantis/update-
 **Request Body:**
 ```json
 {
-  "agentAddress": "0x...",      // REQUIRED — from /club-details. NEVER guess.
-  "userAddress": "0x...",       // REQUIRED — from /club-details. NEVER guess.
+  "agentAddress": "0x...",      // REQUIRED — from /user-details. NEVER guess.
+  "userAddress": "0x...",       // REQUIRED — from /user-details. NEVER guess.
   "market": "BTC",              // REQUIRED — Token symbol
   "tradeIndex": 0,              // Optional — specific trade index from /avantis/positions
   "takeProfitPrice": 100000,    // Absolute TP price (use this OR takeProfitPercent)
@@ -1806,9 +1825,9 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
 
 | Parameter | Source | How to Get |
 |-----------|--------|-----------|
-| `userAddress` | `/club-details` → `user_wallet` | `GET /club-details` |
-| `agentAddress` | `/club-details` → `ostium_agent_address` | `GET /club-details` |
-| `avantis_enabled` | `/club-details` → `deployment.enabled_venues` includes `AVANTIS` | `GET /club-details` |
+| `userAddress` | `/user-details` → `user_wallet` | `GET /user-details` |
+| `agentAddress` | `/user-details` → `ostium_agent_address` | `GET /user-details` |
+| `avantis_enabled` | `/user-details` → `deployment.enabled_venues` includes `AVANTIS` | `GET /user-details` |
 | `market` | User specifies token | User input (e.g. `BTC`, `ETH`) |
 | `side` | User specifies `"long"` or `"short"` | User input (required) |
 | `collateral` | User specifies USDC amount (must satisfy venue minimums) | User input (required) |
@@ -1819,7 +1838,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/history" \
 ### Avantis Workflow: Open Position on Base Chain
 
 ```
-Step 1: GET /club-details
+Step 1: GET /user-details
    → Extract: user_wallet, ostium_agent_address (shared agent wallet)
    → Check: deployment.enabled_venues includes AVANTIS (if not, tell user to enable Avantis at maxxit.ai/openclaw)
 
@@ -1842,7 +1861,7 @@ Step 4: POST /avantis/open-position
 ### Avantis Workflow: Close Position
 
 ```
-Step 1: GET /club-details → Extract user_wallet, ostium_agent_address (shared agent wallet)
+Step 1: GET /user-details → Extract user_wallet, ostium_agent_address (shared agent wallet)
 
 Step 2: POST /avantis/positions (userAddress + agentAddress)
    → Show positions to user, let them pick which to close
@@ -1900,6 +1919,7 @@ If `authenticated: false` or `expired: true`, tell the user:
 - `X-API-KEY` header (normal Maxxit auth)
 - `X-KITE-API-KEY` header
 - `X-KITE-ACCESS-TOKEN` header
+- For wallet identity, call `/user-details` first and use `user_wallet`. Zerodha does **not** require `ostium_agent_address` or `lazy_trading_ready: true`.
 
 ### Zerodha Endpoints
 
@@ -1912,13 +1932,12 @@ Generate a Zerodha login URL for the user.
 Important:
 - Do not tell the user to open a bare Kite URL like `https://kite.zerodha.com/connect/login?api_key=...&v=3`.
 - The login flow must preserve the Maxxit user context so the callback can store the Zerodha session against the correct wallet.
-- Prefer sending the user to the Maxxit endpoint directly in redirect mode:
-
-```text
-${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/login?userWallet=<wallet>&redirect=1
-```
-
-- If you call `/zerodha/login` first and present the returned `login_url`, only use it if it includes the user handoff, e.g. `redirect_params=userWallet%3D...`.
+- Preferred flow:
+  1. Call `GET /user-details` to resolve `user_wallet`.
+  2. Call `GET /zerodha/login` with `X-API-KEY`.
+  3. Send the returned `login_url` to the user.
+- Do **not** manually construct a `?userWallet=<wallet>&redirect=1` URL in the normal skill flow.
+- If you present the returned `login_url`, only use it if it includes the user handoff, e.g. `redirect_params=userWallet%3D...`.
 
 ```bash
 curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/login" \
@@ -2053,19 +2072,23 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/instrume
 Step 1: GET /zerodha/session
    → Check if authenticated. If not → tell user to re-auth on OpenClaw page.
 
-Step 2: GET /zerodha/instruments?exchange=NSE
+Step 2: GET /user-details
+   → Extract: user_wallet
+   → Ignore lazy_trading_ready / ostium_agent_address for Zerodha flows
+
+Step 3: GET /zerodha/instruments?exchange=NSE
    → Verify the symbol exists on the exchange.
 
-Step 3: GET /zerodha/portfolio?type=holdings
+Step 4: GET /zerodha/portfolio?type=holdings
    → Show current holdings and positions to user.
 
-Step 4: ASK user for trade parameters
+Step 5: ASK user for trade parameters
    → Exchange (NSE/BSE), symbol, BUY/SELL, quantity, product (CNC/MIS), order type
 
-Step 5: POST /zerodha/orders
+Step 6: POST /zerodha/orders
    → Place the order with confirmed parameters.
 
-Step 6: GET /zerodha/orders?orderId=<id>
+Step 7: GET /zerodha/orders?orderId=<id>
    → Verify order status.
 ```
 
@@ -2087,7 +2110,7 @@ Trustless ZK-verified trading signals. **Producers** generate proofs and flag po
 **Payment:** On-chain USDC on Arbitrum Sepolia (testnet) or Arbitrum One (mainnet).
 
 **Prerequisites for consuming alpha:**
-- User must have completed Lazy Trading setup (agent deployed) — `/club-details` must return `ostium_agent_address`. The `/pay` endpoint uses this agent to send USDC; without it, `/pay` returns 400.
+- User must have completed Lazy Trading setup (agent deployed) — `/user-details` must return `ostium_agent_address`. The `/pay` endpoint uses this agent to send USDC; without it, `/pay` returns 400.
 - Agent wallet must hold enough USDC for the listing price. If insufficient, `/pay` returns 402 with `required` and `available` amounts — inform the user to fund the agent address.
 
 ### Alpha Endpoints Summary
@@ -2159,7 +2182,7 @@ Response: `200` with `alpha` object (token, side, leverage, venue, entryPrice), 
 /alpha/pay             → txHash  (needs listingId)
 /alpha/purchase        → alpha content  (needs listingId + txHash in X-Payment header)
 /alpha/verify          → verified  (needs listingId + alpha content)
-/club-details          → agentAddress, userAddress
+/user-details          → agentAddress, userAddress
 /alpha/execute         → trade result  (needs alpha + addresses + collateral)
 ```
 
@@ -2192,7 +2215,7 @@ Step 4: POST /alpha/verify
    → Body: { "listingId": "...", "content": { ...alpha from Step 3c } }
    → Check: verified === true
 
-Step 5: GET /club-details
+Step 5: GET /user-details
    → Extract: user_wallet → userAddress
    → Extract: ostium_agent_address → agentAddress
 
@@ -2200,7 +2223,7 @@ Step 6: POST /alpha/execute
    → Body: { "alphaContent": { ...alpha }, "agentAddress": "...",
              "userAddress": "...", "collateral": 100 }
    → alphaContent must include at least token and side (from alpha)
-   → agentAddress = ostium_agent_address, userAddress = user_wallet (both from /club-details)
+   → agentAddress = ostium_agent_address, userAddress = user_wallet (both from /user-details)
    → collateral: ask user or use default (e.g. 100 USDC)
    → Check: success === true
 ```
@@ -2210,7 +2233,7 @@ Step 6: POST /alpha/execute
 > **⚠️ This is the standalone producer workflow.** If the user just opened a position via Workflow 1, Steps 7-10 already handle alpha listing — you don't need to repeat this. Use this workflow only when the user wants to list an existing open position.
 
 ```
-Step 1: POST /positions (address = user_wallet from /club-details)
+Step 1: POST /positions (address = user_wallet from /user-details)
    → List open positions
    → Let user pick which trade to feature
    → SAVE: tradeId, market (token), side, leverage from the chosen position
@@ -2274,7 +2297,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/alpha/flag" \
 | Status Code | Meaning |
 |-------------|---------|
 | 401 | Invalid or missing API key |
-| 404 | Lazy trader agent not found (complete setup first) |
+| 404 | Resource not found for the specific endpoint (not returned by `/user-details` just because an agent is missing) |
 | 400 | Missing or invalid message / parameters |
 | 405 | Wrong HTTP method |
 | 500 | Server error |

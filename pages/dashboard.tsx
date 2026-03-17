@@ -586,7 +586,7 @@ export default function Dashboard() {
 
                             <div className="mt-3 text-[8px] sm:text-[10px] text-[var(--text-secondary)] space-y-1">
                                 <p>Header: <span className="font-mono">x-api-key: &lt;your-key&gt;</span></p>
-                                <p>Details: <span className="font-mono">{apiBaseUrl}/api/lazy-trading/programmatic/club-details</span></p>
+                                <p>Details: <span className="font-mono">{apiBaseUrl}/api/lazy-trading/programmatic/user-details</span></p>
                                 <p>Send: <span className="font-mono">{apiBaseUrl}/api/lazy-trading/programmatic/send-message</span></p>
                             </div>
                         </section>

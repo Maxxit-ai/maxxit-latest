@@ -408,16 +408,16 @@ def get_ostium_pair_index(session: requests.Session, symbol: str) -> Optional[in
 
 
 def fetch_trading_identity(session: requests.Session, venue: str) -> Tuple[Optional[str], Optional[str]]:
-    club = api_get(session, "club-details")
-    if not club:
+    user_details = api_get(session, "user-details")
+    if not user_details:
         return None, None
-    user_address = club.get("user_wallet")
-    agent_address = club.get("ostium_agent_address")
+    user_address = user_details.get("user_wallet")
+    agent_address = user_details.get("ostium_agent_address")
     if not user_address:
-        log("Club details missing user wallet")
+        log("User details missing user wallet")
         return None, None
     if venue != "aster" and not agent_address:
-        log("Club details missing agent address (required for Ostium/Avantis)")
+        log("User details missing agent address (required for Ostium/Avantis)")
         return None, None
     return user_address, agent_address
 

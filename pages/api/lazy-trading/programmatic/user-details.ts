@@ -49,27 +49,25 @@ export default async function handler(
       },
     });
 
-    if (!lazyTraderAgent) {
-      return res.status(404).json({ error: "Lazy trader agent not found" });
-    }
-
-    const deployment = await prisma.agent_deployments.findFirst({
-      where: {
-        agent_id: lazyTraderAgent.id,
-        user_wallet: userWallet,
-      },
-      select: {
-        id: true,
-        status: true,
-        enabled_venues: true,
-        risk_tolerance: true,
-        trade_frequency: true,
-        social_sentiment_weight: true,
-        price_momentum_focus: true,
-        market_rank_priority: true,
-      },
-      orderBy: { sub_started_at: "desc" },
-    });
+    const deployment = lazyTraderAgent
+      ? await prisma.agent_deployments.findFirst({
+          where: {
+            agent_id: lazyTraderAgent.id,
+            user_wallet: userWallet,
+          },
+          select: {
+            id: true,
+            status: true,
+            enabled_venues: true,
+            risk_tolerance: true,
+            trade_frequency: true,
+            social_sentiment_weight: true,
+            price_momentum_focus: true,
+            market_rank_priority: true,
+          },
+          orderBy: { sub_started_at: "desc" },
+        })
+      : null;
 
     const userAgentAddress = await prismaClient.user_agent_addresses.findUnique({
       where: { user_wallet: userWallet },
@@ -81,7 +79,7 @@ export default async function handler(
     });
 
     const telegramUser =
-      lazyTraderAgent.agent_telegram_users.length > 0
+      lazyTraderAgent && lazyTraderAgent.agent_telegram_users.length > 0
         ? lazyTraderAgent.agent_telegram_users[0].telegram_alpha_users
         : null;
 
@@ -93,12 +91,15 @@ export default async function handler(
     return res.status(200).json({
       success: true,
       user_wallet: userWallet,
-      agent: {
-        id: lazyTraderAgent.id,
-        name: lazyTraderAgent.name,
-        venue: lazyTraderAgent.venue,
-        status: lazyTraderAgent.status,
-      },
+      lazy_trading_ready: !!lazyTraderAgent,
+      agent: lazyTraderAgent
+        ? {
+            id: lazyTraderAgent.id,
+            name: lazyTraderAgent.name,
+            venue: lazyTraderAgent.venue,
+            status: lazyTraderAgent.status,
+          }
+        : null,
       telegram_user: telegramUser
         ? {
           id: telegramUser.id,
@@ -128,9 +129,9 @@ export default async function handler(
       aster_configured: !!userAgentAddress?.aster_enabled,
     });
   } catch (error: any) {
-    console.error("[API] Lazy trading club details error:", error);
+    console.error("[API] Lazy trading user details error:", error);
     return res.status(500).json({
-      error: "Failed to fetch lazy trader details",
+      error: "Failed to fetch user details",
       message: error.message,
     });
   }

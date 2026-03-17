@@ -122,7 +122,7 @@ def main() -> None:
     log(f"Starting Mean Reversion Bot | Market: {MARKET} | Venue: {VENUE}")
     
     # 1. Get Club Details
-    club = requests.get(f"{MAXXIT_API_URL}/api/lazy-trading/programmatic/club-details", headers=session.headers).json()
+    club = requests.get(f"{MAXXIT_API_URL}/api/lazy-trading/programmatic/user-details", headers=session.headers).json()
     user_address = club.get("user_wallet")
     agent_address = club.get("ostium_agent_address")
 
