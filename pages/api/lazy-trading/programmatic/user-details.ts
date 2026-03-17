@@ -4,6 +4,40 @@ import { resolveLazyTradingApiKey } from "../../../../lib/lazy-trading-api";
 
 const prismaClient = prisma as any;
 
+function omitEmptyFields<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => omitEmptyFields(item))
+      .filter(
+        (item) =>
+          item !== null &&
+          item !== undefined &&
+          item !== false &&
+          item !== ""
+      ) as T;
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, entryValue]) => [key, omitEmptyFields(entryValue)])
+        .filter(
+          ([, entryValue]) =>
+            entryValue !== null &&
+            entryValue !== undefined &&
+            entryValue !== false &&
+            entryValue !== "" &&
+            (!Array.isArray(entryValue) || entryValue.length > 0) &&
+            (typeof entryValue !== "object" ||
+              Array.isArray(entryValue) ||
+              Object.keys(entryValue).length > 0)
+        )
+    ) as T;
+  }
+
+  return value;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -88,46 +122,48 @@ export default async function handler(
       data: { last_used_at: new Date() },
     });
 
-    return res.status(200).json({
-      success: true,
-      user_wallet: userWallet,
-      lazy_trading_ready: !!lazyTraderAgent,
-      agent: lazyTraderAgent
-        ? {
-            id: lazyTraderAgent.id,
-            name: lazyTraderAgent.name,
-            venue: lazyTraderAgent.venue,
-            status: lazyTraderAgent.status,
-          }
-        : null,
-      telegram_user: telegramUser
-        ? {
-          id: telegramUser.id,
-          telegram_user_id: telegramUser.telegram_user_id,
-          telegram_username: telegramUser.telegram_username,
-          first_name: telegramUser.first_name,
-          last_name: telegramUser.last_name,
-        }
-        : null,
-      deployment: deployment
-        ? {
-          id: deployment.id,
-          status: deployment.status,
-          enabled_venues: deployment.enabled_venues,
-        }
-        : null,
-      trading_preferences: deployment
-        ? {
-          risk_tolerance: deployment.risk_tolerance,
-          trade_frequency: deployment.trade_frequency,
-          social_sentiment_weight: deployment.social_sentiment_weight,
-          price_momentum_focus: deployment.price_momentum_focus,
-          market_rank_priority: deployment.market_rank_priority,
-        }
-        : null,
-      ostium_agent_address: userAgentAddress?.ostium_agent_address || null,
-      aster_configured: !!userAgentAddress?.aster_enabled,
-    });
+    return res.status(200).json(
+      omitEmptyFields({
+        success: true,
+        user_wallet: userWallet,
+        lazy_trading_ready: !!lazyTraderAgent,
+        agent: lazyTraderAgent
+          ? {
+              id: lazyTraderAgent.id,
+              name: lazyTraderAgent.name,
+              venue: lazyTraderAgent.venue,
+              status: lazyTraderAgent.status,
+            }
+          : null,
+        telegram_user: telegramUser
+          ? {
+              id: telegramUser.id,
+              telegram_user_id: telegramUser.telegram_user_id,
+              telegram_username: telegramUser.telegram_username,
+              first_name: telegramUser.first_name,
+              last_name: telegramUser.last_name,
+            }
+          : null,
+        deployment: deployment
+          ? {
+              id: deployment.id,
+              status: deployment.status,
+              enabled_venues: deployment.enabled_venues,
+            }
+          : null,
+        trading_preferences: deployment
+          ? {
+              risk_tolerance: deployment.risk_tolerance,
+              trade_frequency: deployment.trade_frequency,
+              social_sentiment_weight: deployment.social_sentiment_weight,
+              price_momentum_focus: deployment.price_momentum_focus,
+              market_rank_priority: deployment.market_rank_priority,
+            }
+          : null,
+        ostium_agent_address: userAgentAddress?.ostium_agent_address || null,
+        aster_configured: !!userAgentAddress?.aster_enabled,
+      })
+    );
   } catch (error: any) {
     console.error("[API] Lazy trading user details error:", error);
     return res.status(500).json({

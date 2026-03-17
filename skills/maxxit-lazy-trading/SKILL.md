@@ -137,22 +137,23 @@ The following shows where each required parameter comes from. **Always resolve d
 ### Mandatory Workflow Rules
 
 1. **Always call `/user-details` first** to get `user_wallet` (used as `userAddress`/`address`). Cache it for the session — it doesn't change.
-2. **Treat `/user-details` as identity-first.** It always returns `user_wallet` for a valid API key, even if no lazy-trading agent exists yet. In that case, `lazy_trading_ready` will be `false`, `agent` will be `null`, and `ostium_agent_address` will be `null`.
-3. **Only use `ostium_agent_address` when the venue needs an agent.** Ostium and Avantis require it. Zerodha does not. Aster only needs `user_wallet`, but `aster_configured` must be `true`.
-4. **Never hardcode or guess wallet addresses.** They are unique per user and must come from `/user-details`.
-5. **For opening a position:** Fetch current market context first (via `/api/lazy-trading/research`, `/api/lazy-trading/indian-stocks`, `/market-data`, or `/price` as appropriate), present it to the user, get explicit confirmation plus trade parameters (collateral, leverage, side, TP, SL), then execute.
+2. **Treat `/user-details` as identity-first.** It always returns `user_wallet` for a valid API key, even if no lazy-trading agent exists yet.
+3. **`/user-details` is sparse.** It omits fields that are empty, `null`, or `false`. Missing fields mean “not applicable” and should not be treated as an error or missing configuration by themselves.
+4. **Only use `ostium_agent_address` when the venue needs an agent.** Ostium and Avantis require it. Zerodha does not. Aster only needs `user_wallet`, but `aster_configured` must be present and `true`.
+5. **Never hardcode or guess wallet addresses.** They are unique per user and must come from `/user-details`.
+6. **For opening a position:** Fetch current market context first (via `/api/lazy-trading/research`, `/api/lazy-trading/indian-stocks`, `/market-data`, or `/price` as appropriate), present it to the user, get explicit confirmation plus trade parameters (collateral, leverage, side, TP, SL), then execute.
    - **Market format rule (Ostium):** `/symbols` returns pairs like `ETH/USD`, but `/open-position` expects `market` as base token only (e.g. `ETH`). Convert by taking the base token before `/`.
-6. **For setting TP/SL after opening:** Use the `actualTradeIndex` from the `/open-position` response. If you don't have it (e.g., position was opened earlier), call `/positions` to get `tradeIndex`, `pairIndex`, and `entryPrice`.
-7. **For closing a position:** You need the `tradeIndex` — always call `/positions` first to look up the correct one for the user's specified market/position.
-8. **Ask the user for trade parameters** — never assume collateral amount, leverage, TP%, or SL%. Present defaults but let the user confirm or override.
-9. **Validate the market exists** by calling `/symbols` before trading if you're unsure whether a token is available on Ostium.
-10. **For Alpha consumer flow:** Follow the exact order: `/alpha/agents` → `/alpha/listings` → `/alpha/purchase` (402) → `/alpha/pay` → `/alpha/purchase` (with `X-Payment`) → `/alpha/verify` → `/user-details` → `/alpha/execute`. Never skip steps. For `/alpha/verify`, pass the `content` object **exactly** as received from purchase — do not modify keys or values.
+7. **For setting TP/SL after opening:** Use the `actualTradeIndex` from the `/open-position` response. If you don't have it (e.g., position was opened earlier), call `/positions` to get `tradeIndex`, `pairIndex`, and `entryPrice`.
+8. **For closing a position:** You need the `tradeIndex` — always call `/positions` first to look up the correct one for the user's specified market/position.
+9. **Ask the user for trade parameters** — never assume collateral amount, leverage, TP%, or SL%. Present defaults but let the user confirm or override.
+10. **Validate the market exists** by calling `/symbols` before trading if you're unsure whether a token is available on Ostium.
+11. **For Alpha consumer flow:** Follow the exact order: `/alpha/agents` → `/alpha/listings` → `/alpha/purchase` (402) → `/alpha/pay` → `/alpha/purchase` (with `X-Payment`) → `/alpha/verify` → `/user-details` → `/alpha/execute`. Never skip steps. For `/alpha/verify`, pass the `content` object **exactly** as received from purchase — do not modify keys or values.
 
 ### Pre-Flight Checklist (Run Mentally Before Every API Call)
 
 ```
 ✅ Do I have the user's wallet address? → If not, call /user-details
-✅ Does this flow require an agent address? → If yes, call /user-details and verify ostium_agent_address is non-null
+✅ Does this flow require an agent address? → If yes, call /user-details and verify ostium_agent_address is present
 ✅ Does this endpoint need a tradeIndex? → If not in hand, call /positions
 ✅ Does this endpoint need entryPrice/pairIndex? → If not in hand, call /positions
 ✅ Did I ask the user for all trade parameters? → collateral, leverage, side, TP%, SL%
@@ -250,6 +251,10 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/indian-stocks" \
   }'
 ```
 
+When discussing Indian equities, NSE/BSE orders, holdings, targets, stop losses, or portfolio values:
+- use **Indian rupees** as the default unit
+- prefer `₹` in user-facing responses (for example, `₹2,450`, `₹1.2 lakh`)
+
 ## API Endpoints
 
 ## Ostium Programmatic Endpoints (`/api/lazy-trading/programmatic/*`)
@@ -301,14 +306,7 @@ If the user has not set up a lazy-trading agent yet, `/user-details` still retur
 ```json
 {
   "success": true,
-  "user_wallet": "0x...",
-  "lazy_trading_ready": false,
-  "agent": null,
-  "telegram_user": null,
-  "deployment": null,
-  "trading_preferences": null,
-  "ostium_agent_address": null,
-  "aster_configured": false
+  "user_wallet": "0x..."
 }
 ```
 
@@ -1885,6 +1883,12 @@ Step 3: POST /avantis/close-position
 - User asks about their Zerodha portfolio, holdings, or positions
 - User wants to place, modify, or cancel orders on Indian exchanges
 - User wants to fetch instrument lists or market data for Indian equities
+
+### Currency Convention
+
+- In Indian-market conversations, present prices, holdings, portfolio values, targets, and stop losses in **₹**
+- Prefer `₹` in normal user-facing replies
+- Do not default to USD when the context is Zerodha, NSE, BSE, or Indian equities
 
 ### Venue Routing
 
