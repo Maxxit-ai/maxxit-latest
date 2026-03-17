@@ -1,9 +1,9 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.14
+version: 1.2.15
 author: Maxxit
-description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
+description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API, and trade Indian stocks through Zerodha Kite. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, researching Indian equities, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
 disableModelInvocation: true
 requires:
