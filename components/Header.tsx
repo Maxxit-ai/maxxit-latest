@@ -213,6 +213,10 @@ export function Header() {
   const isPortfolioActive = router.pathname === '/dashboard' || router.pathname === '/my-deployments' || router.pathname === '/my-trades';
   const isTradingActive = router.pathname === '/openclaw' || router.pathname === '/lazy-trading' || router.pathname === '/creator';
   const isResourcesActive = router.pathname === '/blog' || router.pathname === '/docs' || router.pathname === '/user-manual' || router.pathname === '/pricing';
+  const useOpaqueHeader =
+    router.pathname === '/user-manual' ||
+    router.pathname === '/docs' ||
+    router.pathname === '/openclaw';
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -470,7 +474,13 @@ export function Header() {
   };
 
   return (
-    <header className="sticky py-4 top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--bg-deep)]/95 backdrop-blur-lg">
+    <header
+      className={`sticky py-4 top-0 z-50 w-full border-b border-[var(--border)] ${
+        useOpaqueHeader
+          ? 'bg-[var(--bg-deep)]'
+          : 'bg-[var(--bg-deep)]/95 backdrop-blur-lg'
+      }`}
+    >
       <div className="px-6 max-w-7xl mx-auto">
         <div className="flex h-14 items-center justify-between">
           {/* Logo/Brand */}

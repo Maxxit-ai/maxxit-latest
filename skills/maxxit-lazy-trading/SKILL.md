@@ -1909,6 +1909,17 @@ All base path: `${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/`
 
 Generate a Zerodha login URL for the user.
 
+Important:
+- Do not tell the user to open a bare Kite URL like `https://kite.zerodha.com/connect/login?api_key=...&v=3`.
+- The login flow must preserve the Maxxit user context so the callback can store the Zerodha session against the correct wallet.
+- Prefer sending the user to the Maxxit endpoint directly in redirect mode:
+
+```text
+${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/login?userWallet=<wallet>&redirect=1
+```
+
+- If you call `/zerodha/login` first and present the returned `login_url`, only use it if it includes the user handoff, e.g. `redirect_params=userWallet%3D...`.
+
 ```bash
 curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/login" \
   -H "X-API-KEY: ${MAXXIT_API_KEY}"

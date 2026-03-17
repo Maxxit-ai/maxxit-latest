@@ -61,34 +61,60 @@ async function handleGet(req: NextApiRequest, res: NextApiResponse) {
 
 async function handlePost(req: NextApiRequest, res: NextApiResponse) {
     try {
-        const { userWallet, key, value } = req.body;
+        const { userWallet, key, value, vars } = req.body;
 
-        if (!userWallet || !key || value === undefined || value === null) {
+        if (!userWallet || (!key && !Array.isArray(vars))) {
             return res.status(400).json({
-                error: "Missing required fields: userWallet, key, value",
+                error: "Missing required fields: userWallet and either key/value or vars[]",
             });
         }
 
-        // Validate key format
-        if (!KEY_PATTERN.test(key)) {
+        const envVarsToSave: { key: string; value: string }[] = Array.isArray(vars)
+            ? vars
+            : [{ key, value }];
+
+        if (envVarsToSave.length === 0) {
             return res.status(400).json({
-                error: "Invalid key format. Use only letters, numbers, and underscores. Must start with a letter or underscore.",
+                error: "No environment variables provided",
             });
         }
 
-        // Check reserved names
-        if (RESERVED_KEYS.has(key.toUpperCase())) {
-            return res.status(400).json({
-                error: `"${key}" is a reserved environment variable name and cannot be set.`,
-            });
+        for (const envVar of envVarsToSave) {
+            if (
+                !envVar?.key ||
+                envVar.value === undefined ||
+                envVar.value === null
+            ) {
+                return res.status(400).json({
+                    error: "Each environment variable must include key and value",
+                });
+            }
+
+            if (!KEY_PATTERN.test(envVar.key)) {
+                return res.status(400).json({
+                    error: "Invalid key format. Use only letters, numbers, and underscores. Must start with a letter or underscore.",
+                });
+            }
+
+            if (RESERVED_KEYS.has(envVar.key.toUpperCase())) {
+                return res.status(400).json({
+                    error: `"${envVar.key}" is a reserved environment variable name and cannot be set.`,
+                });
+            }
         }
 
-        // Store in SSM
-        await storeUserEnvVar(userWallet, key, value);
+        for (const envVar of envVarsToSave) {
+            await storeUserEnvVar(userWallet, envVar.key, envVar.value);
+        }
 
         // Look up instance to apply env var in real-time
-        const instance = await prisma.openclaw_instances.findUnique({
-            where: { user_wallet: userWallet },
+        const instance = await (prisma as any).openclaw_instances.findFirst({
+            where: {
+                user_wallet: {
+                    equals: userWallet,
+                    mode: "insensitive",
+                },
+            },
             select: { container_id: true, status: true },
         });
 
@@ -100,26 +126,30 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
 
             if (instanceStatus.status === "running") {
                 try {
-                    // Escape value for shell safety
-                    const escapedValue = value.replace(/'/g, "'\\''");
-
-                    await runCommandOnInstance(instance.container_id, [
-                        `# Add env var ${key} to OpenClaw .env`,
+                    const commands = [
                         `OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"`,
-                        // Remove existing entry for this key if present (avoid duplicates)
-                        `sed -i '/^${key}=/d' $OPENCLAW_ENV 2>/dev/null || true`,
-                        // Append new value
-                        `echo '${key}=${escapedValue}' >> $OPENCLAW_ENV`,
+                    ];
+
+                    for (const envVar of envVarsToSave) {
+                        const escapedValue = envVar.value.replace(/'/g, "'\\''");
+                        commands.push(
+                            `sed -i '/^${envVar.key}=/d' $OPENCLAW_ENV 2>/dev/null || true`,
+                            `echo '${envVar.key}=${escapedValue}' >> $OPENCLAW_ENV`
+                        );
+                    }
+
+                    commands.push(
                         `chown ubuntu:ubuntu $OPENCLAW_ENV`,
-                        // Restart gateway to pick up changes
-                        `su - ubuntu -c "source /home/ubuntu/.nvm/nvm.sh && openclaw gateway restart"`,
-                    ]);
+                        `su - ubuntu -c "source /home/ubuntu/.nvm/nvm.sh && openclaw gateway restart"`
+                    );
+
+                    await runCommandOnInstance(instance.container_id, commands);
 
                     appliedToInstance = true;
                 } catch (error) {
                     console.error("[Env Vars] Failed to apply env var to instance:", error);
                     return res.status(500).json({
-                        error: `Environment variable "${key}" was saved, but failed to apply to instance: ${error instanceof Error ? error.message : String(error)}`,
+                        error: `Environment variables were saved, but failed to apply to instance: ${error instanceof Error ? error.message : String(error)}`,
                         savedToSSM: true,
                     });
                 }
@@ -130,8 +160,8 @@ async function handlePost(req: NextApiRequest, res: NextApiResponse) {
             success: true,
             appliedToInstance,
             message: appliedToInstance
-                ? `Environment variable "${key}" added and applied to your running instance.`
-                : `Environment variable "${key}" saved. It will be available when your instance starts.`,
+                ? `Saved and applied ${envVarsToSave.length} environment variable(s) to your running instance.`
+                : `Saved ${envVarsToSave.length} environment variable(s). They will be available when your instance starts.`,
         });
     } catch (error) {
         console.error("[Env Vars] Error adding env var:", error);

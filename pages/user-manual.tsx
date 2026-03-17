@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, ArrowRight, Wallet, CreditCard, CheckCircle2, History, Users, MapPin, Settings, Bot, DollarSign, LineChart, ChevronDown, ChevronUp, PlusCircle, Radio, Orbit, Zap, MessageSquare, Key, Shield, Rocket } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Wallet, CreditCard, CheckCircle2, History, Users, MapPin, Settings, Bot, DollarSign, LineChart, ChevronDown, ChevronUp, PlusCircle, Radio, Orbit, Zap, MessageSquare, Key, Shield, Rocket, Copy } from 'lucide-react';
 import { Header } from '@components/Header';
 import FooterSection from '@components/home/FooterSection';
 
@@ -290,8 +290,32 @@ const openclawSteps: Step[] = [
     tip: 'This step is optional but highly recommended — it\'s what makes OpenClaw a trading assistant!',
   },
   {
-    id: 'openclaw-onchain',
+    id: 'openclaw-zerodha',
     number: 7,
+    title: 'Create Your Zerodha Kite App',
+    description: 'If you want OpenClaw to trade Indian stocks, create a Kite Connect app and copy its API key and API secret into the Zerodha section on the OpenClaw page.',
+    icon: Shield,
+    image: '/zerodha-images/create-app.png',
+    images: [
+      { src: '/zerodha-images/developer-signup.png', alt: 'Create your Kite Connect developer account' },
+      { src: '/zerodha-images/developer-login.png', alt: 'Log in to developers.kite.trade' },
+      { src: '/zerodha-images/developer-dashboard.png', alt: 'Open the My apps dashboard in Kite Connect' },
+      { src: '/zerodha-images/create-app.png', alt: 'Create a Personal app with the Maxxit callback URL' },
+      { src: '/zerodha-images/app-api-secret.png', alt: 'Open the app details page and copy the API key and API secret' },
+    ],
+    details: [
+      'Go to developers.kite.trade/create and sign up or log in to your Kite Connect developer account',
+      'Open My apps and click "Create new app"',
+      'Choose the Personal app type, enter an app name, and set the redirect URL to https://maxxit.ai/api/lazy-trading/programmatic/zerodha/callback',
+      'Create the app, open its details page, and copy the API key and API secret',
+      'Paste those two values into the Zerodha section on the OpenClaw setup page and click "Save Credentials"',
+      'Click "Authenticate with Zerodha" in OpenClaw to complete the account connection',
+    ],
+    tip: 'Use the exact Maxxit callback URL shown in OpenClaw. If Zerodha asks for IP allowlisting for API orders, register the Maxxit backend static IP on your profile page.',
+  },
+  {
+    id: 'openclaw-onchain',
+    number: 8,
     title: 'Approve On-Chain Permissions',
     description: 'Approve two on-chain transactions to let your trading agent operate on Ostium non-custodially.',
     icon: Shield,
@@ -312,7 +336,7 @@ const openclawSteps: Step[] = [
   },
   {
     id: 'openclaw-launch',
-    number: 8,
+    number: 9,
     title: 'Launch Your OpenClaw',
     description: 'Review your setup and launch your personal AI assistant. Once live, start chatting via Telegram!',
     icon: Rocket,
@@ -370,6 +394,8 @@ const steps = [...joinClubSteps];
 
 function StepCard({ step, isExpanded, onToggle }: { step: Step; isExpanded: boolean; onToggle: () => void }) {
   const Icon = step.icon;
+  const zerodhaCallbackUrl =
+    'https://maxxit.ai/api/lazy-trading/programmatic/zerodha/callback';
 
   return (
     <div
@@ -479,7 +505,46 @@ function StepCard({ step, isExpanded, onToggle }: { step: Step; isExpanded: bool
                   <span className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] text-xs sm:text-sm font-semibold flex items-center justify-center">
                     {index + 1}
                   </span>
-                  <span className="text-[var(--text-primary)] text-xs sm:text-sm">{detail}</span>
+                  <span className="text-[var(--text-primary)] text-xs sm:text-sm">
+                    {step.id === 'openclaw-zerodha' && index === 0 ? (
+                      <>
+                        Go to{' '}
+                        <a
+                          href="https://developers.kite.trade/create"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[var(--accent)] hover:underline"
+                        >
+                          developers.kite.trade/create
+                        </a>{' '}
+                        and sign up or log in to your Kite Connect developer account
+                      </>
+                    ) : step.id === 'openclaw-zerodha' && index === 2 ? (
+                      <span className="inline-flex items-center gap-2 flex-wrap">
+                        <span>
+                          Choose the Personal app type, enter an app name, and set the redirect URL to
+                        </span>
+                        <code className="text-xs bg-[var(--bg-deep)] px-2 py-1 rounded break-all">
+                          {zerodhaCallbackUrl}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== 'undefined') {
+                              window.navigator.clipboard.writeText(zerodhaCallbackUrl).catch(() => {});
+                            }
+                          }}
+                          className="inline-flex items-center justify-center rounded border border-[var(--accent)] p-1 text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--bg-deep)]"
+                          aria-label="Copy Maxxit callback URL"
+                          title="Copy Maxxit callback URL"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ) : (
+                      detail
+                    )}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -935,4 +1000,3 @@ export default function UserManualPage() {
     </div>
   );
 }
-

@@ -4,6 +4,7 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  Shield,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -66,6 +67,18 @@ type Props = {
   onToggleVersions: () => void;
   onUpdateOpenclaw: () => void;
   onUpdateSkill: () => void;
+  // Zerodha
+  zerodhaStatus: "idle" | "connected" | "error";
+  zerodhaUserName: string | null;
+  zerodhaIsAuthenticating: boolean;
+  zerodhaIsSavingCreds: boolean;
+  zerodhaCredsSaved: boolean;
+  kiteApiKey: string;
+  kiteApiSecret: string;
+  onKiteApiKeyChange: (v: string) => void;
+  onKiteApiSecretChange: (v: string) => void;
+  onSaveZerodhaCreds: () => void;
+  onAuthenticateZerodha: () => void;
   // Env vars
   envVars: { key: string; value: string }[];
   isLoadingEnvVars: boolean;
@@ -135,6 +148,17 @@ export function ActivateStep({
   onToggleVersions,
   onUpdateOpenclaw,
   onUpdateSkill,
+  zerodhaStatus,
+  zerodhaUserName,
+  zerodhaIsAuthenticating,
+  zerodhaIsSavingCreds,
+  zerodhaCredsSaved,
+  kiteApiKey,
+  kiteApiSecret,
+  onKiteApiKeyChange,
+  onKiteApiSecretChange,
+  onSaveZerodhaCreds,
+  onAuthenticateZerodha,
   envVars,
   isLoadingEnvVars,
   isAddingEnvVar,
@@ -164,6 +188,9 @@ export function ActivateStep({
   onToggleWebSearch,
   onUpdateWebSearch,
 }: Props) {
+  const zerodhaCallbackUrl =
+    "https://maxxit.ai/api/lazy-trading/programmatic/zerodha/callback";
+
   return (
     <div className="space-y-6">
       {activated ? (
@@ -343,6 +370,141 @@ export function ActivateStep({
             onUpdateOpenclaw={onUpdateOpenclaw}
             onUpdateSkill={onUpdateSkill}
           />
+
+          <div
+            className={`border rounded-lg p-5 transition-all ${
+              zerodhaStatus === "connected"
+                ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                : "border-[var(--border)]"
+            } text-left`}
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-bold">Zerodha Kite</h3>
+                  {zerodhaStatus === "connected" && (
+                    <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                      Connected
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-[var(--text-secondary)] mb-4 text-left">
+                  Connect your Zerodha account to trade Indian stocks from your
+                  existing OpenClaw instance.
+                </p>
+
+                {zerodhaStatus === "connected" && zerodhaUserName ? (
+                  <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-green-400 mb-1">
+                      <strong>Connected as {zerodhaUserName}</strong>
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Your latest access token is stored for this user and will
+                      be used by the running instance.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)]/40 p-4 text-left">
+                      <p className="text-sm font-bold mb-2">
+                        Before you start
+                      </p>
+                      <div className="space-y-1 text-xs text-[var(--text-muted)]">
+                        <p>Create a Zerodha Kite app in your developer account.</p>
+                        <p>Use the Maxxit callback URL shown below.</p>
+                        <p>Save your API key and secret, then authenticate.</p>
+                      </div>
+                      <div className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-deep)]/60 px-3 py-2">
+                        <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[var(--text-secondary)]">
+                          {zerodhaCallbackUrl}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => navigator.clipboard.writeText(zerodhaCallbackUrl)}
+                          className="text-xs font-semibold text-[var(--accent)] hover:underline"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <a
+                        href="/user-manual#openclaw-zerodha"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex text-xs text-[var(--accent)] hover:underline"
+                      >
+                        View the full Zerodha API setup guide
+                      </a>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs text-[var(--text-muted)]">
+                          KITE_API_KEY
+                        </label>
+                        <input
+                          value={kiteApiKey}
+                          onChange={(e) => onKiteApiKeyChange(e.target.value)}
+                          placeholder="Your Kite API Key"
+                          className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-[var(--text-muted)]">
+                          KITE_API_SECRET
+                        </label>
+                        <input
+                          value={kiteApiSecret}
+                          onChange={(e) => onKiteApiSecretChange(e.target.value)}
+                          placeholder="Your Kite API Secret"
+                          type="password"
+                          className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                        />
+                      </div>
+
+                      <button
+                        onClick={onSaveZerodhaCreds}
+                        disabled={
+                          zerodhaIsSavingCreds ||
+                          !kiteApiKey.trim() ||
+                          !kiteApiSecret.trim()
+                        }
+                        className="w-full py-2.5 border border-[var(--accent)] text-[var(--accent)] text-sm font-semibold rounded-lg transition-all hover:bg-[var(--accent)] hover:text-[var(--bg-deep)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {zerodhaIsSavingCreds ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Saving Credentials...
+                          </>
+                        ) : zerodhaCredsSaved ? (
+                          "Credentials Saved"
+                        ) : (
+                          "Save Credentials"
+                        )}
+                      </button>
+
+                      <button
+                        onClick={onAuthenticateZerodha}
+                        disabled={zerodhaIsAuthenticating}
+                        className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {zerodhaIsAuthenticating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Opening Zerodha Login...
+                          </>
+                        ) : (
+                          <>
+                            <Shield className="w-4 h-4" />
+                            Authenticate with Zerodha
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Env Vars */}
           <EnvVarsSection

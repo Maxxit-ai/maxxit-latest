@@ -124,42 +124,26 @@ export function isKiteSessionError(error: unknown): boolean {
         return false;
     }
 
-    const maybeError = error as { message?: string; status?: number };
+    const maybeError = error as {
+        message?: string;
+        status?: number | string;
+        error_type?: string;
+    };
     return (
+        maybeError.error_type === "TokenException" ||
         maybeError.message?.includes("TokenException") === true ||
         maybeError.status === 403
     );
 }
 
-export function getCookie(
-    req: NextApiRequest,
-    name: string
-): string | null {
-    const cookieHeader = req.headers.cookie;
-    if (!cookieHeader) return null;
-
-    const cookie = cookieHeader
-        .split(";")
-        .map((part) => part.trim())
-        .find((part) => part.startsWith(`${name}=`));
-
-    if (!cookie) return null;
-
-    return decodeURIComponent(cookie.slice(name.length + 1));
-}
-
-export function buildCookieHeader(
-    name: string,
-    value: string,
-    options?: { maxAge?: number }
+export function appendKiteRedirectParams(
+    loginUrl: string,
+    params: Record<string, string>
 ): string {
-    const secureCookieAttr =
-        process.env.NODE_ENV === "development" ? "" : "; Secure";
-    const encodedValue = encodeURIComponent(value);
-    const maxAge =
-        typeof options?.maxAge === "number" ? `; Max-Age=${options.maxAge}` : "";
-
-    return `${name}=${encodedValue}; Path=/; HttpOnly; SameSite=Lax${maxAge}${secureCookieAttr}`;
+    const url = new URL(loginUrl);
+    const redirectParams = new URLSearchParams(params).toString();
+    url.searchParams.set("redirect_params", redirectParams);
+    return url.toString();
 }
 
 /**
@@ -182,38 +166,92 @@ export async function pushAccessTokenToUser(
     if (userName) {
         await storeUserEnvVar(userWallet, "KITE_USER_NAME", userName);
     }
+    console.log(
+        `[Kite] Stored access token in SSM for wallet ${userWallet.substring(
+            0,
+            10
+        )}...`
+    );
 
     // Try to push to running EC2 instance
     let appliedToInstance = false;
 
-    const instance = await (prisma as any).openclaw_instances.findUnique({
-        where: { user_wallet: userWallet },
+    const instance = await (prisma as any).openclaw_instances.findFirst({
+        where: {
+            user_wallet: {
+                equals: userWallet,
+                mode: "insensitive",
+            },
+        },
         select: { container_id: true, status: true },
     });
 
-    if (instance?.container_id && instance.status === "active") {
-        const instanceStatus = await getInstanceById(instance.container_id);
+    if (!instance) {
+        console.warn(
+            `[Kite] No openclaw instance row found for wallet ${userWallet.substring(
+                0,
+                10
+            )}.... Skipping live .env sync.`
+        );
+        return { appliedToInstance };
+    }
 
-        if (instanceStatus.status === "running") {
-            try {
-                const escapedValue = accessToken.replace(/'/g, "'\\''");
+    if (!instance.container_id) {
+        console.warn(
+            `[Kite] Instance row for wallet ${userWallet.substring(
+                0,
+                10
+            )}... has no container_id. Skipping live .env sync.`
+        );
+        return { appliedToInstance };
+    }
 
-                await runCommandOnInstance(instance.container_id, [
-                    `OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"`,
-                    `sed -i '/^KITE_ACCESS_TOKEN=/d' $OPENCLAW_ENV 2>/dev/null || true`,
-                    `echo 'KITE_ACCESS_TOKEN=${escapedValue}' >> $OPENCLAW_ENV`,
-                    `chown ubuntu:ubuntu $OPENCLAW_ENV`,
-                    `su - ubuntu -c "source /home/ubuntu/.nvm/nvm.sh && openclaw gateway restart"`,
-                ]);
+    if (instance.status !== "active") {
+        console.warn(
+            `[Kite] Instance ${instance.container_id} is marked "${instance.status}", not "active". Skipping live .env sync.`
+        );
+        return { appliedToInstance };
+    }
 
-                appliedToInstance = true;
-            } catch (error) {
-                console.error(
-                    "[Kite] Failed to push access token to instance:",
-                    error
-                );
-            }
-        }
+    const instanceStatus = await getInstanceById(instance.container_id);
+    if (instanceStatus.status !== "running") {
+        console.warn(
+            `[Kite] Instance ${instance.container_id} is "${instanceStatus.status}", not "running". Skipping live .env sync.`
+        );
+        return { appliedToInstance };
+    }
+
+    try {
+        const escapedValue = accessToken.replace(/'/g, "'\\''");
+        const escapedUserName = userName?.replace(/'/g, "'\\''");
+
+        await runCommandOnInstance(instance.container_id, [
+            `OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"`,
+            `sed -i '/^KITE_ACCESS_TOKEN=/d' $OPENCLAW_ENV 2>/dev/null || true`,
+            `sed -i '/^KITE_USER_NAME=/d' $OPENCLAW_ENV 2>/dev/null || true`,
+            `echo 'KITE_ACCESS_TOKEN=${escapedValue}' >> $OPENCLAW_ENV`,
+            ...(escapedUserName
+                ? [`echo 'KITE_USER_NAME=${escapedUserName}' >> $OPENCLAW_ENV`]
+                : []),
+            `chown ubuntu:ubuntu $OPENCLAW_ENV`,
+            `su - ubuntu -c "source /home/ubuntu/.nvm/nvm.sh && openclaw gateway restart"`,
+        ]);
+
+        appliedToInstance = true;
+        console.log(
+            `[Kite] Synced access token to running instance ${instance.container_id}.`
+        );
+    } catch (error) {
+        console.error(
+            `[Kite] Failed to push access token to instance ${instance.container_id}:`,
+            error
+        );
+    }
+
+    if (!appliedToInstance) {
+        console.warn(
+            `[Kite] Access token is stored in SSM but was not applied live to instance ${instance.container_id}.`
+        );
     }
 
     return { appliedToInstance };
@@ -234,35 +272,84 @@ export async function removeKiteSessionFromUser(
 
     await deleteUserEnvVar(userWallet, "KITE_ACCESS_TOKEN");
     await deleteUserEnvVar(userWallet, "KITE_USER_NAME");
+    console.log(
+        `[Kite] Removed session from SSM for wallet ${userWallet.substring(
+            0,
+            10
+        )}...`
+    );
 
     let appliedToInstance = false;
 
-    const instance = await (prisma as any).openclaw_instances.findUnique({
-        where: { user_wallet: userWallet },
+    const instance = await (prisma as any).openclaw_instances.findFirst({
+        where: {
+            user_wallet: {
+                equals: userWallet,
+                mode: "insensitive",
+            },
+        },
         select: { container_id: true, status: true },
     });
 
-    if (instance?.container_id && instance.status === "active") {
-        const instanceStatus = await getInstanceById(instance.container_id);
+    if (!instance) {
+        console.warn(
+            `[Kite] No openclaw instance row found for wallet ${userWallet.substring(
+                0,
+                10
+            )}.... Skipping live session removal.`
+        );
+        return { appliedToInstance };
+    }
 
-        if (instanceStatus.status === "running") {
-            try {
-                await runCommandOnInstance(instance.container_id, [
-                    `OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"`,
-                    `sed -i '/^KITE_ACCESS_TOKEN=/d' $OPENCLAW_ENV 2>/dev/null || true`,
-                    `sed -i '/^KITE_USER_NAME=/d' $OPENCLAW_ENV 2>/dev/null || true`,
-                    `chown ubuntu:ubuntu $OPENCLAW_ENV`,
-                    `su - ubuntu -c "source /home/ubuntu/.nvm/nvm.sh && openclaw gateway restart"`,
-                ]);
+    if (!instance.container_id) {
+        console.warn(
+            `[Kite] Instance row for wallet ${userWallet.substring(
+                0,
+                10
+            )}... has no container_id. Skipping live session removal.`
+        );
+        return { appliedToInstance };
+    }
 
-                appliedToInstance = true;
-            } catch (error) {
-                console.error(
-                    "[Kite] Failed to remove session from instance:",
-                    error
-                );
-            }
-        }
+    if (instance.status !== "active") {
+        console.warn(
+            `[Kite] Instance ${instance.container_id} is marked "${instance.status}", not "active". Skipping live session removal.`
+        );
+        return { appliedToInstance };
+    }
+
+    const instanceStatus = await getInstanceById(instance.container_id);
+    if (instanceStatus.status !== "running") {
+        console.warn(
+            `[Kite] Instance ${instance.container_id} is "${instanceStatus.status}", not "running". Skipping live session removal.`
+        );
+        return { appliedToInstance };
+    }
+
+    try {
+        await runCommandOnInstance(instance.container_id, [
+            `OPENCLAW_ENV="/home/ubuntu/.openclaw/.env"`,
+            `sed -i '/^KITE_ACCESS_TOKEN=/d' $OPENCLAW_ENV 2>/dev/null || true`,
+            `sed -i '/^KITE_USER_NAME=/d' $OPENCLAW_ENV 2>/dev/null || true`,
+            `chown ubuntu:ubuntu $OPENCLAW_ENV`,
+            `su - ubuntu -c "source /home/ubuntu/.nvm/nvm.sh && openclaw gateway restart"`,
+        ]);
+
+        appliedToInstance = true;
+        console.log(
+            `[Kite] Removed session from running instance ${instance.container_id}.`
+        );
+    } catch (error) {
+        console.error(
+            `[Kite] Failed to remove session from instance ${instance.container_id}:`,
+            error
+        );
+    }
+
+    if (!appliedToInstance) {
+        console.warn(
+            `[Kite] Session was removed from SSM but not from live instance ${instance.container_id}.`
+        );
     }
 
     return { appliedToInstance };

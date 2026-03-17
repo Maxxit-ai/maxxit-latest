@@ -1045,6 +1045,15 @@ export default function OpenClawSetupPage() {
     };
   }, [authenticated, envVars, kiteApiKey, kiteApiSecret, walletAddress]);
 
+  const zerodhaCredsSaved = envVars.some(
+    (envVar) =>
+      envVar.key === "KITE_API_KEY" && Boolean(envVar.value),
+  ) &&
+    envVars.some(
+      (envVar) =>
+        envVar.key === "KITE_API_SECRET" && Boolean(envVar.value),
+    );
+
   useEffect(() => {
     if (!walletAddress || !activated || instanceStatusPhase !== "ready") return;
 
@@ -2339,24 +2348,29 @@ export default function OpenClawSetupPage() {
     if (!walletAddress || !kiteApiKey.trim() || !kiteApiSecret.trim()) return;
     setZerodhaIsSavingCreds(true);
     setErrorMessage("");
+    setEnvVarMessage({
+      type: "success",
+      text: "Saving Zerodha credentials...",
+    });
     try {
-      const saveKey = async (key: string, value: string) => {
-        const saveRes = await fetch("/api/openclaw/env-vars", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userWallet: walletAddress, key, value }),
-        });
-        const saveData = await saveRes.json();
-        if (!saveRes.ok || !saveData.success) {
-          throw new Error(
-            saveData.error || `Failed to save environment variable "${key}"`,
-          );
-        }
-        return saveData;
-      };
+      const saveRes = await fetch("/api/openclaw/env-vars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userWallet: walletAddress,
+          vars: [
+            { key: "KITE_API_KEY", value: kiteApiKey.trim() },
+            { key: "KITE_API_SECRET", value: kiteApiSecret.trim() },
+          ],
+        }),
+      });
+      const saveData = await saveRes.json();
+      if (!saveRes.ok || !saveData.success) {
+        throw new Error(
+          saveData.error || "Failed to save Zerodha environment variables",
+        );
+      }
 
-      await saveKey("KITE_API_KEY", kiteApiKey.trim());
-      await saveKey("KITE_API_SECRET", kiteApiSecret.trim());
       setEnvVars((prev) => {
         const next = prev.filter(
           (envVar) =>
@@ -2366,7 +2380,10 @@ export default function OpenClawSetupPage() {
         next.push({ key: "KITE_API_SECRET", value: kiteApiSecret.trim() });
         return next;
       });
-      setEnvVarMessage({ type: "success", text: "Zerodha credentials saved to SSM" });
+      setEnvVarMessage({
+        type: "success",
+        text: saveData.message || "Zerodha credentials saved successfully",
+      });
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -2555,6 +2572,7 @@ export default function OpenClawSetupPage() {
                 zerodhaUserName={zerodhaUserName}
                 zerodhaIsAuthenticating={zerodhaIsAuthenticating}
                 zerodhaIsSavingCreds={zerodhaIsSavingCreds}
+                zerodhaCredsSaved={zerodhaCredsSaved}
                 kiteApiKey={kiteApiKey}
                 kiteApiSecret={kiteApiSecret}
                 onKiteApiKeyChange={setKiteApiKey}
@@ -2609,6 +2627,17 @@ export default function OpenClawSetupPage() {
                 onToggleVersions={() => setShowVersionsSection((v) => !v)}
                 onUpdateOpenclaw={handleUpdateOpenclaw}
                 onUpdateSkill={handleUpdateSkill}
+                zerodhaStatus={zerodhaStatus}
+                zerodhaUserName={zerodhaUserName}
+                zerodhaIsAuthenticating={zerodhaIsAuthenticating}
+                zerodhaIsSavingCreds={zerodhaIsSavingCreds}
+                zerodhaCredsSaved={zerodhaCredsSaved}
+                kiteApiKey={kiteApiKey}
+                kiteApiSecret={kiteApiSecret}
+                onKiteApiKeyChange={setKiteApiKey}
+                onKiteApiSecretChange={setKiteApiSecret}
+                onSaveZerodhaCreds={handleSaveZerodhaCreds}
+                onAuthenticateZerodha={handleAuthenticateZerodha}
                 envVars={envVars}
                 isLoadingEnvVars={isLoadingEnvVars}
                 isAddingEnvVar={isAddingEnvVar}

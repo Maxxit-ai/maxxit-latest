@@ -7,10 +7,10 @@
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import {
-    buildCookieHeader,
+    appendKiteRedirectParams,
     createKite,
     getKiteCredsFromSSM,
-    KITE_AUTH_COOKIE_NAME,
+    pushAccessTokenToUser,
     resolveUserWalletFromRequest,
 } from "../../../../../lib/kite-connect";
 
@@ -41,17 +41,35 @@ export default async function handler(
             });
         }
 
+        if (creds.accessToken) {
+            try {
+                const { appliedToInstance } = await pushAccessTokenToUser(
+                    userWallet,
+                    creds.accessToken,
+                    creds.userName || undefined
+                );
+                console.log(
+                    `[Zerodha Login] Re-synced existing SSM access token before redirect (appliedToInstance=${appliedToInstance})`
+                );
+            } catch (syncError) {
+                console.error(
+                    "[Zerodha Login] Failed to re-sync existing SSM access token before redirect:",
+                    syncError
+                );
+            }
+        } else {
+            console.log(
+                "[Zerodha Login] No existing KITE_ACCESS_TOKEN in SSM to re-sync before redirect."
+            );
+        }
+
         const kite = createKite(creds.apiKey);
-        const loginUrl = kite.getLoginURL();
+        const loginUrl = appendKiteRedirectParams(kite.getLoginURL(), {
+            userWallet,
+        });
         const useRedirect = req.query.redirect === "1";
 
         if (useRedirect) {
-            res.setHeader(
-                "Set-Cookie",
-                buildCookieHeader(KITE_AUTH_COOKIE_NAME, userWallet, {
-                    maxAge: 900,
-                })
-            );
             return res.redirect(loginUrl);
         }
 

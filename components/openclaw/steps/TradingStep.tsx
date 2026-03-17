@@ -89,6 +89,7 @@ type Props = {
   zerodhaUserName: string | null;
   zerodhaIsAuthenticating: boolean;
   zerodhaIsSavingCreds: boolean;
+  zerodhaCredsSaved: boolean;
   kiteApiKey: string;
   kiteApiSecret: string;
   onKiteApiKeyChange: (v: string) => void;
@@ -178,6 +179,7 @@ export function TradingStep({
   zerodhaUserName,
   zerodhaIsAuthenticating,
   zerodhaIsSavingCreds,
+  zerodhaCredsSaved,
   kiteApiKey,
   kiteApiSecret,
   onKiteApiKeyChange,
@@ -193,6 +195,9 @@ export function TradingStep({
   onEnableAvantisTrading,
   markComplete,
 }: Props) {
+  const zerodhaCallbackUrl =
+    "https://maxxit.ai/api/lazy-trading/programmatic/zerodha/callback";
+
   const normalizedDeploymentVenues = (deploymentEnabledVenues || []).map((v) =>
     String(v || "")
       .trim()
@@ -225,11 +230,14 @@ export function TradingStep({
     normalizedDeploymentVenues.includes(venue),
   );
   const hasAnyDexSelection = selectedVenues.length > 0 || asterEnabled;
-  const canProceed = hasAnyDexSelection && isOstiumReady && isAvantisReady;
+  const canProceed = !hasAnyDexSelection || (isOstiumReady && isAvantisReady);
   const shouldCreateDeployment =
-    canProceed && (!hasDeployment || !hasRequiredDeploymentVenues);
+    hasAnyDexSelection &&
+    isOstiumReady &&
+    isAvantisReady &&
+    (!hasDeployment || !hasRequiredDeploymentVenues);
   const showDexOptions =
-    lazyTradingEnabled || lazyTradingSetupComplete || hasDeployment;
+    !!ostiumAgentAddress || lazyTradingSetupComplete || hasDeployment;
 
   return (
     <div className="space-y-6">
@@ -399,8 +407,9 @@ export function TradingStep({
                   </div>
                 ) : (
                   <p className="text-xs text-[var(--text-muted)]">
-                    Configure each DEX card below, then create deployment with
-                    selected venues.
+                    Set up a trading agent only if you want to enable one or
+                    more DEX venues below. Zerodha setup does not require a
+                    trading agent.
                   </p>
                 )}
 
@@ -427,6 +436,174 @@ export function TradingStep({
                 >
                   Reset Lazy Trading
                 </button>
+
+                {/* Zerodha (Indian Stocks) */}
+                <div
+                  className={`border rounded-lg p-5 transition-all ${zerodhaStatus === "connected"
+                      ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                      : "border-[var(--border)]"
+                    }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl">🇮🇳</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-baseline gap-2">
+                          <h3 className="font-bold">Zerodha (Indian Stocks)</h3>
+                          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                            Optional
+                          </span>
+                        </div>
+                        {zerodhaStatus === "connected" && (
+                          <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                            Connected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[var(--text-secondary)] mb-4">
+                        Connect your Zerodha account to trade Indian equities
+                        (NSE, BSE) via your OpenClaw bot. This does not require
+                        creating a Maxxit trading agent.
+                      </p>
+
+                      {zerodhaStatus === "connected" && zerodhaUserName ? (
+                        <div className="space-y-3">
+                          <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
+                            <p className="text-sm text-green-400 mb-1">
+                              <strong>Connected as {zerodhaUserName}</strong>
+                            </p>
+                            <p className="text-xs text-[var(--text-muted)]">
+                              Zerodha session is active. Your EC2 instance has
+                              access to trade Indian stocks.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium">
+                              Setup Instructions:
+                            </p>
+                            <ol className="text-sm text-[var(--text-secondary)] list-decimal list-inside space-y-1">
+                              <li>
+                                Go to{" "}
+                                <a
+                                  href="https://developers.kite.trade"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[var(--accent)] hover:underline"
+                                >
+                                  developers.kite.trade
+                                </a>
+                              </li>
+                              <li>
+                                Set your app&apos;s redirect URL to{" "}
+                                <span className="inline-flex items-center gap-2 align-middle">
+                                  <code className="text-xs bg-[var(--bg-deep)] px-1.5 py-0.5 rounded break-all">
+                                    {zerodhaCallbackUrl}
+                                  </code>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (typeof window !== "undefined") {
+                                        window.navigator.clipboard
+                                          .writeText(zerodhaCallbackUrl)
+                                          .catch(() => {});
+                                      }
+                                    }}
+                                    className="text-xs text-[var(--accent)] hover:underline"
+                                  >
+                                    Copy
+                                  </button>
+                                </span>
+                              </li>
+                              <li>
+                                Copy your API Key and API Secret below
+                              </li>
+                            </ol>
+                            <a
+                              href="/user-manual#openclaw-zerodha"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex text-xs text-[var(--accent)] hover:underline"
+                            >
+                              View the full Zerodha API setup guide
+                            </a>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div>
+                              <label className="mb-1 block text-xs text-[var(--text-muted)]">
+                                KITE_API_KEY
+                              </label>
+                              <input
+                                value={kiteApiKey}
+                                onChange={(e) =>
+                                  onKiteApiKeyChange(e.target.value)
+                                }
+                                placeholder="Your Kite API Key"
+                                className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs text-[var(--text-muted)]">
+                                KITE_API_SECRET
+                              </label>
+                              <input
+                                value={kiteApiSecret}
+                                onChange={(e) =>
+                                  onKiteApiSecretChange(e.target.value)
+                                }
+                                placeholder="Your Kite API Secret"
+                                type="password"
+                                className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                              />
+                            </div>
+
+                            <button
+                              onClick={onSaveZerodhaCreds}
+                              disabled={
+                                zerodhaIsSavingCreds ||
+                                !kiteApiKey.trim() ||
+                                !kiteApiSecret.trim()
+                              }
+                              className="w-full py-2.5 border border-[var(--accent)] text-[var(--accent)] text-sm font-semibold rounded-lg transition-all hover:bg-[var(--accent)] hover:text-[var(--bg-deep)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                              {zerodhaIsSavingCreds ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Saving Credentials...
+                                </>
+                              ) : zerodhaCredsSaved ? (
+                                "Credentials Saved"
+                              ) : (
+                                "Save Credentials"
+                              )}
+                            </button>
+
+                            <button
+                              onClick={onAuthenticateZerodha}
+                              disabled={zerodhaIsAuthenticating}
+                              className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                            >
+                              {zerodhaIsAuthenticating ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Opening Zerodha Login...
+                                </>
+                              ) : (
+                                <>
+                                  <Shield className="w-4 h-4" /> Authenticate
+                                  with Zerodha
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1006,143 +1183,6 @@ export function TradingStep({
             </div>
           </div>
 
-          {/* Zerodha (Indian Stocks) */}
-          <div
-            className={`border rounded-lg p-5 transition-all ${zerodhaStatus === "connected"
-                ? "border-[var(--accent)] bg-[var(--accent)]/5"
-                : "border-[var(--border)]"
-              }`}
-          >
-            <div className="flex items-start gap-4">
-              <div className="text-3xl">🇮🇳</div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="flex items-baseline gap-2">
-                    <h3 className="font-bold">Zerodha (Indian Stocks)</h3>
-                    <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-                      Optional
-                    </span>
-                  </div>
-                  {zerodhaStatus === "connected" && (
-                    <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
-                      Connected
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-[var(--text-secondary)] mb-4">
-                  Connect your Zerodha account to trade Indian equities (NSE,
-                  BSE) via your OpenClaw bot.
-                </p>
-
-                {zerodhaStatus === "connected" && zerodhaUserName ? (
-                  <div className="space-y-3">
-                    <div className="border border-green-500/50 bg-green-500/10 rounded-lg p-4">
-                      <p className="text-sm text-green-400 mb-1">
-                        <strong>Connected as {zerodhaUserName}</strong>
-                      </p>
-                      <p className="text-xs text-[var(--text-muted)]">
-                        Zerodha session is active. Your EC2 instance has access
-                        to trade Indian stocks.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">
-                        Setup Instructions:
-                      </p>
-                      <ol className="text-sm text-[var(--text-secondary)] list-decimal list-inside space-y-1">
-                        <li>
-                          Go to{" "}
-                          <a
-                            href="https://developers.kite.trade"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[var(--accent)] hover:underline"
-                          >
-                            developers.kite.trade
-                          </a>
-                        </li>
-                        <li>
-                          Set your app&apos;s redirect URL to{" "}
-                          <code className="text-xs bg-[var(--bg-deep)] px-1.5 py-0.5 rounded break-all">
-                            https://maxxit.ai/api/lazy-trading/programmatic/zerodha/callback
-                          </code>
-                        </li>
-                        <li>
-                          Copy your API Key and API Secret below
-                        </li>
-                      </ol>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div>
-                        <label className="mb-1 block text-xs text-[var(--text-muted)]">
-                          KITE_API_KEY
-                        </label>
-                        <input
-                          value={kiteApiKey}
-                          onChange={(e) => onKiteApiKeyChange(e.target.value)}
-                          placeholder="Your Kite API Key"
-                          className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs text-[var(--text-muted)]">
-                          KITE_API_SECRET
-                        </label>
-                        <input
-                          value={kiteApiSecret}
-                          onChange={(e) => onKiteApiSecretChange(e.target.value)}
-                          placeholder="Your Kite API Secret"
-                          type="password"
-                          className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-                        />
-                      </div>
-
-                      <button
-                        onClick={onSaveZerodhaCreds}
-                        disabled={
-                          zerodhaIsSavingCreds ||
-                          !kiteApiKey.trim() ||
-                          !kiteApiSecret.trim()
-                        }
-                        className="w-full py-2.5 border border-[var(--accent)] text-[var(--accent)] text-sm font-semibold rounded-lg transition-all hover:bg-[var(--accent)] hover:text-[var(--bg-deep)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {zerodhaIsSavingCreds ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Saving Credentials...
-                          </>
-                        ) : (
-                          "Save Credentials"
-                        )}
-                      </button>
-
-                      <button
-                        onClick={onAuthenticateZerodha}
-                        disabled={zerodhaIsAuthenticating}
-                        className="w-full py-3 bg-[var(--accent)] text-[var(--bg-deep)] font-bold rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-                      >
-                        {zerodhaIsAuthenticating ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Opening Zerodha Login...
-                          </>
-                        ) : (
-                          <>
-                            <Shield className="w-4 h-4" /> Authenticate with
-                            Zerodha
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </>
       )}
 
@@ -1160,19 +1200,13 @@ export function TradingStep({
               onCreateTradingDeployment(selectedVenues);
               return;
             }
-            if (!hasAnyDexSelection) {
-              onErrorMessage(
-                "Enable at least one DEX setup (Ostium, Avantis, or Aster) before continuing.",
-              );
-              return;
-            }
-            if (!isOstiumReady) {
+            if (hasAnyDexSelection && !isOstiumReady) {
               onErrorMessage(
                 "Complete Ostium trading setup before continuing.",
               );
               return;
             }
-            if (!isAvantisReady) {
+            if (hasAnyDexSelection && !isAvantisReady) {
               onErrorMessage(
                 "Complete Avantis trading setup before continuing.",
               );
@@ -1185,9 +1219,7 @@ export function TradingStep({
         >
           {shouldCreateDeployment
             ? "Create Deployment"
-            : canProceed
-              ? "Continue"
-              : "Complete setup to continue"}
+            : "Continue"}
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>

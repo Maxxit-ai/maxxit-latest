@@ -2,19 +2,16 @@
  * Zerodha OAuth Callback
  *
  * GET — Zerodha redirects here after user login.
- * Receives request_token and resolves the user via state or our auth cookie.
+ * Receives request_token and resolves the user via redirect_params.
  * Exchanges for access_token, stores in SSM, pushes to EC2 if running.
  * Redirects browser to /openclaw?zerodha=success
  */
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import {
-    buildCookieHeader,
     createKite,
-    getCookie,
-    KITE_AUTH_COOKIE_NAME,
-    pushAccessTokenToUser,
     getKiteCredsFromSSM,
+    pushAccessTokenToUser,
 } from "../../../../../lib/kite-connect";
 
 export default async function handler(
@@ -28,14 +25,11 @@ export default async function handler(
     try {
         const requestToken = req.query.request_token;
         const userWallet =
-            typeof req.query.state === "string" && req.query.state
-                ? req.query.state
-                : getCookie(req, KITE_AUTH_COOKIE_NAME);
-
-        res.setHeader(
-            "Set-Cookie",
-            buildCookieHeader(KITE_AUTH_COOKIE_NAME, "", { maxAge: 0 })
-        );
+            typeof req.query.userWallet === "string" && req.query.userWallet
+                ? req.query.userWallet
+                : typeof req.query.state === "string" && req.query.state
+                  ? req.query.state
+                  : null;
 
         if (typeof requestToken !== "string" || !requestToken) {
             return res.redirect(
