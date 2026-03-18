@@ -68,7 +68,7 @@ type Props = {
   onUpdateOpenclaw: () => void;
   onUpdateSkill: () => void;
   // Zerodha
-  zerodhaStatus: "idle" | "connected" | "error";
+  zerodhaStatus: "idle" | "connected" | "expired" | "error";
   zerodhaUserName: string | null;
   zerodhaIsAuthenticating: boolean;
   zerodhaIsSavingCreds: boolean;
@@ -405,6 +405,16 @@ export function ActivateStep({
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {zerodhaStatus === "expired" && (
+                      <div className="border border-amber-500/50 bg-amber-500/10 rounded-lg p-4">
+                        <p className="text-sm text-amber-300 mb-1">
+                          <strong>Your previous Zerodha session has expired.</strong>
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)]">
+                          Re-authenticate to restore trading access.
+                        </p>
+                      </div>
+                    )}
                     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)]/40 p-4 text-left">
                       <p className="text-sm font-bold mb-2">
                         Before you start
@@ -495,7 +505,9 @@ export function ActivateStep({
                         ) : (
                           <>
                             <Shield className="w-4 h-4" />
-                            Authenticate with Zerodha
+                            {zerodhaStatus === "expired"
+                              ? "Re-authenticate with Zerodha"
+                              : "Authenticate with Zerodha"}
                           </>
                         )}
                       </button>

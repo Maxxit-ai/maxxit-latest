@@ -260,7 +260,7 @@ export default function OpenClawSetupPage() {
 
   // Zerodha (Indian Stocks) state
   const [zerodhaStatus, setZerodhaStatus] = useState<
-    "idle" | "connected" | "error"
+    "idle" | "connected" | "expired" | "error"
   >("idle");
   const [zerodhaUserName, setZerodhaUserName] = useState<string | null>(null);
   const [zerodhaIsAuthenticating, setZerodhaIsAuthenticating] = useState(false);
@@ -1025,6 +1025,17 @@ export default function OpenClawSetupPage() {
           setZerodhaUserName(
             data.profile?.user_name || data.profile?.user_shortname || null,
           );
+          return;
+        }
+
+        if (data.expired) {
+          setZerodhaUserName(
+            data.profile?.user_name ||
+              data.profile?.user_shortname ||
+              envVarMap.get("KITE_USER_NAME") ||
+              null,
+          );
+          setZerodhaStatus("expired");
           return;
         }
 
