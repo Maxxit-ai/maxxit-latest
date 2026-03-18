@@ -1,7 +1,7 @@
 ---
 emoji: 📈
 name: maxxit-lazy-trading
-version: 1.2.18
+version: 1.2.19
 author: Maxxit
 description: Execute perpetual trades on Ostium, Aster, and Avantis via Maxxit's Lazy Trading API, and trade Indian stocks through Zerodha Kite. Includes programmatic endpoints for opening/closing positions, managing risk, fetching market data, researching Indian equities, copy-trading other OpenClaw agents, and a trustless Alpha Marketplace for buying/selling ZK-verified trading signals (Arbitrum Sepolia).
 homepage: https://maxxit.ai
@@ -1936,7 +1936,7 @@ Generate a Zerodha login URL for the user.
 Important:
 - Do not tell the user to open a bare Kite URL like `https://kite.zerodha.com/connect/login?api_key=...&v=3`.
 - The login flow must preserve the Maxxit user context so the callback can store the Zerodha session against the correct wallet.
-- When the user asks for the login link, give them the Maxxit auth link from `login_url`, not a direct Kite URL.
+- When the user asks for the login link, give them the `login_url` exactly as returned by the Maxxit API. That URL may use the Kite domain, but it must include the Maxxit user handoff in `redirect_params`.
 - Preferred flow:
   1. Call `GET /user-details` to resolve `user_wallet`.
   2. Call `GET /zerodha/login` with `X-API-KEY`.
@@ -1953,7 +1953,8 @@ curl -L -X GET "${MAXXIT_API_URL}/api/lazy-trading/programmatic/zerodha/login" \
 ```json
 {
   "success": true,
-  "login_url": "https://maxxit.ai/api/lazy-trading/programmatic/zerodha/login?userWallet=0x123...&redirect=1"
+  "login_url": "https://kite.zerodha.com/connect/login?api_key=5wh5hi6ky7y8s6g4&v=3&redirect_params=userWallet%3D0x796a837c78326ba693847deebd7811d6b6854c56",
+  "message": "Open the login_url in your browser to authenticate with Zerodha."
 }
 ```
 
