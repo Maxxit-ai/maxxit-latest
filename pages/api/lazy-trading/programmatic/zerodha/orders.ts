@@ -95,6 +95,12 @@ async function handlePlaceOrder(
         squareoff,
         stoploss,
         trailing_stoploss,
+        validity_ttl,
+        iceberg_legs,
+        iceberg_quantity,
+        auction_number,
+        market_protection,
+        autoslice,
         tag,
     } = req.body;
 
@@ -122,6 +128,12 @@ async function handlePlaceOrder(
     if (squareoff) orderParams.squareoff = squareoff;
     if (stoploss) orderParams.stoploss = stoploss;
     if (trailing_stoploss) orderParams.trailing_stoploss = trailing_stoploss;
+    if (validity_ttl !== undefined) orderParams.validity_ttl = validity_ttl;
+    if (iceberg_legs !== undefined) orderParams.iceberg_legs = iceberg_legs;
+    if (iceberg_quantity !== undefined) orderParams.iceberg_quantity = iceberg_quantity;
+    if (auction_number !== undefined) orderParams.auction_number = auction_number;
+    if (market_protection !== undefined) orderParams.market_protection = market_protection;
+    if (autoslice !== undefined) orderParams.autoslice = autoslice;
     if (tag) orderParams.tag = tag;
 
     const result = await kite.placeOrder(variety, orderParams);
