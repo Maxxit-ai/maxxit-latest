@@ -30,7 +30,7 @@ import {
 import { StepIndicator } from "../components/openclaw/StepIndicator";
 import { OpenClawLanding } from "../components/openclaw/OpenClawLanding";
 import { PlanStep } from "../components/openclaw/steps/PlanStep";
-import { TelegramStep } from "../components/openclaw/steps/TelegramStep";
+import { ChannelStep } from "../components/openclaw/steps/ChannelStep";
 import { TradingStep } from "../components/openclaw/steps/TradingStep";
 import { ActivateStep } from "../components/openclaw/steps/ActivateStep";
 import { EigenAIModal } from "../components/openclaw/EigenAIModal";
@@ -97,6 +97,17 @@ export default function OpenClawSetupPage() {
   const [telegramLinked, setTelegramLinked] = useState(false);
   const [telegramVerified, setTelegramVerified] = useState(false);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [whatsappPhoneNumber, setWhatsappPhoneNumber] = useState("");
+  const [whatsappPhoneSaved, setWhatsappPhoneSaved] = useState(false);
+  const [whatsappLinked, setWhatsappLinked] = useState(false);
+  const [isSubmittingWhatsapp, setIsSubmittingWhatsapp] = useState(false);
+  const [whatsappQrCode, setWhatsappQrCode] = useState<string | null>(null);
+  const [isLoadingWhatsappQr, setIsLoadingWhatsappQr] = useState(false);
+  const [isPollingWhatsappStatus, setIsPollingWhatsappStatus] = useState(false);
+  const [whatsappQrError, setWhatsappQrError] = useState<string | null>(null);
+  const [setupLogs, setSetupLogs] = useState<string | null>(null);
+  const [isLoadingSetupLogs, setIsLoadingSetupLogs] = useState(false);
+  const [selectedChannels, setSelectedChannels] = useState<("telegram" | "whatsapp")[]>(["telegram"]);
   const [activated, setActivated] = useState(false);
   const [botToken, setBotToken] = useState("");
   const [botUsername, setBotUsername] = useState<string | null>(null);
@@ -592,6 +603,10 @@ export default function OpenClawSetupPage() {
             username: string | null;
             botUsername: string | null;
           };
+          whatsapp?: {
+            phoneNumber: string | null;
+            linked: boolean;
+          };
           openai?: {
             projectId: string | null;
             serviceAccountId: string | null;
@@ -629,6 +644,21 @@ export default function OpenClawSetupPage() {
       if (inst.telegram.linked && inst.telegram.userId) {
         setTelegramVerified(true);
         markComplete("telegram");
+      }
+
+      if (inst.whatsapp?.phoneNumber) {
+        setWhatsappPhoneNumber(inst.whatsapp.phoneNumber);
+        setWhatsappPhoneSaved(true);
+      }
+
+      if (inst.whatsapp?.linked) {
+        setWhatsappLinked(true);
+      }
+
+      if (inst.telegram.botUsername && inst.whatsapp?.phoneNumber) {
+        setSelectedChannels(["telegram", "whatsapp"]);
+      } else if (inst.whatsapp?.phoneNumber) {
+        setSelectedChannels(["whatsapp"]);
       }
 
       if (inst.status === "active") {
@@ -927,6 +957,48 @@ export default function OpenClawSetupPage() {
     checkInstanceStatus();
     const interval = setInterval(checkInstanceStatus, 5000);
     return () => clearInterval(interval);
+  }, [walletAddress, activated, instanceStatusPhase]);
+
+  // Poll setup logs during checking + configuring phases; do a final fetch once ready
+  useEffect(() => {
+    const isActivePhase =
+      instanceStatusPhase === "configuring" ||
+      instanceStatusPhase === "checking";
+
+    if (!walletAddress || !activated || (!isActivePhase && instanceStatusPhase !== "ready")) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchLogs = async () => {
+      if (!isMounted) return;
+      setIsLoadingSetupLogs(true);
+      try {
+        const res = await fetch(
+          `/api/openclaw/setup-logs?userWallet=${encodeURIComponent(walletAddress)}`
+        );
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (data.logs) setSetupLogs(data.logs);
+        }
+      } catch {
+        // Ignore — instance may still be booting
+      } finally {
+        if (isMounted) setIsLoadingSetupLogs(false);
+      }
+    };
+
+    fetchLogs();
+
+    // Only keep polling during active phases; for "ready" just do the one-time fetch above
+    if (!isActivePhase) return;
+
+    const interval = setInterval(fetchLogs, 6000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [walletAddress, activated, instanceStatusPhase]);
 
   useEffect(() => {
@@ -1338,6 +1410,96 @@ export default function OpenClawSetupPage() {
     }
   };
 
+  const handleWhatsappPhoneChange = (phone: string) => {
+    setWhatsappPhoneNumber(phone);
+  };
+
+  const handleSubmitWhatsappPhone = async () => {
+    if (!walletAddress || !whatsappPhoneNumber.trim()) return;
+    setIsSubmittingWhatsapp(true);
+    setErrorMessage("");
+
+    try {
+      const response = await postJson<{
+        success: boolean;
+        phoneNumber?: string;
+      }>("/api/openclaw/connect-whatsapp", {
+        userWallet: walletAddress,
+        phoneNumber: whatsappPhoneNumber.trim(),
+      });
+
+      if (response.success) {
+        setWhatsappPhoneSaved(true);
+        setWhatsappLinked(true);
+      }
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setIsSubmittingWhatsapp(false);
+    }
+  };
+
+  const handleLinkWhatsapp = async () => {
+    if (!walletAddress) return;
+    setIsLoadingWhatsappQr(true);
+    setWhatsappQrError(null);
+
+    try {
+      const response = await postJson<{ success: boolean; qrCode?: string; error?: string }>(
+        "/api/openclaw/whatsapp-login",
+        { userWallet: walletAddress }
+      );
+
+      if (response.success && response.qrCode) {
+        setWhatsappQrCode(response.qrCode);
+        // Start polling for linked status after QR is shown
+        pollWhatsappStatus();
+      } else {
+        setWhatsappQrError(response.error || "Failed to generate QR code. Please try again.");
+      }
+    } catch (error) {
+      setWhatsappQrError((error as Error).message || "Failed to generate QR code.");
+    } finally {
+      setIsLoadingWhatsappQr(false);
+    }
+  };
+
+  const pollWhatsappStatus = () => {
+    if (!walletAddress) return;
+    const MAX_POLLS = 40; // ~3.5 minutes
+    let count = 0;
+
+    setIsPollingWhatsappStatus(true);
+
+    const poll = async () => {
+      if (count >= MAX_POLLS) {
+        setIsPollingWhatsappStatus(false);
+        return;
+      }
+      count++;
+
+      try {
+        const response = await fetch(
+          `/api/openclaw/whatsapp-status?userWallet=${encodeURIComponent(walletAddress)}`
+        );
+        const data = await response.json();
+
+        if (data.linked) {
+          setWhatsappLinked(true);
+          setWhatsappQrCode(null);
+          setIsPollingWhatsappStatus(false);
+          return;
+        }
+      } catch {
+        // Ignore polling errors
+      }
+
+      setTimeout(poll, 5000);
+    };
+
+    setTimeout(poll, 5000);
+  };
+
   const handleActivate = async () => {
     setErrorMessage("");
     if (!walletAddress) return;
@@ -1406,7 +1568,7 @@ export default function OpenClawSetupPage() {
   };
 
   const generateMaxxitApiKey = async () => {
-    if (!walletAddress || maxxitApiKey) return;
+    if (!walletAddress || maxxitApiKey || maxxitApiKeyPrefix) return;
     setIsGeneratingApiKey(true);
     setErrorMessage("");
     try {
@@ -2490,19 +2652,28 @@ export default function OpenClawSetupPage() {
                 isActive={instanceData?.status === "active"}
                 onContinue={goNext}
                 onPlanContinue={handlePlanContinue}
+                onRetryOpenAIKey={handleCreateOpenAIKey}
+                onRetryMaxxitApiKey={generateMaxxitApiKey}
               />
             )}
 
             {currentStepKey === "telegram" && (
-              <TelegramStep
+              <ChannelStep
+                selectedChannels={selectedChannels}
+                onChannelSelectionChange={setSelectedChannels}
                 telegramLinked={telegramLinked}
                 telegramVerified={telegramVerified}
                 botUsername={botUsername}
                 botToken={botToken}
                 onBotTokenChange={setBotToken}
                 isValidatingBot={isValidatingBot}
-                errorMessage={errorMessage}
                 onSubmitBotToken={handleSubmitBotToken}
+                whatsappPhoneNumber={whatsappPhoneNumber}
+                onWhatsappPhoneNumberChange={handleWhatsappPhoneChange}
+                whatsappPhoneSaved={whatsappPhoneSaved}
+                onSubmitWhatsappPhone={handleSubmitWhatsappPhone}
+                isSubmittingWhatsapp={isSubmittingWhatsapp}
+                errorMessage={errorMessage}
                 onBack={goBack}
                 onContinue={goNext}
                 markComplete={markComplete}
@@ -2686,6 +2857,16 @@ export default function OpenClawSetupPage() {
                 showWebSearchSection={showWebSearchSection}
                 onToggleWebSearch={() => setShowWebSearchSection((v) => !v)}
                 onUpdateWebSearch={handleUpdateWebSearch}
+                selectedChannels={selectedChannels}
+                whatsappPhoneNumber={whatsappPhoneNumber}
+                whatsappLinked={whatsappLinked}
+                whatsappQrCode={whatsappQrCode}
+                isLoadingWhatsappQr={isLoadingWhatsappQr}
+                isPollingWhatsappStatus={isPollingWhatsappStatus}
+                whatsappQrError={whatsappQrError}
+                onLinkWhatsapp={handleLinkWhatsapp}
+                setupLogs={setupLogs}
+                isLoadingSetupLogs={isLoadingSetupLogs}
               />
             )}
           </>

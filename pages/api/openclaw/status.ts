@@ -68,6 +68,10 @@ export default async function handler(
           chatId: instance.telegram_chat_id,
           linkedAt: instance.telegram_linked_at,
         },
+        whatsapp: {
+          phoneNumber: (instance as any).whatsapp_phone_number,
+          linked: !!(instance as any).whatsapp_linked_at,
+        },
         openai: {
           projectId: instance.openai_project_id,
           serviceAccountId: instance.openai_service_account_id,

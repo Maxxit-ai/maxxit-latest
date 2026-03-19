@@ -39,22 +39,6 @@ export default async function handler(
       });
     }
 
-    // Check if Telegram bot is connected (we only need the bot username now)
-    if (!instance.telegram_bot_username) {
-      return res.status(400).json({
-        error: "Telegram bot not connected",
-        message: "Connect your Telegram bot before activating",
-      });
-    }
-
-    if (!instance.telegram_user_id) {
-      return res.status(400).json({
-        error: "Telegram not verified",
-        message: "Send any message to your bot to verify your account before activating",
-        requiresVerification: true,
-      });
-    }
-
     if (instance.status === "active" && instance.container_id) {
       const instanceStatus = await getInstanceById(instance.container_id);
       return res.status(200).json({
@@ -86,6 +70,13 @@ export default async function handler(
       const maxxitApiKey = providedMaxxitApiKey || await getUserMaxxitApiKey(userWallet);
 
       try {
+        const hasTelegram = !!instance.telegram_bot_username;
+        const hasWhatsapp = !!(instance as any).whatsapp_phone_number;
+        const channels: ("telegram" | "whatsapp")[] = [
+          ...(hasTelegram ? ["telegram" as const] : []),
+          ...(hasWhatsapp ? ["whatsapp" as const] : []),
+        ];
+
         const result = await createInstance({
           userId: instance.id,
           userWallet: instance.user_wallet,
@@ -97,6 +88,8 @@ export default async function handler(
           openclawApiKey: process.env.OPENCLAW_API_KEY,
           ssmWalletPath: instance.user_wallet.replace(/[^a-zA-Z0-9_.-]/g, "_").toLowerCase(),
           webSearchProvider: (instance as any).web_search_provider ?? undefined,
+          whatsappPhoneNumber: (instance as any).whatsapp_phone_number ?? undefined,
+          channels: channels.length > 0 ? channels : undefined,
         });
 
         instanceId = result.instanceId;
@@ -135,6 +128,13 @@ export default async function handler(
           const { getUserMaxxitApiKey } = await import("../../../lib/ssm");
           const maxxitApiKey = providedMaxxitApiKey || await getUserMaxxitApiKey(userWallet);
 
+          const hasTelegramRecreate = !!instance.telegram_bot_username;
+          const hasWhatsappRecreate = !!(instance as any).whatsapp_phone_number;
+          const channelsRecreate: ("telegram" | "whatsapp")[] = [
+            ...(hasTelegramRecreate ? ["telegram" as const] : []),
+            ...(hasWhatsappRecreate ? ["whatsapp" as const] : []),
+          ];
+
           const result = await createInstance({
             userId: instance.id,
             userWallet: instance.user_wallet,
@@ -146,6 +146,8 @@ export default async function handler(
             openclawApiKey: process.env.OPENCLAW_API_KEY,
             ssmWalletPath: instance.user_wallet.replace(/[^a-zA-Z0-9_.-]/g, "_").toLowerCase(),
             webSearchProvider: (instance as any).web_search_provider ?? undefined,
+            whatsappPhoneNumber: (instance as any).whatsapp_phone_number ?? undefined,
+            channels: channelsRecreate.length > 0 ? channelsRecreate : undefined,
           });
 
           instanceId = result.instanceId;

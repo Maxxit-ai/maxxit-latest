@@ -974,7 +974,11 @@ model openclaw_instances {
   telegram_bot_username      String?
   telegram_chat_id           String?
   telegram_linked_at         DateTime? @db.Timestamptz(6)
-  
+
+  // WhatsApp channel fields
+  whatsapp_phone_number      String?      // E.164 format (+15551234567)
+  whatsapp_linked_at         DateTime? @db.Timestamptz(6)
+
   container_id               String?
   container_status           String    @default("stopped")
   last_active_at             DateTime? @db.Timestamptz(6)

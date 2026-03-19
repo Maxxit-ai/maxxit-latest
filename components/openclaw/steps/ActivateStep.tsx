@@ -4,7 +4,10 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  Phone,
+  RefreshCw,
   Shield,
+  Terminal,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -110,6 +113,18 @@ type Props = {
   showWebSearchSection: boolean;
   onToggleWebSearch: () => void;
   onUpdateWebSearch: (enabled: boolean, provider: WebSearchProvider) => void;
+  // WhatsApp
+  selectedChannels: ("telegram" | "whatsapp")[];
+  whatsappPhoneNumber: string;
+  whatsappLinked: boolean;
+  whatsappQrCode: string | null;
+  isLoadingWhatsappQr: boolean;
+  isPollingWhatsappStatus: boolean;
+  whatsappQrError: string | null;
+  onLinkWhatsapp: () => void;
+  // Setup logs
+  setupLogs: string | null;
+  isLoadingSetupLogs: boolean;
 };
 
 export function ActivateStep({
@@ -187,6 +202,16 @@ export function ActivateStep({
   showWebSearchSection,
   onToggleWebSearch,
   onUpdateWebSearch,
+  selectedChannels,
+  whatsappPhoneNumber,
+  whatsappLinked,
+  whatsappQrCode,
+  isLoadingWhatsappQr,
+  whatsappQrError,
+  onLinkWhatsapp,
+  isPollingWhatsappStatus,
+  setupLogs,
+  isLoadingSetupLogs,
 }: Props) {
   const zerodhaCallbackUrl =
     "https://maxxit.ai/api/lazy-trading/programmatic/zerodha/callback";
@@ -230,15 +255,18 @@ export function ActivateStep({
             </h1>
             <p className="text-[var(--text-secondary)]">
               {instanceStatusPhase === "ready"
-                ? "Your instance is live. You should receive a welcome message from your assistant soon as shown below:"
+                ? "Your instance is live and your assistant is ready to chat."
                 : instanceStatusPhase === "error"
                   ? instanceStatusMessage || "Please try again or contact support."
                   : instanceStatusPhase === "configuring"
                     ? "Installing packages and configuring your assistant. This may take 2-3 minutes..."
                     : instanceStatusMessage || "This may take 1-2 minutes..."}
             </p>
-            {instanceStatusPhase === "ready" && (
+            {instanceStatusPhase === "ready" && selectedChannels.includes("telegram") && (
               <div className="mt-6 border border-[var(--border)] rounded-lg p-6 bg-[var(--bg-card)]">
+                <p className="text-sm text-[var(--text-secondary)] mb-4">
+                  You should receive a welcome message from your assistant soon:
+                </p>
                 <div className="flex items-center justify-center">
                   <img
                     src={welcomeImage.src}
@@ -248,6 +276,118 @@ export function ActivateStep({
                 </div>
               </div>
             )}
+
+            {/* WhatsApp Linking Section — shown once instance is ready */}
+            {instanceStatusPhase === "ready" &&
+              selectedChannels.includes("whatsapp") && (
+                <div className="mt-4 border border-[var(--border)] rounded-lg overflow-hidden text-left">
+                  {/* Header — mirrors the Setup Logs header */}
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-card)] border-b border-[var(--border)]">
+                    <Phone className="w-3.5 h-3.5 text-green-400" />
+                    <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+                      Link WhatsApp
+                    </span>
+                    {whatsappLinked && (
+                      <span className="ml-auto flex items-center gap-1 text-green-400 text-[10px] font-semibold uppercase tracking-wide">
+                        <Check className="w-3 h-3" />
+                        Linked
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Body */}
+                  <div className="bg-[var(--bg-deep)] p-4 space-y-4">
+                    {whatsappLinked ? (
+                      /* ── Linked success state ── */
+                      <div className="flex items-start gap-3 p-3 border border-green-500/20 rounded-lg bg-green-500/5">
+                        <Check className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-green-300">
+                            WhatsApp account linked!
+                          </p>
+                          <p className="text-[10px] text-[var(--text-secondary)] mt-0.5 leading-relaxed">
+                            Your agent will respond to messages from{" "}
+                            <span className="font-mono text-green-400">
+                              {whatsappPhoneNumber}
+                            </span>
+                            . Gateway restarted.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {!whatsappQrCode && (
+                          <p className="text-[0.65rem] text-[var(--text-secondary)] leading-relaxed">
+                            Click below to generate a QR code, then scan it with your
+                            WhatsApp mobile app under{" "}
+                            <strong className="text-[var(--text-primary)]">
+                              Linked Devices → Link a Device
+                            </strong>
+                            .
+                          </p>
+                        )}
+
+                        {whatsappQrCode ? (
+                          /* ── QR shown — dark-theme terminal style ── */
+                          <div className="space-y-3">
+                            <pre
+                              className="font-mono text-[0.48rem] leading-[1.05] text-green-400 whitespace-pre select-all overflow-x-auto"
+                              onWheel={(e) => e.stopPropagation()}
+                            >
+                              {whatsappQrCode}
+                            </pre>
+
+                            {isPollingWhatsappStatus ? (
+                              <div className="flex items-center gap-2 text-[0.65rem] text-[var(--text-secondary)]">
+                                <Loader2 className="w-3 h-3 animate-spin text-green-400 shrink-0" />
+                                Waiting for you to scan the QR code…
+                              </div>
+                            ) : (
+                              <p className="text-[0.65rem] text-[var(--text-muted)]">
+                                QR codes expire after ~30 seconds.
+                              </p>
+                            )}
+
+                            <button
+                              onClick={onLinkWhatsapp}
+                              disabled={isLoadingWhatsappQr}
+                              className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] text-[var(--text-secondary)] text-[0.65rem] rounded hover:border-green-500/50 hover:text-green-400 transition-colors disabled:opacity-50"
+                            >
+                              <RefreshCw
+                                className={`w-3 h-3 ${isLoadingWhatsappQr ? "animate-spin" : ""}`}
+                              />
+                              Refresh QR Code
+                            </button>
+                          </div>
+                        ) : (
+                          /* ── Initial button ── */
+                          <button
+                            onClick={onLinkWhatsapp}
+                            disabled={isLoadingWhatsappQr}
+                            className="w-full py-2 border border-green-500/40 text-green-400 text-xs font-semibold rounded-lg flex items-center justify-center gap-2 hover:bg-green-500/10 transition-colors disabled:opacity-50"
+                          >
+                            {isLoadingWhatsappQr ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Generating QR Code…
+                              </>
+                            ) : (
+                              <>
+                                <Phone className="w-3.5 h-3.5" />
+                                Link WhatsApp Now
+                              </>
+                            )}
+                          </button>
+                        )}
+
+                        {whatsappQrError && (
+                          <p className="text-[0.65rem] text-red-400">{whatsappQrError}</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
           </div>
 
           {/* Progress steps */}
@@ -273,7 +413,7 @@ export function ActivateStep({
                   },
                   {
                     phase: "configuring",
-                    label: "Configuring OpenClaw",
+                    label: "Installing and configuring OpenClaw",
                     active: ["configuring"],
                   },
                 ].map(({ phase, label, active }) => (
@@ -296,6 +436,36 @@ export function ActivateStep({
                 ))}
               </div>
             )}
+
+          {/* Setup log viewer — shown during checking/configuring, collapsed when ready */}
+          {(instanceStatusPhase === "configuring" ||
+            instanceStatusPhase === "checking" ||
+            (instanceStatusPhase === "ready" && setupLogs)) && (
+            <div className="border border-[var(--border)] rounded-lg overflow-hidden text-left">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-card)] border-b border-[var(--border)]">
+                <Terminal className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+                  Setup Logs
+                </span>
+                {isLoadingSetupLogs && (
+                  <Loader2 className="w-3 h-3 animate-spin text-[var(--accent)] ml-auto" />
+                )}
+                {instanceStatusPhase === "ready" && (
+                  <span className="ml-auto text-[10px] text-[var(--text-muted)]">
+                    Complete
+                  </span>
+                )}
+              </div>
+              <pre
+                className="h-52 overflow-y-auto p-3 text-[0.65rem] leading-relaxed font-mono text-green-400 bg-[var(--bg-deep)] whitespace-pre-wrap break-all"
+                onWheel={(e) => e.stopPropagation()}
+              >
+                {setupLogs
+                  ? setupLogs
+                  : "(Waiting for instance to become reachable via SSM...)"}
+              </pre>
+            </div>
+          )}
 
           {/* Summary card */}
           <div className="border border-[var(--border)] rounded-lg p-4 text-left space-y-2">

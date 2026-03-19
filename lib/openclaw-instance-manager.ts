@@ -44,6 +44,9 @@ export interface InstanceConfig {
   llmProxyUrl?: string;
   openclawApiKey?: string;
   webSearchProvider?: string;
+  // WhatsApp channel configuration
+  whatsappPhoneNumber?: string; // E.164 format (+15551234567)
+  channels?: ('telegram' | 'whatsapp')[]; // Which channels to enable
 }
 
 export interface InstanceStatus {
@@ -124,15 +127,17 @@ echo "Region: $REGION"
 # Ensure awscli is available
 which aws >/dev/null 2>&1 || (apt-get update && apt-get install -y awscli)
 
-# Fetch bot token from SSM
-echo "$(date): Fetching bot token from SSM..."
+# Fetch bot token from SSM (only required when Telegram channel is configured)
+${config.channels?.includes('telegram') !== false && (config.channels === undefined || config.channels.includes('telegram'))
+  ? `echo "$(date): Fetching Telegram bot token from SSM..."
 BOT_TOKEN=$(aws ssm get-parameter --name "/openclaw/users/${config.ssmWalletPath}/telegram-bot-token" --with-decryption --query "Parameter.Value" --output text --region $REGION 2>/dev/null || echo "")
-
 if [ -z "$BOT_TOKEN" ]; then
-  echo "$(date): ERROR - Failed to fetch bot token from SSM"
-  exit 1
+  echo "$(date): WARNING - No Telegram bot token found in SSM, skipping Telegram setup"
 fi
-echo "$(date): Bot token fetched successfully"
+echo "$(date): Bot token fetch complete"`
+  : `echo "$(date): Skipping Telegram bot token fetch (Telegram not configured)"
+BOT_TOKEN=""`
+}
 
 # Fetch LLM API keys from SSM
 echo "$(date): Fetching LLM API keys from SSM..."
@@ -211,19 +216,77 @@ su - ubuntu -c "openclaw gateway restart" || {
 
 ${maxxitToolConfigSnippet}
 
-# Enable Telegram plugin
-echo "$(date): Enabling Telegram plugin..."
-su - ubuntu -c "openclaw plugins enable telegram" || {
-  echo "$(date): WARNING - Failed to enable Telegram plugin"
+# Enable and add Telegram channel only if a bot token was found
+if [ -n "$BOT_TOKEN" ]; then
+  echo "$(date): Enabling Telegram plugin..."
+  su - ubuntu -c "openclaw plugins enable telegram" || {
+    echo "$(date): WARNING - Failed to enable Telegram plugin"
+  }
+
+  echo "$(date): Adding Telegram channel..."
+  su - ubuntu -c "openclaw channels add --channel telegram --token '$BOT_TOKEN'" || {
+    echo "$(date): WARNING - Failed to add Telegram channel (non-fatal)"
+  }
+  echo "$(date): Telegram channel configured"
+else
+  echo "$(date): No Telegram bot token available, skipping Telegram channel setup"
+fi
+
+# WhatsApp channel setup (if configured)
+${config.channels?.includes('whatsapp') || config.whatsappPhoneNumber
+      ? `
+# Enable WhatsApp plugin
+echo "$(date): Setting up WhatsApp channel..."
+
+# Install WhatsApp plugin
+su - ubuntu -c "openclaw plugins install @openclaw/whatsapp" || {
+  echo "$(date): WARNING - Failed to install WhatsApp plugin"
 }
 
-# Add Telegram channel with bot token
-echo "$(date): Adding Telegram channel..."
-su - ubuntu -c "openclaw channels add --channel telegram --token '$BOT_TOKEN'" || {
-  echo "$(date): ERROR - Failed to add Telegram channel"
-  exit 1
+# Add WhatsApp channel (requires login after boot)
+su - ubuntu -c "openclaw channels add --channel whatsapp --name 'default'" || {
+  echo "$(date): WARNING - Failed to add WhatsApp channel"
 }
-echo "$(date): Telegram channel added"
+
+# Configure WhatsApp channel settings
+${config.whatsappPhoneNumber
+      ? `
+echo "$(date): Configuring WhatsApp channel with allowlist for ${config.whatsappPhoneNumber}..."
+
+# allowFrom must be set BEFORE dmPolicy allowlist — openclaw validates immediately on set
+su - ubuntu -c "openclaw config set channels.whatsapp.allowFrom '[\"${config.whatsappPhoneNumber}\"]' --json" || true
+su - ubuntu -c "openclaw config set channels.whatsapp.accounts.default.allowFrom '[\"${config.whatsappPhoneNumber}\"]' --json" || true
+
+# dmPolicy (validation now passes because allowFrom is already populated)
+su - ubuntu -c "openclaw config set channels.whatsapp.dmPolicy allowlist" || true
+su - ubuntu -c "openclaw config set channels.whatsapp.accounts.default.dmPolicy allowlist" || true
+
+# Group messages fully disabled
+su - ubuntu -c "openclaw config set channels.whatsapp.groupPolicy disabled" || true
+su - ubuntu -c "openclaw config set channels.whatsapp.accounts.default.groupPolicy disabled" || true
+
+# Remaining settings
+su - ubuntu -c "openclaw config set channels.whatsapp.selfChatMode true" || true
+su - ubuntu -c "openclaw config set channels.whatsapp.accounts.default.selfChatMode true" || true
+su - ubuntu -c "openclaw config set channels.whatsapp.debounceMs 0" || true
+su - ubuntu -c "openclaw config set channels.whatsapp.accounts.default.debounceMs 0" || true
+su - ubuntu -c "openclaw config set channels.whatsapp.mediaMaxMb 50" || true
+
+echo "$(date): WhatsApp allowlist configured for ${config.whatsappPhoneNumber}"
+`
+      : `
+# No WhatsApp phone number provided — leave defaults in place
+echo "$(date): WARNING - No WhatsApp phone number, allowlist not configured"
+`
+}
+
+echo "$(date): WhatsApp channel configured (login required after boot)"
+`
+      : `
+# WhatsApp not configured for this instance
+echo "$(date): Skipping WhatsApp channel setup (not selected)"
+`
+}
 
 # Set the default model
 echo "$(date): Setting default model to ${modelId}..."

@@ -22,6 +22,8 @@ const SSM_PATHS = {
     `/openclaw/users/${sanitizeWallet(wallet)}/maxxit-api-key`,
   userOpenAIApiKey: (wallet: string) =>
     `/openclaw/users/${sanitizeWallet(wallet)}/openai-api-key`,
+  userWhatsappPhone: (wallet: string) =>
+    `/openclaw/users/${sanitizeWallet(wallet)}/whatsapp-phone`,
   userEnvVarPrefix: (wallet: string) =>
     `/openclaw/users/${sanitizeWallet(wallet)}/env/`,
   userEnvVar: (wallet: string, key: string) =>
@@ -224,6 +226,54 @@ export async function deleteUserOpenAIApiKey(
     }
     console.error(
       "[SSM] Failed to delete OpenAI API key for wallet",
+      userWallet,
+      error
+    );
+    throw error;
+  }
+}
+
+// WhatsApp phone number storage
+export async function storeUserWhatsappPhone(
+  userWallet: string,
+  phoneNumber: string
+): Promise<void> {
+  try {
+    await ssmClient.send(
+      new PutParameterCommand({
+        Name: SSM_PATHS.userWhatsappPhone(userWallet),
+        Value: phoneNumber,
+        Type: "String",
+        Overwrite: true,
+      })
+    );
+  } catch (error) {
+    console.error(
+      "[SSM] Failed to store WhatsApp phone for wallet",
+      userWallet,
+      error
+    );
+    throw error;
+  }
+}
+
+export async function getUserWhatsappPhone(
+  userWallet: string
+): Promise<string | null> {
+  try {
+    const result = await ssmClient.send(
+      new GetParameterCommand({
+        Name: SSM_PATHS.userWhatsappPhone(userWallet),
+        WithDecryption: true,
+      })
+    );
+    return result.Parameter?.Value ?? null;
+  } catch (error) {
+    if (error instanceof ParameterNotFound) {
+      return null;
+    }
+    console.error(
+      "[SSM] Failed to get WhatsApp phone for wallet",
       userWallet,
       error
     );

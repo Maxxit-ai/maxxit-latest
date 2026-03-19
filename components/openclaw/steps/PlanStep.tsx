@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Globe, Loader2, Search, Shield } from "lucide-react";
+import { Check, ChevronRight, Globe, Loader2, RefreshCw, Search, Shield, XCircle } from "lucide-react";
 import {
   InstanceData,
   PlanId,
@@ -32,6 +32,8 @@ type Props = {
   isActive?: boolean;
   onContinue: () => void;
   onPlanContinue: () => void;
+  onRetryOpenAIKey: () => void;
+  onRetryMaxxitApiKey: () => void;
 };
 
 export function PlanStep({
@@ -58,6 +60,8 @@ export function PlanStep({
   isActive,
   onContinue,
   onPlanContinue,
+  onRetryOpenAIKey,
+  onRetryMaxxitApiKey,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -177,10 +181,21 @@ export function PlanStep({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[10px] text-red-400">
-                    Failed to create OpenAI key. Please retry your subscription
-                    flow or contact support.
-                  </p>
+                  <div className="border border-red-500/30 bg-red-500/5 rounded-lg p-3 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-red-400">
+                        Failed to create OpenAI key. Please retry or contact support.
+                      </p>
+                    </div>
+                    <button
+                      onClick={onRetryOpenAIKey}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-300 font-semibold hover:bg-red-500/20 transition-colors"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Retry
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -274,11 +289,22 @@ export function PlanStep({
                 ) : (
                   <>
                     {errorMessage &&
-                      errorMessage.toLowerCase().includes("generate api key") ? (
-                      <p className="text-[10px] text-red-400">
-                        Failed to generate Maxxit API key. Please retry your
-                        subscription flow or contact support.
-                      </p>
+                    errorMessage.toLowerCase().includes("generate api key") ? (
+                      <div className="border border-red-500/30 bg-red-500/5 rounded-lg p-3 space-y-3">
+                        <div className="flex items-start gap-2">
+                          <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                          <p className="text-xs text-red-400">
+                            Failed to generate Maxxit API key. Please retry or contact support.
+                          </p>
+                        </div>
+                        <button
+                          onClick={onRetryMaxxitApiKey}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-300 font-semibold hover:bg-red-500/20 transition-colors"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Retry
+                        </button>
+                      </div>
                     ) : (
                       <p className="text-[10px] text-[var(--text-secondary)]">
                         Waiting for Maxxit API key to be created…
