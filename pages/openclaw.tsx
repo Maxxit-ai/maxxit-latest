@@ -7,6 +7,7 @@ import { PaymentSelectorModal } from "@components/PaymentSelectorModal";
 import { Web3CheckoutModal } from "@components/Web3CheckoutModal";
 import { Loader2, Orbit, Zap } from "lucide-react";
 import welcomeImage from "../public/openclaw_welcome.png";
+import welcomeWpImage from "../public/openclaw-welcome-wp.png";
 import { ethers } from "ethers";
 import { getOstiumConfig } from "../lib/ostium-config";
 import { getAvantisConfig } from "../lib/avantis-config";
@@ -105,8 +106,11 @@ export default function OpenClawSetupPage() {
   const [isLoadingWhatsappQr, setIsLoadingWhatsappQr] = useState(false);
   const [isPollingWhatsappStatus, setIsPollingWhatsappStatus] = useState(false);
   const [whatsappQrError, setWhatsappQrError] = useState<string | null>(null);
+  const whatsappPollCancelRef = useRef<(() => void) | null>(null);
   const [setupLogs, setSetupLogs] = useState<string | null>(null);
   const [isLoadingSetupLogs, setIsLoadingSetupLogs] = useState(false);
+  const [setupLogsReady, setSetupLogsReady] = useState(false);
+  const [whatsappStatusMessage, setWhatsappStatusMessage] = useState<string | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<("telegram" | "whatsapp")[]>(["telegram"]);
   const [activated, setActivated] = useState(false);
   const [botToken, setBotToken] = useState("");
@@ -210,6 +214,9 @@ export default function OpenClawSetupPage() {
     | "error"
     | null
   >(null);
+  // Ref so the log-polling interval can read the latest phase without being
+  // torn down and restarted every time the phase changes.
+  const instanceStatusPhaseRef = useRef(instanceStatusPhase);
   const [instanceStatusMessage, setInstanceStatusMessage] = useState<
     string | null
   >(null);
@@ -959,20 +966,35 @@ export default function OpenClawSetupPage() {
     return () => clearInterval(interval);
   }, [walletAddress, activated, instanceStatusPhase]);
 
-  // Poll setup logs during checking + configuring phases; do a final fetch once ready
-  useEffect(() => {
-    const isActivePhase =
-      instanceStatusPhase === "configuring" ||
-      instanceStatusPhase === "checking";
+  // Keep the ref in sync with state so the log-polling interval can read it
+  // without being a reactive dependency (avoids interval restarts on each phase change).
+  instanceStatusPhaseRef.current = instanceStatusPhase;
 
-    if (!walletAddress || !activated || (!isActivePhase && instanceStatusPhase !== "ready")) {
-      return;
-    }
+  // Derive a display phase that doesn't jump to "ready" until setup logs confirm it.
+  // The instance-status API can shortcircuit to "ready" (e.g. container_status === "running"
+  // from a previous activation) before the setup script actually finishes.
+  const displayPhase: typeof instanceStatusPhase =
+    instanceStatusPhase === "ready" && !setupLogsReady
+      ? "configuring"
+      : instanceStatusPhase;
+
+  // Poll setup logs from activation until the instance is ready.
+  // Uses a ref for the current phase so we start ONE stable interval on activation
+  // and don't tear it down / restart it on every rapid phase transition — which
+  // previously caused logs to stop when checking → configuring → ready happened
+  // within a single 6s poll cycle.
+  useEffect(() => {
+    if (!walletAddress || !activated) return;
 
     let isMounted = true;
+    let intervalId: ReturnType<typeof setInterval>;
 
     const fetchLogs = async () => {
       if (!isMounted) return;
+      const currentPhase = instanceStatusPhaseRef.current;
+      // Don't fetch before any phase is known or after an error
+      if (!currentPhase || currentPhase === "error") return;
+
       setIsLoadingSetupLogs(true);
       try {
         const res = await fetch(
@@ -981,25 +1003,27 @@ export default function OpenClawSetupPage() {
         if (res.ok && isMounted) {
           const data = await res.json();
           if (data.logs) setSetupLogs(data.logs);
+          if (data.ready) {
+            setSetupLogsReady(true);
+            clearInterval(intervalId);
+          }
         }
       } catch {
-        // Ignore — instance may still be booting
+        // Ignore — instance may still be booting / SSM not yet reachable
       } finally {
         if (isMounted) setIsLoadingSetupLogs(false);
       }
     };
 
     fetchLogs();
+    intervalId = setInterval(fetchLogs, 6000);
 
-    // Only keep polling during active phases; for "ready" just do the one-time fetch above
-    if (!isActivePhase) return;
-
-    const interval = setInterval(fetchLogs, 6000);
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      clearInterval(intervalId);
     };
-  }, [walletAddress, activated, instanceStatusPhase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress, activated]); // intentionally excludes instanceStatusPhase — see ref above
 
   useEffect(() => {
     if (!walletAddress || !authenticated) {
@@ -1138,7 +1162,7 @@ export default function OpenClawSetupPage() {
     );
 
   useEffect(() => {
-    if (!walletAddress || !activated || instanceStatusPhase !== "ready") return;
+    if (!walletAddress || !activated || displayPhase !== "ready") return;
 
     const fetchVersions = async () => {
       setIsCheckingVersions(true);
@@ -1170,7 +1194,8 @@ export default function OpenClawSetupPage() {
     };
 
     fetchVersions();
-  }, [walletAddress, activated, instanceStatusPhase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress, activated, displayPhase]);
 
   useEffect(() => {
     if (!walletAddress || !authenticated) return;
@@ -1443,6 +1468,7 @@ export default function OpenClawSetupPage() {
     if (!walletAddress) return;
     setIsLoadingWhatsappQr(true);
     setWhatsappQrError(null);
+    setWhatsappStatusMessage(null);
 
     try {
       const response = await postJson<{ success: boolean; qrCode?: string; error?: string }>(
@@ -1466,14 +1492,23 @@ export default function OpenClawSetupPage() {
 
   const pollWhatsappStatus = () => {
     if (!walletAddress) return;
-    const MAX_POLLS = 40; // ~3.5 minutes
-    let count = 0;
 
+    // Cancel any previous poll
+    if (whatsappPollCancelRef.current) {
+      whatsappPollCancelRef.current();
+    }
+
+    const MAX_POLLS = 60; // ~3 minutes at 3s intervals
+    let count = 0;
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    whatsappPollCancelRef.current = () => { cancelled = true; clearTimeout(timeoutId); };
     setIsPollingWhatsappStatus(true);
 
     const poll = async () => {
-      if (count >= MAX_POLLS) {
-        setIsPollingWhatsappStatus(false);
+      if (cancelled || count >= MAX_POLLS) {
+        if (!cancelled) setIsPollingWhatsappStatus(false);
         return;
       }
       count++;
@@ -1484,20 +1519,30 @@ export default function OpenClawSetupPage() {
         );
         const data = await response.json();
 
+        // Show live output from the capture file
+        if (data.captureOutput) {
+          setWhatsappStatusMessage(data.captureOutput);
+        }
+
         if (data.linked) {
           setWhatsappLinked(true);
           setWhatsappQrCode(null);
           setIsPollingWhatsappStatus(false);
+          setWhatsappStatusMessage(null);
+          whatsappPollCancelRef.current = null;
           return;
         }
       } catch {
         // Ignore polling errors
       }
 
-      setTimeout(poll, 5000);
+      if (!cancelled) {
+        timeoutId = setTimeout(poll, 3000);
+      }
     };
 
-    setTimeout(poll, 5000);
+    // First poll fires immediately — no 5s wait
+    poll();
   };
 
   const handleActivate = async () => {
@@ -2775,7 +2820,7 @@ export default function OpenClawSetupPage() {
             {currentStepKey === "activate" && (
               <ActivateStep
                 activated={activated}
-                instanceStatusPhase={instanceStatusPhase}
+                instanceStatusPhase={displayPhase}
                 instanceStatusMessage={instanceStatusMessage ?? ""}
                 selectedPlan={selectedPlan}
                 selectedModel={selectedModel}
@@ -2790,6 +2835,7 @@ export default function OpenClawSetupPage() {
                 onActivate={handleActivate}
                 botUsername={botUsername}
                 welcomeImage={welcomeImage}
+                welcomeWpImage={welcomeWpImage}
                 walletAddress={walletAddress}
                 llmBalance={llmBalance}
                 isLoadingLlmBalance={isLoadingLlmBalance}
@@ -2865,6 +2911,7 @@ export default function OpenClawSetupPage() {
                 isPollingWhatsappStatus={isPollingWhatsappStatus}
                 whatsappQrError={whatsappQrError}
                 onLinkWhatsapp={handleLinkWhatsapp}
+                whatsappStatusMessage={whatsappStatusMessage}
                 setupLogs={setupLogs}
                 isLoadingSetupLogs={isLoadingSetupLogs}
               />

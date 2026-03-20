@@ -56,55 +56,40 @@ export default async function handler(
       return res.status(200).json({ success: true, linked: false });
     }
 
-    // Read the QR capture file and check whether openclaw printed "Linked!" to it.
-    // openclaw channels login outputs "✅ Linked! Credentials saved for future sends."
-    // right after the user scans the QR code.
-    const captureResult = await runCommandOnInstanceWithOutput(
+    // Primary check: credentials file existence — this is the definitive indicator
+    // that openclaw has a live WhatsApp session (same file openclaw status shows).
+    // Secondary: also read the QR capture file for display purposes.
+    const WA_CREDENTIALS_FILE = "/home/ubuntu/.openclaw/credentials/whatsapp/default";
+
+    const checkResult = await runCommandOnInstanceWithOutput(
       instance.container_id,
-      [`cat ${QR_CAPTURE_FILE} 2>/dev/null || echo ""`],
+      [
+        `test -f ${WA_CREDENTIALS_FILE} && echo "__WA_LINKED__" || echo "__WA_NOT_LINKED__"`,
+        `cat ${QR_CAPTURE_FILE} 2>/dev/null || echo ""`,
+      ],
       { timeoutSeconds: 30 }
     );
 
-    const captureContent = captureResult.stdout;
-    const linked =
-      captureContent.toLowerCase().includes("linked") &&
-      captureContent.toLowerCase().includes("credentials saved");
+    const checkOutput = checkResult.stdout;
+
+    // Strip the sentinel markers to get clean capture content
+    const captureOutput = checkOutput
+      .replace("__WA_LINKED__", "")
+      .replace("__WA_NOT_LINKED__", "")
+      .trim() || null;
+
+    // Primary: credentials file exists (definitive session indicator)
+    // Fallback: capture file contains the "Credentials saved" confirmation
+    //   (handles race where file isn't written yet when the test runs)
+    const linkedByFile = checkOutput.includes("__WA_LINKED__");
+    const linkedByCapture =
+      !!captureOutput &&
+      captureOutput.toLowerCase().includes("linked") &&
+      captureOutput.toLowerCase().includes("credentials saved");
+    const linked = linkedByFile || linkedByCapture;
 
     if (linked) {
-      const phoneNumber = (instance as any).whatsapp_phone_number as string | null;
-
-      // 1. Restart openclaw gateway so the WhatsApp session takes effect
-      try {
-        await runCommandOnInstanceWithOutput(
-          instance.container_id,
-          [`su - ubuntu -c "openclaw gateway restart" 2>&1 || true`],
-          { timeoutSeconds: 30 }
-        );
-        console.log("[whatsapp-status] Gateway restarted after WhatsApp link");
-      } catch {
-        console.warn("[whatsapp-status] Gateway restart failed (non-fatal)");
-      }
-
-      // 2. Send welcome message — give the gateway a moment to come back up first
-      if (phoneNumber) {
-        try {
-          // Escape single quotes in the message for safe shell embedding
-          const escapedMessage = WELCOME_MESSAGE.replace(/'/g, "'\\''");
-          await runCommandOnInstanceWithOutput(
-            instance.container_id,
-            [
-              `sleep 5`,
-              `su - ubuntu -c "openclaw message send --channel whatsapp --target '${phoneNumber}' --message '${escapedMessage}'" 2>&1 || true`,
-            ],
-            { timeoutSeconds: 60 }
-          );
-          console.log(`[whatsapp-status] Welcome message sent to ${phoneNumber}`);
-        } catch {
-          console.warn("[whatsapp-status] Failed to send WhatsApp welcome message (non-fatal)");
-        }
-      }
-
-      // 3. Persist linked state to database
+      // 1. Persist linked state to database (fast — do this before responding)
       await prisma.openclaw_instances.update({
         where: { user_wallet: userWallet },
         data: {
@@ -112,9 +97,49 @@ export default async function handler(
           updated_at: new Date(),
         },
       });
+
+      // 2. Respond immediately so the frontend gets the linked state
+      res.status(200).json({ success: true, linked: true, captureOutput });
+
+      // 3. Fire-and-forget: restart gateway + send welcome message
+      //    (response already sent — these run in the background)
+      const containerId = instance.container_id!;
+      const phoneNumber = (instance as any).whatsapp_phone_number as string | null;
+
+      (async () => {
+        try {
+          await runCommandOnInstanceWithOutput(
+            containerId,
+            [`su - ubuntu -c "openclaw gateway restart" 2>&1 || true`],
+            { timeoutSeconds: 30 }
+          );
+          console.log("[whatsapp-status] Gateway restarted after WhatsApp link");
+        } catch {
+          console.warn("[whatsapp-status] Gateway restart failed (non-fatal)");
+        }
+
+        if (phoneNumber) {
+          try {
+            const escapedMessage = WELCOME_MESSAGE.replace(/'/g, "'\\''");
+            await runCommandOnInstanceWithOutput(
+              containerId,
+              [
+                `sleep 5`,
+                `su - ubuntu -c "openclaw message send --channel whatsapp --target '${phoneNumber}' --message '${escapedMessage}'" 2>&1 || true`,
+              ],
+              { timeoutSeconds: 60 }
+            );
+            console.log(`[whatsapp-status] Welcome message sent to ${phoneNumber}`);
+          } catch {
+            console.warn("[whatsapp-status] Failed to send WhatsApp welcome message (non-fatal)");
+          }
+        }
+      })();
+
+      return; // Response already sent above
     }
 
-    return res.status(200).json({ success: true, linked });
+    return res.status(200).json({ success: true, linked: false, captureOutput });
   } catch (error: any) {
     console.error("[whatsapp-status] Error:", error);
     return res.status(500).json({

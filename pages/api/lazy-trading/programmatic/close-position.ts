@@ -4,26 +4,13 @@ import { resolveLazyTradingApiKey } from "../../../../lib/lazy-trading-api";
 
 const prismaClient = prisma as any;
 
-interface ClosePositionResponse {
-  success: boolean;
-  result?: {
-    txHash?: string;
-    market?: string;
-    closePnl?: number;
-  };
-  closePnl?: number;
-  message?: string;
-  alreadyClosed?: boolean;
-  error?: string;
-}
-
 /**
  * Close Position
  * Close an existing trading position on Ostium
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<ClosePositionResponse>
+  res: NextApiResponse
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, error: "Method not allowed" });
@@ -97,13 +84,7 @@ export default async function handler(
       data: { last_used_at: new Date() },
     });
 
-    return res.status(200).json({
-      success: true,
-      result: positionData.result,
-      closePnl: positionData.closePnl,
-      message: positionData.message,
-      alreadyClosed: positionData.alreadyClosed,
-    });
+    return res.status(200).json(positionData);
   } catch (error: any) {
     console.error("[API] Lazy trading close position error:", error);
     return res.status(500).json({

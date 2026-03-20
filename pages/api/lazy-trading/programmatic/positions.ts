@@ -4,20 +4,13 @@ import { resolveLazyTradingApiKey } from "../../../../lib/lazy-trading-api";
 
 const prismaClient = prisma as any;
 
-interface PositionsResponse {
-  success: boolean;
-  positions?: any[];
-  totalPositions?: number;
-  error?: string;
-}
-
 /**
  * Get Portfolio Positions
  * Get all open positions for user's Ostium trading account
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<PositionsResponse>
+  res: NextApiResponse
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, error: "Method not allowed" });
@@ -61,11 +54,7 @@ export default async function handler(
       data: { last_used_at: new Date() },
     });
 
-    return res.status(200).json({
-      success: true,
-      positions: positionsData.positions || [],
-      totalPositions: positionsData.positions?.length || 0,
-    });
+    return res.status(200).json(positionsData);
   } catch (error: any) {
     console.error("[API] Lazy trading positions error:", error);
     return res.status(500).json({

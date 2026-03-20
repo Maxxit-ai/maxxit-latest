@@ -40,26 +40,6 @@ interface EigenAIAnalysis {
   chainId?: number;
 }
 
-interface OpenPositionResponse {
-  success: boolean;
-  orderId?: string;
-  tradeId?: string;
-  transactionHash?: string;
-  txHash?: string;
-  status?: string;
-  message?: string;
-  actualTradeIndex?: number;
-  entryPrice?: number;
-  slSet?: boolean;
-  slError?: string | null;
-  result?: any;
-  error?: string;
-  // EigenAI analysis
-  reasoning?: string | null;
-  llmSignature?: string | null;
-  lunarCrushData?: LunarCrushMarketData | null;
-}
-
 // ── EigenAI Caller ──────────────────────────────────────────────────────────
 
 /**
@@ -325,7 +305,7 @@ Output ONLY valid JSON. Start with { and end with }. No text outside JSON.`;
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<OpenPositionResponse>
+  res: NextApiResponse
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, error: "Method not allowed" });
@@ -526,18 +506,7 @@ export default async function handler(
     });
 
     return res.status(200).json({
-      success: true,
-      orderId: positionData.orderId,
-      tradeId: positionData.tradeId,
-      transactionHash: positionData.transactionHash,
-      txHash: positionData.txHash,
-      status: positionData.status,
-      message: positionData.message,
-      actualTradeIndex: positionData.actualTradeIndex,
-      entryPrice: positionData.entryPrice,
-      slSet: positionData.slSet,
-      slError: positionData.slError,
-      result: positionData.result,
+      ...positionData,
       // EigenAI analysis fields
       reasoning: eigenAIAnalysis?.reasoning ?? null,
       llmSignature: eigenAIAnalysis?.llmSignature ?? null,

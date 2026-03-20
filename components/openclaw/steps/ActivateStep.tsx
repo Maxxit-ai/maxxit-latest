@@ -49,6 +49,7 @@ type Props = {
   onActivate: () => void;
   botUsername: string | null;
   welcomeImage: { src: string };
+  welcomeWpImage: { src: string };
   walletAddress: string | undefined;
   // LLM credits
   llmBalance: LlmBalance | null;
@@ -122,6 +123,7 @@ type Props = {
   isPollingWhatsappStatus: boolean;
   whatsappQrError: string | null;
   onLinkWhatsapp: () => void;
+  whatsappStatusMessage: string | null;
   // Setup logs
   setupLogs: string | null;
   isLoadingSetupLogs: boolean;
@@ -144,6 +146,7 @@ export function ActivateStep({
   onActivate,
   botUsername,
   welcomeImage,
+  welcomeWpImage,
   walletAddress,
   llmBalance,
   isLoadingLlmBalance,
@@ -209,6 +212,7 @@ export function ActivateStep({
   isLoadingWhatsappQr,
   whatsappQrError,
   onLinkWhatsapp,
+  whatsappStatusMessage,
   isPollingWhatsappStatus,
   setupLogs,
   isLoadingSetupLogs,
@@ -265,7 +269,7 @@ export function ActivateStep({
             {instanceStatusPhase === "ready" && selectedChannels.includes("telegram") && (
               <div className="mt-6 border border-[var(--border)] rounded-lg p-6 bg-[var(--bg-card)]">
                 <p className="text-sm text-[var(--text-secondary)] mb-4">
-                  You should receive a welcome message from your assistant soon:
+                  You should receive a welcome message from your assistant soon as shown below:
                 </p>
                 <div className="flex items-center justify-center">
                   <img
@@ -299,19 +303,28 @@ export function ActivateStep({
                   <div className="bg-[var(--bg-deep)] p-4 space-y-4">
                     {whatsappLinked ? (
                       /* ── Linked success state ── */
-                      <div className="flex items-start gap-3 p-3 border border-green-500/20 rounded-lg bg-green-500/5">
-                        <Check className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-xs font-semibold text-green-300">
-                            WhatsApp account linked!
-                          </p>
-                          <p className="text-[10px] text-[var(--text-secondary)] mt-0.5 leading-relaxed">
-                            Your agent will respond to messages from{" "}
-                            <span className="font-mono text-green-400">
-                              {whatsappPhoneNumber}
-                            </span>
-                            . Gateway restarted.
-                          </p>
+                      <div className="space-y-3">
+                        <div className="flex items-start gap-3 p-3 border border-green-500/20 rounded-lg bg-green-500/5">
+                          <Check className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-semibold text-green-300">
+                              WhatsApp account linked!
+                            </p>
+                            <p className="text-[10px] text-[var(--text-secondary)] mt-0.5 leading-relaxed">
+                              Your agent will respond to messages from{" "}
+                              <span className="font-mono text-green-400">
+                                {whatsappPhoneNumber}
+                              </span>
+                              . You should receive a welcome message from your assistant soon as shown below:
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <img
+                            src={welcomeWpImage.src}
+                            alt="Welcome to OpenClaw on WhatsApp"
+                            className="w-full max-w-xs rounded-lg shadow-lg"
+                          />
                         </div>
                       </div>
                     ) : (
@@ -330,17 +343,32 @@ export function ActivateStep({
                         {whatsappQrCode ? (
                           /* ── QR shown — dark-theme terminal style ── */
                           <div className="space-y-3">
-                            <pre
-                              className="font-mono text-[0.48rem] leading-[1.05] text-green-400 whitespace-pre select-all overflow-x-auto"
-                              onWheel={(e) => e.stopPropagation()}
-                            >
-                              {whatsappQrCode}
-                            </pre>
+                            {/* Hide the raw QR pre once scan is confirmed — avoids duplicate display */}
+                            {!whatsappStatusMessage?.toLowerCase().includes("credentials saved") && (
+                              <pre
+                                className="font-mono text-[0.48rem] leading-[1.05] text-green-400 whitespace-pre select-all overflow-x-auto"
+                                onWheel={(e) => e.stopPropagation()}
+                              >
+                                {whatsappQrCode}
+                              </pre>
+                            )}
 
                             {isPollingWhatsappStatus ? (
-                              <div className="flex items-center gap-2 text-[0.65rem] text-[var(--text-secondary)]">
-                                <Loader2 className="w-3 h-3 animate-spin text-green-400 shrink-0" />
-                                Waiting for you to scan the QR code…
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-[0.65rem] text-[var(--text-secondary)]">
+                                  <Loader2 className="w-3 h-3 animate-spin text-green-400 shrink-0" />
+                                  {whatsappStatusMessage?.toLowerCase().includes("credentials saved")
+                                    ? "Linked! Finalizing setup…"
+                                    : "Waiting for you to scan the QR code…"}
+                                </div>
+                                {whatsappStatusMessage?.toLowerCase().includes("credentials saved") && (
+                                  <pre
+                                    className="text-[0.6rem] leading-relaxed font-mono text-green-400/80 whitespace-pre-wrap break-all max-h-24 overflow-y-auto rounded border border-[var(--border)] bg-[var(--bg-deep)] p-2"
+                                    onWheel={(e) => e.stopPropagation()}
+                                  >
+                                    {whatsappStatusMessage}
+                                  </pre>
+                                )}
                               </div>
                             ) : (
                               <p className="text-[0.65rem] text-[var(--text-muted)]">
@@ -391,55 +419,64 @@ export function ActivateStep({
           </div>
 
           {/* Progress steps */}
-          {instanceStatusPhase &&
-            instanceStatusPhase !== "ready" &&
-            instanceStatusPhase !== "error" && (
-              <div className="border border-[var(--border)] rounded-lg p-4 space-y-3 text-left">
-                {[
-                  {
-                    phase: "launching",
-                    label: "Creating instance",
-                    active: ["launching", "starting", "checking", "configuring"],
-                  },
-                  {
-                    phase: "starting",
-                    label: "Starting instance",
-                    active: ["starting", "checking", "configuring"],
-                  },
-                  {
-                    phase: "checking",
-                    label: "Running status checks",
-                    active: ["checking", "configuring"],
-                  },
-                  {
-                    phase: "configuring",
-                    label: "Installing and configuring OpenClaw",
-                    active: ["configuring"],
-                  },
-                ].map(({ phase, label, active }) => (
+          {instanceStatusPhase && instanceStatusPhase !== "error" && (
+            <div className="border border-[var(--border)] rounded-lg p-4 space-y-3 text-left">
+              {[
+                {
+                  phase: "launching",
+                  label: "Creating instance",
+                  active: ["launching", "starting", "checking", "configuring", "ready"],
+                },
+                {
+                  phase: "starting",
+                  label: "Starting instance",
+                  active: ["starting", "checking", "configuring", "ready"],
+                },
+                {
+                  phase: "checking",
+                  label: "Running status checks",
+                  active: ["checking", "configuring", "ready"],
+                },
+                {
+                  phase: "configuring",
+                  label: "Installing and configuring OpenClaw",
+                  active: ["configuring", "ready"],
+                },
+              ].map(({ phase, label, active }) => {
+                const isDone = active.includes(instanceStatusPhase ?? "");
+                const isCurrent = instanceStatusPhase === phase;
+                return (
                   <div key={phase} className="flex items-center gap-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${active.includes(instanceStatusPhase ?? "")
-                          ? "bg-[var(--accent)]"
-                          : "bg-[var(--border)]"
-                        }`}
-                    />
+                    {isDone ? (
+                      <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    ) : (
+                      <div className="w-3.5 h-3.5 rounded-full border border-[var(--border)] shrink-0" />
+                    )}
                     <span
-                      className={`text-sm ${instanceStatusPhase === phase
+                      className={`text-sm ${
+                        isCurrent
                           ? "text-[var(--accent)] font-medium"
+                          : isDone
+                          ? "text-[var(--text-secondary)]"
                           : "text-[var(--text-muted)]"
-                        }`}
+                      }`}
                     >
                       {label}
                     </span>
+                    {isCurrent && instanceStatusPhase !== "ready" && (
+                      <Loader2 className="w-3 h-3 animate-spin text-[var(--accent)] ml-auto shrink-0" />
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
+          )}
 
-          {/* Setup log viewer — shown during checking/configuring, collapsed when ready */}
-          {(instanceStatusPhase === "configuring" ||
+          {/* Setup log viewer — shown once instance is being set up, collapsed when ready */}
+          {(instanceStatusPhase === "launching" ||
+            instanceStatusPhase === "starting" ||
             instanceStatusPhase === "checking" ||
+            instanceStatusPhase === "configuring" ||
             (instanceStatusPhase === "ready" && setupLogs)) && (
             <div className="border border-[var(--border)] rounded-lg overflow-hidden text-left">
               <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-card)] border-b border-[var(--border)]">

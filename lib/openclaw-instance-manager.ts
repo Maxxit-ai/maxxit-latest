@@ -254,8 +254,9 @@ ${config.whatsappPhoneNumber
 echo "$(date): Configuring WhatsApp channel with allowlist for ${config.whatsappPhoneNumber}..."
 
 # allowFrom must be set BEFORE dmPolicy allowlist — openclaw validates immediately on set
-su - ubuntu -c "openclaw config set channels.whatsapp.allowFrom '[\"${config.whatsappPhoneNumber}\"]' --json" || true
-su - ubuntu -c "openclaw config set channels.whatsapp.accounts.default.allowFrom '[\"${config.whatsappPhoneNumber}\"]' --json" || true
+# \\" in TS template literal → \" in bash script → literal " inside the outer "..." su -c string
+su - ubuntu -c "openclaw config set channels.whatsapp.allowFrom '[\\"${config.whatsappPhoneNumber}\\"]' --json" || true
+su - ubuntu -c "openclaw config set channels.whatsapp.accounts.default.allowFrom '[\\"${config.whatsappPhoneNumber}\\"]' --json" || true
 
 # dmPolicy (validation now passes because allowFrom is already populated)
 su - ubuntu -c "openclaw config set channels.whatsapp.dmPolicy allowlist" || true

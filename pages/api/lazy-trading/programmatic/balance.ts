@@ -4,21 +4,13 @@ import { resolveLazyTradingApiKey } from "../../../../lib/lazy-trading-api";
 
 const prismaClient = prisma as any;
 
-interface BalanceResponse {
-  success: boolean;
-  address?: string;
-  usdcBalance?: string;
-  ethBalance?: string;
-  error?: string;
-}
-
 /**
  * Get Account Balance
  * Retrieve USDC and ETH balance for user's Ostium agent wallet
  */
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<BalanceResponse>
+  res: NextApiResponse
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, error: "Method not allowed" });
@@ -62,12 +54,7 @@ export default async function handler(
       data: { last_used_at: new Date() },
     });
 
-    return res.status(200).json({
-      success: true,
-      address,
-      usdcBalance: balanceData.usdcBalance,
-      ethBalance: balanceData.ethBalance,
-    });
+    return res.status(200).json(balanceData);
   } catch (error: any) {
     console.error("[API] Lazy trading balance error:", error);
     return res.status(500).json({

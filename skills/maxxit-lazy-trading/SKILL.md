@@ -409,12 +409,13 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/positions" \
       "tradeIndex": 2,
       "pairIndex": "0",
       "notionalUsd": 1000.0,
+      "funding": 0,
+      "rollover": 0,
       "totalFees": 2.50,
       "stopLossPrice": 85500.0,
       "takeProfitPrice": 0.0
     }
-  ],
-  "totalPositions": 1
+  ]
 }
 ```
 
@@ -543,10 +544,22 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/open-position" 
   "tradeId": "trade_abc",
   "transactionHash": "0x...",
   "txHash": "0x...",
-  "status": "OPEN",
-  "message": "Position opened successfully",
+  "status": "pending",
+  "message": "Order created, waiting for keeper to fill position",
   "actualTradeIndex": 2,       // ← SAVE THIS — needed for /set-take-profit and /set-stop-loss
   "entryPrice": 95000.0,        // ← SAVE THIS — needed for /set-take-profit and /set-stop-loss
+  "slSet": false,               // Whether the stop-loss was configured at open time
+  "slError": null,              // Error message if SL setup failed, null otherwise
+  "result": {
+    "market": "BTC",
+    "side": "long",
+    "collateral": 100,
+    "leverage": 10,
+    "actualTradeIndex": 2,
+    "entryPrice": 95000.0,
+    "slConfigured": false,
+    "tpConfigured": false
+  },
   "reasoning": "Market sentiment is bullish...", // EigenAI trade alignment analysis
   "llmSignature": "0x..."       // Cryptographic signature for auditability
 }
@@ -587,7 +600,7 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/close-position"
 }
 ```
 
-**Response:**
+**Response (position closed):**
 ```json
 {
   "success": true,
@@ -596,9 +609,17 @@ curl -L -X POST "${MAXXIT_API_URL}/api/lazy-trading/programmatic/close-position"
     "market": "BTC",
     "closePnl": 25.50
   },
-  "closePnl": 25.50,
-  "message": "Position closed successfully",
-  "alreadyClosed": false
+  "closePnl": 25.50
+}
+```
+
+**Response (position was already closed — idempotent):**
+```json
+{
+  "success": true,
+  "message": "Position already closed (idempotent)",
+  "closePnl": 0,
+  "alreadyClosed": true
 }
 ```
 
