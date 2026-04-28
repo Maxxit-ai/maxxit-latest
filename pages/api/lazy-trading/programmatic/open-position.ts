@@ -60,6 +60,17 @@ interface OpenPositionResponse {
   lunarCrushData?: LunarCrushMarketData | null;
 }
 
+function resolveOstiumIsTestnet(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.toLowerCase() === "true";
+
+  if (process.env.OSTIUM_MAINNET !== undefined) {
+    return process.env.OSTIUM_MAINNET.toLowerCase() !== "true";
+  }
+
+  return process.env.NEXT_PUBLIC_OSTIUM_MAINNET !== "true";
+}
+
 // ── EigenAI Caller ──────────────────────────────────────────────────────────
 
 /**
@@ -338,6 +349,11 @@ export default async function handler(
     }
 
     const requestBody = req.body || {};
+    const effectiveIsTestnet = resolveOstiumIsTestnet(requestBody.isTestnet);
+    const requestBodyForAnalysis = {
+      ...requestBody,
+      isTestnet: effectiveIsTestnet,
+    };
 
     // ── Step 1: Fetch LunarCrush market data ──────────────────────────────
     // Use client-provided data if available, otherwise fetch from DB cache
@@ -365,7 +381,7 @@ export default async function handler(
     let chainIdForStorage: number = 1;
 
     try {
-      const userPrompt = buildTradeAnalysisPrompt(requestBody, lunarCrushData);
+      const userPrompt = buildTradeAnalysisPrompt(requestBodyForAnalysis, lunarCrushData);
 
       // Concatenate system + user message — same pattern as llm-classifier.ts L96-98
       // This ensures what we store in DB is the *exact* payload that EigenAI signs
@@ -465,7 +481,7 @@ export default async function handler(
 
     // ── Step 3: Extract trade fields from EigenAI response ───────────────
     // EigenAI returns all trade fields; fall back to raw request body if EigenAI failed
-    const tradeFields = eigenParsed || requestBody;
+    const tradeFields = eigenParsed || requestBodyForAnalysis;
 
     const {
       agentAddress,
@@ -477,7 +493,6 @@ export default async function handler(
       stopLossPercent,
       deploymentId,
       signalId,
-      isTestnet,
     } = tradeFields;
 
     // Validate required fields (AFTER EigenAI processing)
@@ -504,7 +519,7 @@ export default async function handler(
         stopLossPercent: stopLossPercent || 0.10,
         deploymentId,
         signalId,
-        isTestnet
+        isTestnet: effectiveIsTestnet
       }),
     });
 

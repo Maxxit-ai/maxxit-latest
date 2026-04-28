@@ -26,11 +26,12 @@ interface AgentsSectionProps {
     hasApproval: boolean;
   } | null;
   fromHome?: boolean;
+  ostiumUseTestnet?: boolean;
   creditBalance?: number; // User's current credit balance
   userWallet?: string; // User's wallet address for creator check
 }
 
-const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {}, ostiumDelegationStatus, ostiumUsdcAllowance, fromHome = true, creditBalance = 0, userWallet = '' }: AgentsSectionProps) => {
+const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, userAgentAddresses, agentDeployments = {}, ostiumDelegationStatus, ostiumUsdcAllowance, fromHome = true, ostiumUseTestnet, creditBalance = 0, userWallet = '' }: AgentsSectionProps) => {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
@@ -678,6 +679,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
       {showDelegationModal && (
         <OstiumDelegationModal
           agentAddress={userAgentAddresses?.ostium || ''}
+          isTestnet={ostiumUseTestnet}
           onClose={() => setShowDelegationModal(false)}
           onSuccess={handleDelegationComplete}
         />
@@ -686,6 +688,7 @@ const AgentsSection = ({ agents, loading, error, onCardClick, onDeployClick, use
       {/* Ostium USDC Approval Modal */}
       {showUsdcApprovalModal && (
         <OstiumUsdcApprovalModal
+          isTestnet={ostiumUseTestnet}
           onClose={() => setShowUsdcApprovalModal(false)}
           onSuccess={handleUsdcApprovalComplete}
         />

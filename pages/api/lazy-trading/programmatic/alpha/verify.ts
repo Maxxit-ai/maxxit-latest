@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createHash } from "crypto";
 import { prisma } from "../../../../../lib/prisma";
 import { resolveLazyTradingApiKey } from "../../../../../lib/lazy-trading-api";
+import { hashAlphaContent } from "../../../../../lib/alpha-content-hash";
 
 const prismaClient = prisma as any;
 
@@ -50,24 +50,7 @@ export default async function handler(
       });
     }
 
-    // Sort keys recursively for deterministic serialization
-    // (Postgres JSONB may reorder keys on round-trip, breaking naive JSON.stringify)
-    const sortKeys = (obj: any): any => {
-      if (typeof obj !== "object" || obj === null) return obj;
-      if (Array.isArray(obj)) return obj.map(sortKeys);
-      return Object.keys(obj)
-        .sort()
-        .reduce((acc: any, key: string) => {
-          acc[key] = sortKeys(obj[key]);
-          return acc;
-        }, {});
-    };
-
-    const contentString =
-      typeof content === "string" ? content : JSON.stringify(sortKeys(content));
-    const computedHash = createHash("sha256")
-      .update(contentString)
-      .digest("hex");
+    const computedHash = hashAlphaContent(content);
 
     const verified = computedHash === listing.content_hash;
 

@@ -9,17 +9,10 @@ import { ethers } from 'ethers';
 import { getOstiumConfig } from '../lib/ostium-config';
 
 interface OstiumUsdcApprovalModalProps {
+  isTestnet?: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
-
-const {
-  usdcContract: USDC_TOKEN,
-  storageContract: OSTIUM_STORAGE,
-  chainId: ARBITRUM_CHAIN_ID,
-  blockExplorerUrl,
-  chainName
-} = getOstiumConfig();
 
 const USDC_ABI = [
   'function approve(address spender, uint256 amount) public returns (bool)',
@@ -27,9 +20,17 @@ const USDC_ABI = [
 ];
 
 export function OstiumUsdcApprovalModal({
+  isTestnet,
   onClose,
   onSuccess,
 }: OstiumUsdcApprovalModalProps) {
+  const {
+    usdcContract: USDC_TOKEN,
+    storageContract: OSTIUM_STORAGE,
+    chainId: ARBITRUM_CHAIN_ID,
+    blockExplorerUrl,
+    chainName
+  } = getOstiumConfig(isTestnet);
   const { authenticated, user, login } = usePrivy();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

@@ -1,11 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createHash } from "crypto";
 import { prisma } from "../../../../../lib/prisma";
 import { resolveLazyTradingApiKey } from "../../../../../lib/lazy-trading-api";
+import { hashAlphaContent } from "../../../../../lib/alpha-content-hash";
 import {
   decodeTradeReference,
   encodeTradeReference,
 } from "../../../../../lib/alpha-trade-reference";
+import { uploadAlphaContent } from "../../../../../lib/zg-storage";
 
 const prismaClient = prisma as any;
 
@@ -164,23 +165,20 @@ export default async function handler(
       timestamp: new Date().toISOString(),
     };
 
-    // Deterministic hash for content verification
-    const sortKeys = (obj: any): any => {
-      if (typeof obj !== "object" || obj === null) return obj;
-      if (Array.isArray(obj)) return obj.map(sortKeys);
-      return Object.keys(obj)
-        .sort()
-        .reduce((acc: any, key: string) => {
-          acc[key] = sortKeys(obj[key]);
-          return acc;
-        }, {});
-    };
+    const contentHash = hashAlphaContent(alphaContent);
 
-    const contentHash = createHash("sha256")
-      .update(JSON.stringify(sortKeys(alphaContent)))
-      .digest("hex");
+    // ── 4. Upload to 0G decentralized storage (best-effort) ────────────
+    let ogStorageRoot: string | undefined;
+    let ogStorageTx: string | undefined;
+    try {
+      const ogResult = await uploadAlphaContent(alphaContent);
+      ogStorageRoot = ogResult.rootHash;
+      ogStorageTx = ogResult.txHash;
+    } catch (e: any) {
+      console.warn("[alpha/flag] 0G storage upload failed, listing without storage root:", e.message);
+    }
 
-    // ── 4. Create the listing ────────────────────────────────────────
+    // ── 5. Create the listing ────────────────────────────────────────
     const listing = await prismaClient.alpha_listings.create({
       data: {
         agent_id: agent.id,
@@ -193,6 +191,8 @@ export default async function handler(
         price_usdc: priceUsdc,
         content_hash: contentHash,
         alpha_content: alphaContent,
+        og_storage_root: ogStorageRoot ?? null,
+        og_storage_tx: ogStorageTx ?? null,
         active: true,
       },
     });
@@ -223,6 +223,11 @@ export default async function handler(
         winRate,
         totalPnl: proofRecord.total_pnl?.toString() || "0",
         proofTxHash: proofRecord.tx_hash,
+      },
+      ogStorage: {
+        rootHash: ogStorageRoot ?? null,
+        txHash: ogStorageTx ?? null,
+        stored: ogStorageRoot != null,
       },
       network: "arbitrum-sepolia",
     });
