@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "../../../../../../lib/prisma";
 import { resolveLazyTradingApiKey } from "../../../../../../lib/lazy-trading-api";
 import { verifyUsdcTransfer } from "../../../../../../lib/usdc-transfer";
+import { downloadAlphaContent } from "../../../../../../lib/zg-storage";
+import { hashAlphaContent } from "../../../../../../lib/alpha-content-hash";
 
 const prismaClient = prisma as any;
 
@@ -10,6 +12,70 @@ const ARBITRUM_MAINNET_CHAIN_ID = 42161;
 // const USDC_CONTRACT_SEPOLIA = "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d";
 const USDC_CONTRACT_SEPOLIA = "0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548";
 const USDC_CONTRACT_MAINNET = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831";
+
+async function resolveAlphaContent(listing: any): Promise<{
+  alpha: any;
+  source: "0g-storage" | "db-fallback";
+  hash: string;
+  verified: boolean;
+  fallbackReason?: string;
+}> {
+  if (listing.og_storage_root) {
+    try {
+      const alpha = await downloadAlphaContent(listing.og_storage_root);
+      const hash = hashAlphaContent(alpha);
+      if (hash === listing.content_hash) {
+        return { alpha, source: "0g-storage", hash, verified: true };
+      }
+
+      console.warn(
+        "[alpha/purchase] 0G content hash mismatch, falling back to DB:",
+        listing.id
+      );
+      return {
+        alpha: listing.alpha_content,
+        source: "db-fallback",
+        hash: hashAlphaContent(listing.alpha_content),
+        verified: false,
+        fallbackReason: "0G content hash mismatch",
+      };
+    } catch (error: any) {
+      console.warn("[alpha/purchase] 0G download failed, falling back to DB:", error.message);
+      return {
+        alpha: listing.alpha_content,
+        source: "db-fallback",
+        hash: hashAlphaContent(listing.alpha_content),
+        verified: false,
+        fallbackReason: "0G storage unavailable",
+      };
+    }
+  }
+
+  return {
+    alpha: listing.alpha_content,
+    source: "db-fallback",
+    hash: hashAlphaContent(listing.alpha_content),
+    verified: false,
+    fallbackReason: "No 0G storage root for this listing",
+  };
+}
+
+function buildOgStorageReceipt(listing: any, resolvedAlpha?: Awaited<ReturnType<typeof resolveAlphaContent>>) {
+  return {
+    rootHash: listing.og_storage_root ?? null,
+    txHash: listing.og_storage_tx ?? null,
+    stored: Boolean(listing.og_storage_root),
+    contentSource: resolvedAlpha?.source ?? null,
+    contentHashVerified: resolvedAlpha?.verified ?? false,
+    fallbackReason: resolvedAlpha?.fallbackReason ?? null,
+    verification: listing.og_storage_root
+      ? {
+          contentHash: listing.content_hash,
+          computedHash: resolvedAlpha?.hash ?? null,
+        }
+      : null,
+  };
+}
 
 /**
  * GET /api/lazy-trading/programmatic/alpha/purchase/:listingId
@@ -101,12 +167,15 @@ export default async function handler(
         data: { last_used_at: new Date() },
       });
 
+      const resolvedAlpha = await resolveAlphaContent(listing);
+
       return res.status(200).json({
         success: true,
         listingId: listing.id,
         commitment: listing.commitment,
         contentHash: listing.content_hash,
-        alpha: listing.alpha_content,
+        ogStorage: buildOgStorageReceipt(listing, resolvedAlpha),
+        alpha: resolvedAlpha.alpha,
         payment: {
           txHash: existingPurchase.tx_hash,
           amount: existingPurchase.amount_usdc.toString(),
@@ -236,13 +305,16 @@ export default async function handler(
       data: { last_used_at: new Date() },
     });
 
+    const resolvedAlpha = await resolveAlphaContent(listing);
+
     // ── Return alpha content + payment receipt ────────────────────────────
     return res.status(200).json({
       success: true,
       listingId: listing.id,
       commitment: listing.commitment,
       contentHash: listing.content_hash,
-      alpha: listing.alpha_content,
+      ogStorage: buildOgStorageReceipt(listing, resolvedAlpha),
+      alpha: resolvedAlpha.alpha,
       payment: {
         txHash: paymentTxHash,
         amount: listing.price_usdc.toString(),

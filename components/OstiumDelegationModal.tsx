@@ -10,19 +10,20 @@ import { getOstiumConfig } from '../lib/ostium-config';
 
 interface OstiumDelegationModalProps {
   agentAddress: string;
+  isTestnet?: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
 
-// Get Ostium configuration based on environment
-const { tradingContract: OSTIUM_TRADING_CONTRACT, chainId: ARBITRUM_CHAIN_ID, blockExplorerUrl, chainName } = getOstiumConfig();
 const OSTIUM_TRADING_ABI = ['function setDelegate(address delegate) external'];
 
 export function OstiumDelegationModal({
   agentAddress,
+  isTestnet,
   onClose,
   onSuccess,
 }: OstiumDelegationModalProps) {
+  const { tradingContract: OSTIUM_TRADING_CONTRACT, chainId: ARBITRUM_CHAIN_ID, blockExplorerUrl, chainName } = getOstiumConfig(isTestnet);
   const { authenticated, user, login } = usePrivy();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

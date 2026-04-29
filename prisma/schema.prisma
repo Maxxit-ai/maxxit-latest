@@ -897,6 +897,8 @@ model alpha_listings {
   price_usdc          Decimal   @db.Decimal(20, 6)
   content_hash        String
   alpha_content       Json
+  og_storage_root     String?
+  og_storage_tx       String?
   active              Boolean   @default(true)
   created_at          DateTime  @default(now()) @db.Timestamptz(6)
   agents              agents    @relation(fields: [agent_id], references: [id], onDelete: Cascade)

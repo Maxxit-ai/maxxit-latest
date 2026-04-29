@@ -43,6 +43,7 @@ export default function Home() {
     hasApproval: boolean;
   } | null>(null);
   const [creditBalance, setCreditBalance] = useState<number>(0);
+  const ostiumUseTestnet = true;
 
   useEffect(() => {
     async function fetchAgents() {
@@ -136,8 +137,8 @@ export default function Home() {
 
       try {
         const [delegationResponse, allowanceResponse] = await Promise.all([
-          fetch(`/api/ostium/check-delegation-status?userWallet=${user.wallet.address}&agentAddress=${userAgentAddresses.ostium}`),
-          fetch(`/api/ostium/check-approval-status?userWallet=${user.wallet.address}`)
+          fetch(`/api/ostium/check-delegation-status?userWallet=${user.wallet.address}&agentAddress=${userAgentAddresses.ostium}&isTestnet=${ostiumUseTestnet}`),
+          fetch(`/api/ostium/check-approval-status?userWallet=${user.wallet.address}&isTestnet=${ostiumUseTestnet}`)
         ]);
 
         if (delegationResponse.ok) {
@@ -223,6 +224,7 @@ export default function Home() {
         agentDeployments={agentDeployments}
         ostiumDelegationStatus={ostiumDelegationStatus}
         ostiumUsdcAllowance={ostiumUsdcAllowance}
+        ostiumUseTestnet={ostiumUseTestnet}
         creditBalance={creditBalance}
         userWallet={user?.wallet?.address || ''}
       />
