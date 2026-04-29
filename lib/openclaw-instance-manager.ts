@@ -373,9 +373,9 @@ if [ -n "$MAXXIT_API_KEY" ]; then
   chown ubuntu:ubuntu $OPENCLAW_ENV
   
   # Install the skill using clawhub
-  echo "$(date): Installing maxxit-lazy-trading skill..."
-  su - ubuntu -c "npx clawhub@latest install maxxit-lazy-trading --force" || {
-    echo "$(date): WARNING - Failed to install maxxit-lazy-trading skill"
+  echo "$(date): Installing maxxit-0g skill..."
+  su - ubuntu -c "npx clawhub@latest install maxxit-0g --force" || {
+    echo "$(date): WARNING - Failed to install maxxit-0g skill"
   }
   
   echo "$(date): Maxxit Lazy Trading skill configured"
